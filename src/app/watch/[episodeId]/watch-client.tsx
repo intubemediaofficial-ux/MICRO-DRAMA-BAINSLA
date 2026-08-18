@@ -5,7 +5,12 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Subtitle = { lang: string; url: string };
-type SubscriptionOffer = { currency: string; trialAmountMinor: number; trialDays: number };
+type SubscriptionOffer = {
+  currency: string;
+  amountMinor: number;
+  trialAmountMinor: number;
+  trialDays: number;
+};
 
 export default function WatchClient({
   episodeId,
@@ -37,7 +42,28 @@ export default function WatchClient({
   const [autoNext, setAutoNext] = useState(true);
   const [message, setMessage] = useState("");
   const [subscriptionOffer, setSubscriptionOffer] = useState<SubscriptionOffer | null>(null);
+  const [trialAlreadyUsed, setTrialAlreadyUsed] = useState(false);
   const [subscriber, setSubscriber] = useState(false);
+  const [showLongPressMenu, setShowLongPressMenu] = useState(false);
+  const [pipAvailable, setPipAvailable] = useState(false);
+  const [nextCountdown, setNextCountdown] = useState<number | null>(null);
+
+  useEffect(() => {
+    setPipAvailable(Boolean(document.pictureInPictureEnabled));
+  }, []);
+
+  useEffect(() => {
+    if (nextCountdown === null || !nextId) return;
+    if (nextCountdown === 0) {
+      navigate(nextId);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setNextCountdown((value) => (value === null ? null : value - 1)),
+      1_000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [nextCountdown, nextId]);
 
   useEffect(() => {
     let hls: Hls | null = null;
@@ -65,10 +91,12 @@ export default function WatchClient({
         const data = (await response.json()) as {
           coinPrice: number;
           subscriptionOffer?: SubscriptionOffer | null;
+          trialAlreadyUsed?: boolean;
         };
         setLocked(true);
         setCoinPrice(data.coinPrice);
         setSubscriptionOffer(data.subscriptionOffer ?? null);
+        setTrialAlreadyUsed(Boolean(data.trialAlreadyUsed));
       } else {
         setMessage("Sign in to watch this episode.");
       }
@@ -111,11 +139,21 @@ export default function WatchClient({
       const nextSpeed = speed === 1 ? 1.25 : speed === 1.25 ? 1.5 : 1;
       setSpeed(nextSpeed);
       if (video.current) video.current.playbackRate = nextSpeed;
+      setShowLongPressMenu(true);
     }, 500);
   }
   function stopLongPress() {
     if (longPress.current) clearTimeout(longPress.current);
     longPress.current = null;
+  }
+  async function requestPictureInPicture() {
+    if (!video.current || !pipAvailable) return;
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await video.current.requestPictureInPicture();
+    } catch {
+      setMessage("Picture-in-picture is unavailable in this browser.");
+    }
   }
   async function unlock(source: "coin" | "ad") {
     let adToken: string | undefined;
@@ -143,18 +181,36 @@ export default function WatchClient({
           "Unlock failed",
       );
   }
-  async function startTrial() {
+  function getDeviceFingerprint() {
+    const key = "microdrama_device_fingerprint";
+    const existing = window.localStorage.getItem(key);
+    if (existing) return existing;
+    const fingerprint = crypto.randomUUID();
+    window.localStorage.setItem(key, fingerprint);
+    return fingerprint;
+  }
+  async function startSubscription(mode: "trial" | "annual") {
     const response = await fetch("/api/subscriptions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ planCode: "VIP_ANNUAL" }),
+      body: JSON.stringify({
+        planCode: "VIP_ANNUAL",
+        mode,
+        ...(mode === "trial" ? { deviceFingerprint: getDeviceFingerprint() } : {}),
+      }),
     });
     if (response.ok) location.reload();
-    else
+    else {
+      const errorMessage = ((await response.json()) as { error?: { message?: string } }).error
+        ?.message;
       setMessage(
-        ((await response.json()) as { error?: { message?: string } }).error?.message ??
-          "Could not start trial",
+        errorMessage === "SUBSCRIPTION_EXISTS"
+          ? "You already have a subscription. Manage it from My Subscription."
+          : errorMessage === "TRIAL_ALREADY_USED"
+            ? "Trial already used — buy the annual pass."
+            : (errorMessage ?? "Could not start subscription"),
       );
+    }
   }
   const trialLabel = subscriptionOffer
     ? new Intl.NumberFormat("en", {
@@ -162,6 +218,12 @@ export default function WatchClient({
         currency: subscriptionOffer.currency,
       }).format(subscriptionOffer.trialAmountMinor / 100)
     : "₹9";
+  const annualLabel = subscriptionOffer
+    ? new Intl.NumberFormat("en", {
+        style: "currency",
+        currency: subscriptionOffer.currency,
+      }).format(subscriptionOffer.amountMinor / 100)
+    : "₹999";
 
   return (
     <div
@@ -184,7 +246,7 @@ export default function WatchClient({
         onPointerDown={startLongPress}
         onPointerUp={stopLongPress}
         onPointerLeave={stopLongPress}
-        onEnded={() => autoNext && navigate(nextId)}
+        onEnded={() => autoNext && nextId && setNextCountdown(3)}
         onTimeUpdate={(event) => {
           const positionSec = Math.floor(event.currentTarget.currentTime);
           if (positionSec >= 0 && positionSec % 10 === 0 && positionSec !== lastProgress.current) {
@@ -211,6 +273,37 @@ export default function WatchClient({
       <div className="pointer-events-none absolute right-3 top-1/2 -rotate-12 text-xs text-white/50">
         {watermark}
       </div>
+      {showLongPressMenu && (
+        <div className="absolute left-4 top-16 z-10 rounded-2xl bg-black/80 p-3 text-sm">
+          <p className="text-xs text-zinc-400">Playback speed: {speed}×</p>
+          {pipAvailable && (
+            <button
+              onClick={() => void requestPictureInPicture()}
+              className="mt-2 block rounded-lg bg-zinc-800 px-3 py-2"
+            >
+              Picture in picture
+            </button>
+          )}
+          <button
+            onClick={() => setShowLongPressMenu(false)}
+            className="mt-2 block rounded-lg px-3 py-2 text-zinc-400"
+          >
+            Close
+          </button>
+        </div>
+      )}
+      {nextCountdown !== null && nextId && (
+        <div className="absolute inset-x-4 top-1/2 z-10 -translate-y-1/2 rounded-2xl bg-black/80 p-5 text-center">
+          <p className="text-sm text-zinc-300">Up next in</p>
+          <p className="mt-1 text-4xl font-black">{nextCountdown}</p>
+          <button
+            onClick={() => setNextCountdown(null)}
+            className="mt-3 rounded-full border border-zinc-600 px-4 py-2 text-sm"
+          >
+            Cancel autoplay
+          </button>
+        </div>
+      )}
       <div className="absolute bottom-5 left-4 right-4 flex items-end justify-between">
         <div>
           <p className="text-xs text-zinc-300">NOW PLAYING</p>
@@ -258,19 +351,36 @@ export default function WatchClient({
         </div>
       </div>
       {locked && (
-        <div className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-zinc-950 p-6">
+        <div className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-white/10 bg-zinc-950 p-6 shadow-2xl">
           <p className="text-sm text-zinc-400">The cliffhanger continues.</p>
           <h2 className="mt-1 text-2xl font-black">Unlock for 🪙 {coinPrice}</h2>
           {subscriptionOffer && (
-            <button
-              onClick={() => void startTrial()}
-              className="mt-4 w-full rounded-2xl bg-amber-400 px-5 py-4 text-left font-bold text-zinc-950"
-            >
-              <span className="block text-lg">Unlock Full Series</span>
-              <span className="block text-sm">
-                Start {subscriptionOffer.trialDays}-Day Trial for only {trialLabel}
-              </span>
-            </button>
+            <div className="mt-4 space-y-2">
+              {!trialAlreadyUsed && (
+                <button
+                  onClick={() => void startSubscription("trial")}
+                  className="w-full rounded-2xl bg-amber-400 px-5 py-4 text-left font-bold text-zinc-950"
+                >
+                  <span className="block text-lg">
+                    Start {subscriptionOffer.trialDays}-Day Trial for just {trialLabel}
+                  </span>
+                </button>
+              )}
+              {trialAlreadyUsed && (
+                <p className="rounded-xl bg-zinc-900 px-4 py-3 text-sm text-zinc-300">
+                  Trial already used — buy the annual pass to keep watching.
+                </p>
+              )}
+              <button
+                onClick={() => void startSubscription("annual")}
+                className="w-full rounded-2xl border border-amber-400/60 px-5 py-4 text-left font-bold text-amber-100"
+              >
+                <span className="block text-lg">Full Annual Pass: {annualLabel}/year</span>
+                <span className="block text-sm text-zinc-400">
+                  Unlimited VIP episodes and no ads
+                </span>
+              </button>
+            </div>
           )}
           <div className="mt-5 flex flex-wrap gap-3">
             <button

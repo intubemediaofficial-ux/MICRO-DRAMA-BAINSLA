@@ -109,6 +109,7 @@ model User {
   subscriptions                   Subscription[]
   subscriptionEvents              SubscriptionEvent[]
   subscriptionDiscountRedemptions SubscriptionDiscountRedemption[]
+  trialClaims                      TrialClaim[]
   createdAt                       DateTime                         @default(now())
 
   @@index([referredById])
@@ -484,4 +485,15 @@ model SubscriptionAutomation {
   reminderLeadHours Int      @default(24)
   gracePeriodHours Int      @default(72)
   updatedAt        DateTime @updatedAt
+}
+
+model TrialClaim {
+  id                String   @id @default(cuid())
+  userId            String?
+  email             String   @unique
+  deviceFingerprint String?  @unique
+  claimedAt         DateTime @default(now())
+  user              User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
 }

@@ -12,6 +12,8 @@ import { prisma } from "../src/server/db";
 import {
   adminExtendSubscription,
   cancelSubscription,
+  getSubscriptionOffer,
+  purchaseAnnual,
   processSubscriptionWebhook,
   runSubscriptionCron,
   startTrial,
@@ -52,6 +54,8 @@ describe("subscription lifecycle and entitlements", () => {
         prices: {
           create: [
             { currency: "INR", amountMinor: 99_900, trialAmountMinor: 900, countryCodes: ["IN"] },
+            { currency: "USD", amountMinor: 9_999, trialAmountMinor: 99, countryCodes: ["US"] },
+            { currency: "EUR", amountMinor: 8_999, trialAmountMinor: 99, countryCodes: ["DE"] },
           ],
         },
       },
@@ -124,7 +128,7 @@ describe("subscription lifecycle and entitlements", () => {
   });
 
   afterAll(async () => {
-    for (const userId of extraUserIds) await prisma.user.delete({ where: { id: userId } });
+    await prisma.user.deleteMany({ where: { id: { in: extraUserIds } } });
     await prisma.user.delete({ where: { id: trialUserId } });
     await prisma.user.delete({ where: { id: reminderUserId } });
     await prisma.user.delete({ where: { id: failedUserId } });
@@ -133,10 +137,27 @@ describe("subscription lifecycle and entitlements", () => {
     await prisma.$disconnect();
   });
 
-  it("starts one trial with exactly one paid trial invoice", async () => {
-    const first = await startTrial(trialUserId, `TEST_VIP_${suffix.slice(0, 8)}`, "INR");
-    const second = await startTrial(trialUserId, `TEST_VIP_${suffix.slice(0, 8)}`, "INR");
-    expect(second.id).toBe(first.id);
+  it("starts one trial and refuses a second claim", async () => {
+    const first = await startTrial(
+      trialUserId,
+      `TEST_VIP_${suffix.slice(0, 8)}`,
+      "INR",
+      "IN",
+      undefined,
+      new Date(),
+      `device-${suffix}`,
+    );
+    await expect(
+      startTrial(
+        trialUserId,
+        `TEST_VIP_${suffix.slice(0, 8)}`,
+        "INR",
+        "IN",
+        undefined,
+        new Date(),
+        `device-${suffix}`,
+      ),
+    ).rejects.toThrow("TRIAL_ALREADY_USED");
     expect(
       await prisma.subscription.count({ where: { userId: trialUserId, status: "TRIALING" } }),
     ).toBe(1);
@@ -171,6 +192,39 @@ describe("subscription lifecycle and entitlements", () => {
     expect((await resolveEpisodeEntitlement(user.id, lockedEpisodeId)).entitled).toBe(false);
   });
 
+  it("keeps a trial claim after the account is recreated", async () => {
+    const user = await createExtraUser("recreated");
+    const email = user.email;
+    await startTrial(
+      user.id,
+      `TEST_VIP_${suffix.slice(0, 8)}`,
+      "INR",
+      "IN",
+      undefined,
+      new Date(),
+      `recreated-device-${suffix}`,
+    );
+    await prisma.user.delete({ where: { id: user.id } });
+    const replacement = await prisma.user.create({
+      data: {
+        email,
+        referralCode: `RE${suffix.slice(0, 6)}`,
+      },
+    });
+    extraUserIds.push(replacement.id);
+    await expect(
+      startTrial(
+        replacement.id,
+        `TEST_VIP_${suffix.slice(0, 8)}`,
+        "INR",
+        "IN",
+        undefined,
+        new Date(),
+        `new-device-${suffix}`,
+      ),
+    ).rejects.toThrow("TRIAL_ALREADY_USED");
+  });
+
   it("charges only the winner of a concurrent trial claim", async () => {
     const user = await createExtraUser("trial-race");
     let charges = 0;
@@ -184,18 +238,132 @@ describe("subscription lifecycle and entitlements", () => {
     const providerSpy = vi
       .spyOn(providerModule, "subscriptionProvider")
       .mockReturnValue(new CountingProvider());
-    const results = await Promise.all([
-      startTrial(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR"),
-      startTrial(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR"),
+    const results = await Promise.allSettled([
+      startTrial(
+        user.id,
+        `TEST_VIP_${suffix.slice(0, 8)}`,
+        "INR",
+        "IN",
+        undefined,
+        new Date(),
+        `race-device-${suffix}`,
+      ),
+      startTrial(
+        user.id,
+        `TEST_VIP_${suffix.slice(0, 8)}`,
+        "INR",
+        "IN",
+        undefined,
+        new Date(),
+        `race-device-${suffix}`,
+      ),
     ]);
     providerSpy.mockRestore();
     expect(charges).toBe(1);
-    expect(new Set(results.map((result) => result.id)).size).toBe(1);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((result) => result.status === "rejected")).toMatchObject({
+      reason: expect.objectContaining({ message: "TRIAL_ALREADY_USED" }),
+    });
+    const winner = results.find((result) => result.status === "fulfilled");
+    if (!winner || winner.status !== "fulfilled") throw new Error("missing trial winner");
     expect(
       await prisma.subscriptionInvoice.count({
-        where: { subscriptionId: results[0].id, kind: "TRIAL", status: "PAID" },
+        where: { subscriptionId: winner.value.id, kind: "TRIAL", status: "PAID" },
       }),
     ).toBe(1);
+  });
+
+  it("creates one paid annual subscription and is idempotent", async () => {
+    const user = await createExtraUser("annual");
+    let charges = 0;
+    class CountingAnnualProvider extends DevSubscriptionProvider {
+      override async chargeRenewal(input: CheckoutInput) {
+        charges += 1;
+        return super.chargeRenewal(input);
+      }
+    }
+    const providerSpy = vi
+      .spyOn(providerModule, "subscriptionProvider")
+      .mockReturnValue(new CountingAnnualProvider());
+    const first = await purchaseAnnual(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR");
+    const second = await purchaseAnnual(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR");
+    providerSpy.mockRestore();
+    expect(second.id).toBe(first.id);
+    expect(charges).toBe(1);
+    expect(first.status).toBe("ACTIVE");
+    await expect(
+      startTrial(
+        user.id,
+        `TEST_VIP_${suffix.slice(0, 8)}`,
+        "INR",
+        "IN",
+        undefined,
+        new Date(),
+        `annual-trial-${suffix}`,
+      ),
+    ).rejects.toThrow("SUBSCRIPTION_EXISTS");
+    expect(
+      await prisma.subscription.count({
+        where: { userId: user.id, status: "ACTIVE" },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.subscriptionInvoice.count({
+        where: { subscriptionId: first.id, kind: "RENEWAL", status: "PAID" },
+      }),
+    ).toBe(1);
+  });
+
+  it("keeps a first annual purchase locked until settlement", async () => {
+    const user = await createExtraUser("annual-pending");
+    let releaseCharge!: () => void;
+    const chargeStarted = new Promise<void>((resolve) => {
+      releaseCharge = resolve;
+    });
+    class DelayedAnnualProvider extends DevSubscriptionProvider {
+      override async chargeRenewal(input: CheckoutInput) {
+        await chargeStarted;
+        return super.chargeRenewal(input);
+      }
+    }
+    const providerSpy = vi
+      .spyOn(providerModule, "subscriptionProvider")
+      .mockReturnValue(new DelayedAnnualProvider());
+    const purchase = purchaseAnnual(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const pending = await prisma.subscription.findFirstOrThrow({ where: { userId: user.id } });
+    expect(pending.status).toBe("ACTIVE");
+    expect((await resolveEpisodeEntitlement(user.id, lockedEpisodeId)).reason).toBe("LOCKED");
+    releaseCharge();
+    await purchase;
+    providerSpy.mockRestore();
+    expect((await resolveEpisodeEntitlement(user.id, lockedEpisodeId)).reason).toBe("SUBSCRIPTION");
+  });
+
+  it("keeps a failed annual purchase locked", async () => {
+    const user = await createExtraUser("annual-failure");
+    class FailingAnnualProvider extends DevSubscriptionProvider {
+      override async chargeRenewal(_input: CheckoutInput): Promise<never> {
+        throw new Error("TEST_ANNUAL_FAILURE");
+      }
+    }
+    const providerSpy = vi
+      .spyOn(providerModule, "subscriptionProvider")
+      .mockReturnValue(new FailingAnnualProvider());
+    await expect(purchaseAnnual(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR")).rejects.toThrow(
+      "TEST_ANNUAL_FAILURE",
+    );
+    providerSpy.mockRestore();
+    const failed = await prisma.subscription.findFirstOrThrow({ where: { userId: user.id } });
+    expect(failed.status).toBe("EXPIRED");
+    expect((await resolveEpisodeEntitlement(user.id, lockedEpisodeId)).reason).toBe("LOCKED");
+  });
+
+  it("resolves corrected localized annual prices", async () => {
+    const usd = await getSubscriptionOffer(`TEST_VIP_${suffix.slice(0, 8)}`, "USD");
+    const eur = await getSubscriptionOffer(`TEST_VIP_${suffix.slice(0, 8)}`, "EUR");
+    expect(usd?.price.amountMinor).toBe(9_999);
+    expect(eur?.price.amountMinor).toBe(8_999);
   });
 
   it("reminds and converts an expired trial only once", async () => {

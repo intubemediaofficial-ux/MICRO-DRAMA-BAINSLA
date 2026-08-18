@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { resolveEpisodeEntitlement } from "@/server/entitlements";
+import { getWatchedEpisodeIds } from "@/server/discovery";
 
 export default async function SeriesPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -18,6 +19,12 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
         series.episodes.map((episode) => resolveEpisodeEntitlement(session.userId, episode.id)),
       )
     : series.episodes.map(() => ({ entitled: false, reason: "LOCKED" as const }));
+  const watchedIds = session
+    ? await getWatchedEpisodeIds(
+        session.userId,
+        series.episodes.map((episode) => episode.id),
+      )
+    : new Set<string>();
   return (
     <div className="pb-24">
       <Link href="/" className="fixed left-4 top-4 z-10 rounded-full bg-black/50 px-4 py-2">
@@ -68,12 +75,19 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
               </div>
               <div className="flex items-center justify-between text-xs text-zinc-500">
                 <span>EP {ep.number}</span>
-                <span>
-                  {ep.isFree || ep.number <= series.freeEpisodeCount
-                    ? "FREE"
-                    : entitlements[index]?.reason === "SUBSCRIPTION"
-                      ? "VIP"
-                      : `🪙 ${ep.coinPrice}`}
+                <span className="flex items-center gap-1">
+                  {watchedIds.has(ep.id) && (
+                    <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-emerald-300">
+                      WATCHED
+                    </span>
+                  )}
+                  <span>
+                    {ep.isFree || ep.number <= series.freeEpisodeCount
+                      ? "FREE"
+                      : entitlements[index]?.reason === "SUBSCRIPTION"
+                        ? "VIP"
+                        : `🪙 ${ep.coinPrice}`}
+                  </span>
                 </span>
               </div>
               <h3 className="mt-5 font-semibold">{ep.title}</h3>

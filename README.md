@@ -32,6 +32,11 @@ The subscription offer resolves a fixed `PlanPrice` row from `cf-ipcountry` or
 `x-vercel-ip-country`, then the country in `Accept-Language`, and finally INR. It never
 calculates prices with live FX.
 
+Seeded annual prices are ₹999 / ₹9 trial (INR), $99.99 / $0.99 trial (USD), €89.99 / €0.99
+trial (EUR), and AED 479 / AED 9 trial. Users can start the three-day trial or buy the localized
+annual pass directly. Trial claims are one-time per server-known email and optional device
+fingerprint, including after account recreation.
+
 ## Environment
 
 | Variable                | Purpose                                            |

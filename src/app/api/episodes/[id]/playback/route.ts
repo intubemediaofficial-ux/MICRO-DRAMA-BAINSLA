@@ -4,7 +4,7 @@ import { prisma } from "@/server/db";
 import { createStreamToken, watermark } from "@/server/tokens";
 import { resolveEpisodeEntitlement } from "@/server/entitlements";
 import { resolveCurrency } from "@/server/currency";
-import { getSubscriptionOffer } from "@/server/subscriptions";
+import { getSubscriptionOffer, hasUsedTrial } from "@/server/subscriptions";
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
@@ -17,6 +17,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const entitlement = await resolveEpisodeEntitlement(session.userId, id);
   if (!entitlement.entitled) {
     const offer = await getSubscriptionOffer("VIP_ANNUAL", resolveCurrency(_request.headers));
+    const trialAlreadyUsed = await hasUsedTrial(session.userId);
     return NextResponse.json(
       {
         locked: true,
@@ -24,10 +25,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         subscriptionOffer: offer
           ? {
               currency: offer.price.currency,
+              amountMinor: offer.price.amountMinor,
               trialAmountMinor: offer.price.trialAmountMinor,
               trialDays: offer.plan.trialDays,
             }
           : null,
+        trialAlreadyUsed,
       },
       { status: 403 },
     );

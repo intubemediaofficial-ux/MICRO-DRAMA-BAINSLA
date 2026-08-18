@@ -197,8 +197,8 @@ async function main() {
       prices: {
         create: [
           { currency: "INR", amountMinor: 99_900, trialAmountMinor: 900, countryCodes: ["IN"] },
-          { currency: "USD", amountMinor: 12_99, trialAmountMinor: 99, countryCodes: ["US"] },
-          { currency: "EUR", amountMinor: 11_99, trialAmountMinor: 99, countryCodes: ["DE", "FR"] },
+          { currency: "USD", amountMinor: 9_999, trialAmountMinor: 99, countryCodes: ["US"] },
+          { currency: "EUR", amountMinor: 8_999, trialAmountMinor: 99, countryCodes: ["DE", "FR"] },
           { currency: "AED", amountMinor: 47_900, trialAmountMinor: 900, countryCodes: ["AE"] },
         ],
       },
