@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
 import { prisma } from "@/server/db";
+import { duplicateSkuMessage, episodeNumberConflictMessage } from "@/server/episode-validation";
 
 const input = z.object({
   title: z.string().min(1).optional(),
@@ -35,7 +37,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         select: { id: true },
       });
       if (duplicateNumber)
-        return NextResponse.json({ error: { message: `EPISODE_NUMBER_ALREADY_USED: ${data.number}` } }, { status: 409 });
+        return NextResponse.json(
+          { error: { message: episodeNumberConflictMessage(data.number) } },
+          { status: 409 },
+        );
     }
     if (data.sku) {
       const duplicate = await prisma.episode.findFirst({
@@ -43,14 +48,49 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         select: { title: true },
       });
       if (duplicate)
-        return NextResponse.json({ error: { message: `SKU already used by ${duplicate.title}: ${data.sku}` } }, { status: 409 });
+        return NextResponse.json(
+          { error: { message: duplicateSkuMessage(data.sku, duplicate.title) } },
+          { status: 409 },
+        );
     }
-    return NextResponse.json(
-      await prisma.episode.update({
-        where: { id },
-        data: { ...data, ...(data.thumbnailUrl ? { thumbnailSource: "CUSTOM" } : {}) },
-      }),
-    );
+    try {
+      return NextResponse.json(
+        await prisma.episode.update({
+          where: { id },
+          data: { ...data, ...(data.thumbnailUrl ? { thumbnailSource: "CUSTOM" } : {}) },
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        if (data.number !== undefined) {
+          const duplicateNumber = await prisma.episode.findFirst({
+            where: { seriesId: existing.seriesId, number: data.number, id: { not: id } },
+            select: { id: true },
+          });
+          if (duplicateNumber)
+            return NextResponse.json(
+              { error: { message: episodeNumberConflictMessage(data.number) } },
+              { status: 409 },
+            );
+        }
+        if (data.sku) {
+          const duplicate = await prisma.episode.findFirst({
+            where: { sku: data.sku, id: { not: id } },
+            select: { title: true },
+          });
+          if (duplicate)
+            return NextResponse.json(
+              { error: { message: duplicateSkuMessage(data.sku, duplicate.title) } },
+              { status: 409 },
+            );
+          return NextResponse.json(
+            { error: { message: duplicateSkuMessage(data.sku) } },
+            { status: 409 },
+          );
+        }
+      }
+      throw error;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Episode update failed";
     return NextResponse.json(

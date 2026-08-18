@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
 import { prisma } from "@/server/db";
@@ -33,12 +34,23 @@ export async function POST(request: Request) {
     const data = seasonInput.parse(await request.json());
     const series = await prisma.series.findUnique({ where: { id: data.seriesId }, select: { id: true } });
     if (!series) return NextResponse.json({ error: { message: "Series not found" } }, { status: 404 });
-    const season = await prisma.season.create({ data });
+    let season;
+    try {
+      season = await prisma.season.create({ data });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return NextResponse.json(
+          { error: { message: `Season number ${data.number} already exists in this series` } },
+          { status: 409 },
+        );
+      }
+      throw error;
+    }
     return NextResponse.json({ season }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Season creation failed";
     return NextResponse.json({
-      error: { message: message.includes("Season_seriesId_number_key") ? "Season number already exists" : message },
-    }, { status: message === "FORBIDDEN" ? 403 : message.includes("Season_seriesId_number_key") ? 409 : 400 });
+      error: { message },
+    }, { status: message === "FORBIDDEN" ? 403 : 400 });
   }
 }

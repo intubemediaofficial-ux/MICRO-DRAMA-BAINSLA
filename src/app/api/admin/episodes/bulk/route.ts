@@ -3,7 +3,11 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
 import { prisma } from "@/server/db";
-import { duplicateSkuMessage, findEpisodeNumberCollision } from "@/server/episode-validation";
+import {
+  duplicateSkuMessage,
+  episodeNumberConflictMessage,
+  findEpisodeNumberCollision,
+} from "@/server/episode-validation";
 
 const input = z.object({
   seriesId: z.string(),
@@ -50,7 +54,10 @@ export async function POST(request: Request) {
     })).map((episode) => episode.number);
     const collision = findEpisodeNumberCollision(existingNumbers, data.episodes.map((episode) => episode.number));
     if (collision !== null)
-      return NextResponse.json({ error: { message: `EPISODE_NUMBER_ALREADY_USED: ${collision}` } }, { status: 409 });
+      return NextResponse.json(
+        { error: { message: episodeNumberConflictMessage(collision) } },
+        { status: 409 },
+      );
     const skus = data.episodes.map((episode) => episode.sku).filter((sku): sku is string => Boolean(sku));
     if (new Set(skus).size !== skus.length)
       return NextResponse.json({ error: { message: "SKU must be unique within this upload" } }, { status: 409 });

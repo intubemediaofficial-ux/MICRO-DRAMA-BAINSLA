@@ -34,6 +34,47 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
         series.episodes.map((episode) => episode.id),
       )
     : new Set<string>();
+  const entitlementByEpisodeId = new Map(
+    series.episodes.map((episode, index) => [episode.id, entitlements[index]]),
+  );
+  const toEpisodeView = (episode: (typeof series.episodes)[number]) => ({
+    id: episode.id,
+    number: episode.number,
+    title: episode.title,
+    durationSec: episode.durationSec,
+    thumbnailUrl: episode.thumbnailUrl,
+    isFree: episode.isFree,
+    coinPrice: episode.coinPrice,
+    watched: watchedIds.has(episode.id),
+    access: entitlementByEpisodeId.get(episode.id)?.reason ?? "LOCKED",
+  });
+  const assignedEpisodeIds = new Set(
+    series.seasons.flatMap((season) => season.episodes.map((episode) => episode.id)),
+  );
+  const seasonGroups = series.seasons.length
+    ? series.seasons.map((season, index) => {
+        const episodes = season.episodes.map(toEpisodeView);
+        if (index !== 0) return { ...season, episodes };
+        const unassignedEpisodes = series.episodes
+          .filter((episode) => !assignedEpisodeIds.has(episode.id))
+          .map(toEpisodeView);
+        return {
+          ...season,
+          episodes: [...episodes, ...unassignedEpisodes].sort((a, b) => a.number - b.number),
+        };
+      })
+    : [
+        {
+          id: "legacy",
+          number: 1,
+          title: "Season 1",
+          episodes: series.episodes.map(toEpisodeView),
+        },
+      ];
+  const groupedEpisodeCount = seasonGroups.reduce((count, season) => count + season.episodes.length, 0);
+  if (groupedEpisodeCount !== series.episodes.length) {
+    throw new Error(`Season grouping mismatch for series ${series.id}`);
+  }
   return (
     <div className="pb-24">
       <Link href="/" className="fixed left-4 top-4 z-10 rounded-full bg-black/50 px-4 py-2">
@@ -92,47 +133,7 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
         <h2 className="mt-8 mb-3 text-xl font-bold">Episodes</h2>
         <SeasonEpisodes
           freeEpisodeCount={series.freeEpisodeCount}
-          seasons={
-            series.seasons.length
-              ? series.seasons.map((season) => ({
-                  id: season.id,
-                  number: season.number,
-                  title: season.title,
-                  episodes: season.episodes.map((episode) => ({
-                    id: episode.id,
-                    number: episode.number,
-                    title: episode.title,
-                    durationSec: episode.durationSec,
-                    thumbnailUrl: episode.thumbnailUrl,
-                    isFree: episode.isFree,
-                    coinPrice: episode.coinPrice,
-                    watched: watchedIds.has(episode.id),
-                    access:
-                      entitlements[series.episodes.findIndex((item) => item.id === episode.id)]
-                        ?.reason ?? "LOCKED",
-                  })),
-                }))
-              : [
-                  {
-                    id: "legacy",
-                    number: 1,
-                    title: "Season 1",
-                    episodes: series.episodes.map((episode) => ({
-                      id: episode.id,
-                      number: episode.number,
-                      title: episode.title,
-                      durationSec: episode.durationSec,
-                      thumbnailUrl: episode.thumbnailUrl,
-                      isFree: episode.isFree,
-                      coinPrice: episode.coinPrice,
-                      watched: watchedIds.has(episode.id),
-                      access:
-                        entitlements[series.episodes.findIndex((item) => item.id === episode.id)]
-                          ?.reason ?? "LOCKED",
-                    })),
-                  },
-                ]
-          }
+          seasons={seasonGroups}
         />
       </section>
     </div>
