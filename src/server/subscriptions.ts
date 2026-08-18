@@ -204,14 +204,31 @@ async function startSubscription(
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      if (mode === "TRIAL") throw new Error("TRIAL_ALREADY_USED");
+      if (mode === "TRIAL") {
+        const [priorClaim, existing] = await Promise.all([
+          prisma.trialClaim.findFirst({
+            where: {
+              OR: [
+                { email },
+                ...(normalizedDeviceFingerprint
+                  ? [{ deviceFingerprint: normalizedDeviceFingerprint }]
+                  : []),
+              ],
+            },
+            select: { id: true },
+          }),
+          activeForUser(userId),
+        ]);
+        if (priorClaim) throw new Error("TRIAL_ALREADY_USED");
+        if (existing) throw new Error("SUBSCRIPTION_EXISTS");
+      }
       const existing = await activeForUser(userId);
       if (existing) return existing;
     }
     throw error;
   }
   if ("existing" in claimed) {
-    if (mode === "TRIAL") throw new Error("TRIAL_ALREADY_USED");
+    if (mode === "TRIAL") throw new Error("SUBSCRIPTION_EXISTS");
     return claimed.existing;
   }
 

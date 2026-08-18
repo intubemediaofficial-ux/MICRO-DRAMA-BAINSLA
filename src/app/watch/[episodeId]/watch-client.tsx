@@ -200,11 +200,17 @@ export default function WatchClient({
       }),
     });
     if (response.ok) location.reload();
-    else
+    else {
+      const errorMessage = ((await response.json()) as { error?: { message?: string } }).error
+        ?.message;
       setMessage(
-        ((await response.json()) as { error?: { message?: string } }).error?.message ??
-          "Could not start subscription",
+        errorMessage === "SUBSCRIPTION_EXISTS"
+          ? "You already have a subscription. Manage it from My Subscription."
+          : errorMessage === "TRIAL_ALREADY_USED"
+            ? "Trial already used — buy the annual pass."
+            : (errorMessage ?? "Could not start subscription"),
       );
+    }
   }
   const trialLabel = subscriptionOffer
     ? new Intl.NumberFormat("en", {

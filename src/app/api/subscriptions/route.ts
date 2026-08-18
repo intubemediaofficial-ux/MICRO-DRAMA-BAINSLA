@@ -44,7 +44,9 @@ export async function POST(request: Request) {
         ? 404
         : message === "INVALID_DISCOUNT" || message === "TRIAL_ALREADY_USED"
           ? 422
-          : 400;
+          : message === "SUBSCRIPTION_EXISTS"
+            ? 409
+            : 400;
     return NextResponse.json({ error: { message } }, { status });
   }
 }

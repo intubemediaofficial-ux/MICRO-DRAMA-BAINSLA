@@ -291,6 +291,17 @@ describe("subscription lifecycle and entitlements", () => {
     expect(second.id).toBe(first.id);
     expect(charges).toBe(1);
     expect(first.status).toBe("ACTIVE");
+    await expect(
+      startTrial(
+        user.id,
+        `TEST_VIP_${suffix.slice(0, 8)}`,
+        "INR",
+        "IN",
+        undefined,
+        new Date(),
+        `annual-trial-${suffix}`,
+      ),
+    ).rejects.toThrow("SUBSCRIPTION_EXISTS");
     expect(
       await prisma.subscription.count({
         where: { userId: user.id, status: "ACTIVE" },
@@ -301,6 +312,51 @@ describe("subscription lifecycle and entitlements", () => {
         where: { subscriptionId: first.id, kind: "RENEWAL", status: "PAID" },
       }),
     ).toBe(1);
+  });
+
+  it("keeps a first annual purchase locked until settlement", async () => {
+    const user = await createExtraUser("annual-pending");
+    let releaseCharge!: () => void;
+    const chargeStarted = new Promise<void>((resolve) => {
+      releaseCharge = resolve;
+    });
+    class DelayedAnnualProvider extends DevSubscriptionProvider {
+      override async chargeRenewal(input: CheckoutInput) {
+        await chargeStarted;
+        return super.chargeRenewal(input);
+      }
+    }
+    const providerSpy = vi
+      .spyOn(providerModule, "subscriptionProvider")
+      .mockReturnValue(new DelayedAnnualProvider());
+    const purchase = purchaseAnnual(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const pending = await prisma.subscription.findFirstOrThrow({ where: { userId: user.id } });
+    expect(pending.status).toBe("ACTIVE");
+    expect((await resolveEpisodeEntitlement(user.id, lockedEpisodeId)).reason).toBe("LOCKED");
+    releaseCharge();
+    await purchase;
+    providerSpy.mockRestore();
+    expect((await resolveEpisodeEntitlement(user.id, lockedEpisodeId)).reason).toBe("SUBSCRIPTION");
+  });
+
+  it("keeps a failed annual purchase locked", async () => {
+    const user = await createExtraUser("annual-failure");
+    class FailingAnnualProvider extends DevSubscriptionProvider {
+      override async chargeRenewal(_input: CheckoutInput): Promise<never> {
+        throw new Error("TEST_ANNUAL_FAILURE");
+      }
+    }
+    const providerSpy = vi
+      .spyOn(providerModule, "subscriptionProvider")
+      .mockReturnValue(new FailingAnnualProvider());
+    await expect(purchaseAnnual(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR")).rejects.toThrow(
+      "TEST_ANNUAL_FAILURE",
+    );
+    providerSpy.mockRestore();
+    const failed = await prisma.subscription.findFirstOrThrow({ where: { userId: user.id } });
+    expect(failed.status).toBe("EXPIRED");
+    expect((await resolveEpisodeEntitlement(user.id, lockedEpisodeId)).reason).toBe("LOCKED");
   });
 
   it("resolves corrected localized annual prices", async () => {
