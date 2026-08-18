@@ -106,7 +106,6 @@ export async function syncDemoContent(
         castNames: item.cast.map((member) => member.name),
         freeEpisodeCount: item.freeEpisodeCount,
         defaultCoinPrice: item.defaultCoinPrice,
-        isPublished: true,
         status: item.status,
       };
 
@@ -114,7 +113,12 @@ export async function syncDemoContent(
       let seriesAction: SeriesSyncReport["series"];
       if (!existing) {
         series = await tx.series.create({
-          data: { ...metadata, slug: item.slug, teaserUrl: "/media/sample.mp4" },
+          data: {
+            ...metadata,
+            slug: item.slug,
+            teaserUrl: "/media/sample.mp4",
+            isPublished: true,
+          },
         });
         seriesAction = "created";
       } else {
@@ -127,7 +131,6 @@ export async function syncDemoContent(
           !sameArray(existing.castNames, metadata.castNames) ||
           existing.freeEpisodeCount !== metadata.freeEpisodeCount ||
           existing.defaultCoinPrice !== metadata.defaultCoinPrice ||
-          existing.isPublished !== metadata.isPublished ||
           existing.status !== metadata.status;
         series = metadataChanged
           ? await tx.series.update({ where: { id: existing.id }, data: metadata })
