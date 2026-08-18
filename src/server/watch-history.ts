@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 
 export const WATCH_HISTORY_LIMIT = 50;
@@ -58,17 +57,6 @@ export function formatTimeAgo(date: Date, now = Date.now()): string {
   return `${Math.floor(months / 12)}y ago`;
 }
 
-type ProgressWithEpisode = Prisma.WatchProgressGetPayload<{
-  include: {
-    episode: {
-      include: {
-        series: true;
-        season: true;
-      };
-    };
-  };
-}>;
-
 export type WatchHistoryItem = {
   id: string;
   episodeId: string;
@@ -103,7 +91,7 @@ export async function getWatchHistory(userId: string): Promise<WatchHistoryItem[
   });
   const latest = collapseLatestProgress(rows);
   return latest.slice(0, WATCH_HISTORY_LIMIT).map((row) => {
-    const episode = (row as ProgressWithEpisode).episode;
+    const episode = row.episode;
     const available = episode.series.isPublished && episode.publishedAt !== null;
     return {
       id: row.id,
@@ -130,19 +118,17 @@ export async function getResumePositionForEpisode(
   episodeId: string,
   durationSec: number,
 ): Promise<number> {
-  const rows = await prisma.watchProgress.findMany({
-    where: { userId, episodeId },
-    orderBy: { updatedAt: "desc" },
-    take: WATCH_HISTORY_SCAN_LIMIT,
+  const row = await prisma.watchProgress.findUnique({
+    where: {
+      userId_episodeId: {
+        userId,
+        episodeId,
+      },
+    },
     select: {
-      id: true,
-      userId: true,
-      episodeId: true,
       positionSec: true,
       completed: true,
-      updatedAt: true,
     },
   });
-  const latest = collapseLatestProgress(rows)[0];
-  return latest ? resumePosition(latest.positionSec, durationSec, latest.completed) : 0;
+  return row ? resumePosition(row.positionSec, durationSec, row.completed) : 0;
 }
