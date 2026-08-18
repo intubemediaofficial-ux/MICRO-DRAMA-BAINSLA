@@ -6,7 +6,7 @@ const schema = z.object({
   STREAM_TOKEN_SECRET: z.string().min(16),
   OTP_DEV_CODE: z.string().default("123456"),
   MEDIA_DIR: z.string().default("./public/media"),
-  NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000")
+  NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
 });
 export const env = schema.parse({
   DATABASE_URL: process.env.DATABASE_URL,
@@ -14,5 +14,5 @@ export const env = schema.parse({
   STREAM_TOKEN_SECRET: process.env.STREAM_TOKEN_SECRET,
   OTP_DEV_CODE: process.env.OTP_DEV_CODE,
   MEDIA_DIR: process.env.MEDIA_DIR,
-  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL
+  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
 });

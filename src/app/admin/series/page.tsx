@@ -1,3 +1,39 @@
 import Link from "next/link";
+import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
-export default async function AdminSeriesPage() { const series = await prisma.series.findMany({ include: { _count: { select: { episodes: true } } }, orderBy: { createdAt: "desc" } }); return <div className="p-5 pb-24"><Link href="/admin" className="text-zinc-400">← CMS</Link><h1 className="mt-7 text-3xl font-black">Series catalogue</h1><div className="mt-6 space-y-3">{series.map(item => <div key={item.id} className="flex items-center justify-between rounded-2xl bg-zinc-900 p-4"><div><h2 className="font-bold">{item.title}</h2><p className="text-sm text-zinc-500">{item._count.episodes} episodes · {item.isPublished ? "Published" : "Draft"}</p></div><Link className="rounded-full bg-zinc-800 px-4 py-2 text-sm" href={`/series/${item.slug}`}>View</Link></div>)}</div></div>; }
+import AdminCmsClient from "./cms-client";
+
+export default async function AdminSeriesPage() {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return (
+      <div className="p-8">
+        <h1 className="text-3xl font-black">Admin access required</h1>
+        <Link href="/login" className="mt-5 inline-block rounded-full bg-rose-500 px-5 py-3">
+          Sign in
+        </Link>
+      </div>
+    );
+  }
+  const [series, banners] = await Promise.all([
+    prisma.series.findMany({
+      include: {
+        episodes: {
+          orderBy: { number: "asc" },
+          select: { id: true, number: true, title: true, isFree: true, coinPrice: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.banner.findMany({ orderBy: { sortOrder: "asc" } }),
+  ]);
+  return (
+    <div className="p-5 pb-24">
+      <Link href="/admin" className="text-zinc-400">
+        ← CMS
+      </Link>
+      <h1 className="mt-7 text-3xl font-black">Catalogue management</h1>
+      <AdminCmsClient series={series} banners={banners} />
+    </div>
+  );
+}
