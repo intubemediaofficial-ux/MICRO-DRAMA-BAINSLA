@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { verifyStreamToken } from "@/server/tokens";
+import { resolveEpisodeEntitlement } from "@/server/entitlements";
 export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   const session = await getSession();
   const { token } = await params;
@@ -16,11 +17,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     include: { series: true },
   });
   if (!episode) return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
-  const free = episode.isFree || episode.number <= episode.series.freeEpisodeCount;
-  const unlock = await prisma.episodeUnlock.findUnique({
-    where: { userId_episodeId: { userId: session.userId, episodeId: episode.id } },
-  });
-  if (!free && !unlock) return NextResponse.json({ error: { message: "Locked" } }, { status: 403 });
+  const entitlement = await resolveEpisodeEntitlement(session.userId, episode.id);
+  if (!entitlement.entitled)
+    return NextResponse.json({ error: { message: "Locked" } }, { status: 403 });
   return NextResponse.redirect(
     new URL(
       `/media/${episode.hlsPath}`,

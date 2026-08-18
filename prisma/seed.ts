@@ -3,6 +3,16 @@ const prisma = new PrismaClient();
 
 async function main() {
   await prisma.notificationLog.deleteMany();
+  await prisma.subscriptionWebhookEvent.deleteMany();
+  await prisma.subscriptionInvoice.deleteMany();
+  await prisma.subscriptionEvent.deleteMany();
+  await prisma.subscriptionDiscountRedemption.deleteMany();
+  await prisma.subscription.deleteMany();
+  await prisma.subscriptionAutomation.deleteMany();
+  await prisma.discountCodePlan.deleteMany();
+  await prisma.discountCode.deleteMany();
+  await prisma.planPrice.deleteMany();
+  await prisma.plan.deleteMany();
   await prisma.pushCampaign.deleteMany();
   await prisma.couponRedemption.deleteMany();
   await prisma.coupon.deleteMany();
@@ -33,6 +43,15 @@ async function main() {
       coinBalance: 500,
       referralCode: "VIEWERMD",
     },
+  });
+  const trialUser = await prisma.user.create({
+    data: { email: "trial@microdrama.local", name: "Trial Viewer", referralCode: "TRIALMD" },
+  });
+  const canceledUser = await prisma.user.create({
+    data: { email: "canceled@microdrama.local", name: "Canceled Viewer", referralCode: "CANCELMD" },
+  });
+  const pastDueUser = await prisma.user.create({
+    data: { email: "pastdue@microdrama.local", name: "Past Due Viewer", referralCode: "PASTDUE" },
   });
   await prisma.coinTransaction.create({
     data: {
@@ -170,9 +189,154 @@ async function main() {
       coinsGranted: 0,
     },
   });
+  const plan = await prisma.plan.create({
+    data: {
+      code: "VIP_ANNUAL",
+      name: "VIP Annual",
+      trialDays: 3,
+      prices: {
+        create: [
+          { currency: "INR", amountMinor: 99_900, trialAmountMinor: 900, countryCodes: ["IN"] },
+          { currency: "USD", amountMinor: 12_99, trialAmountMinor: 99, countryCodes: ["US"] },
+          { currency: "EUR", amountMinor: 11_99, trialAmountMinor: 99, countryCodes: ["DE", "FR"] },
+          { currency: "AED", amountMinor: 47_900, trialAmountMinor: 900, countryCodes: ["AE"] },
+        ],
+      },
+    },
+    include: { prices: true },
+  });
+  const priceFor = (currency: string) =>
+    plan.prices.find((price) => price.currency === currency) ?? plan.prices[0];
+  const now = new Date();
+  const createSubscription = async (data: {
+    userId: string;
+    status: "TRIALING" | "ACTIVE" | "CANCELED" | "PAST_DUE";
+    currency: string;
+    country: string;
+    trialEndsAt: Date;
+    currentPeriodStart: Date;
+    currentPeriodEnd: Date;
+    cancelAtPeriodEnd?: boolean;
+  }) => {
+    const price = priceFor(data.currency);
+    const subscription = await prisma.subscription.create({
+      data: {
+        ...data,
+        planId: plan.id,
+        priceId: price.id,
+        provider: "DEV",
+        providerRef: `seed-sub-${data.userId}`,
+      },
+    });
+    await prisma.subscriptionEvent.create({
+      data: {
+        subscriptionId: subscription.id,
+        toStatus: data.status,
+        reason: "Seeded subscription",
+        actorType: "SYSTEM",
+      },
+    });
+    await prisma.subscriptionInvoice.create({
+      data: {
+        subscriptionId: subscription.id,
+        amountMinor: price.trialAmountMinor,
+        currency: data.currency,
+        kind: "TRIAL",
+        status: "PAID",
+        providerRef: `seed-trial-${data.userId}`,
+        periodKey: "seed-trial",
+        paidAt: now,
+      },
+    });
+    return { subscription, price };
+  };
+  const active = await createSubscription({
+    userId: user.id,
+    status: "ACTIVE",
+    currency: "INR",
+    country: "IN",
+    trialEndsAt: new Date(now.getTime() - 5 * 86_400_000),
+    currentPeriodStart: new Date(now.getTime() - 2 * 86_400_000),
+    currentPeriodEnd: new Date(now.getTime() + 363 * 86_400_000),
+  });
+  await prisma.subscriptionInvoice.create({
+    data: {
+      subscriptionId: active.subscription.id,
+      amountMinor: active.price.amountMinor,
+      currency: "INR",
+      kind: "RENEWAL",
+      status: "PAID",
+      providerRef: "seed-active-renewal",
+      periodKey: "seed-renewal",
+      paidAt: now,
+    },
+  });
+  await createSubscription({
+    userId: trialUser.id,
+    status: "TRIALING",
+    currency: "USD",
+    country: "US",
+    trialEndsAt: new Date(now.getTime() + 2 * 86_400_000),
+    currentPeriodStart: now,
+    currentPeriodEnd: new Date(now.getTime() + 2 * 86_400_000),
+  });
+  const canceled = await createSubscription({
+    userId: canceledUser.id,
+    status: "CANCELED",
+    currency: "AED",
+    country: "AE",
+    trialEndsAt: new Date(now.getTime() - 7 * 86_400_000),
+    currentPeriodStart: new Date(now.getTime() - 2 * 86_400_000),
+    currentPeriodEnd: new Date(now.getTime() + 8 * 86_400_000),
+    cancelAtPeriodEnd: true,
+  });
+  await prisma.subscriptionInvoice.create({
+    data: {
+      subscriptionId: canceled.subscription.id,
+      amountMinor: canceled.price.amountMinor,
+      currency: "AED",
+      kind: "RENEWAL",
+      status: "PAID",
+      providerRef: "seed-canceled-renewal",
+      periodKey: "seed-canceled-renewal",
+      paidAt: now,
+    },
+  });
+  const pastDue = await createSubscription({
+    userId: pastDueUser.id,
+    status: "PAST_DUE",
+    currency: "EUR",
+    country: "DE",
+    trialEndsAt: new Date(now.getTime() - 7 * 86_400_000),
+    currentPeriodStart: new Date(now.getTime() - 2 * 86_400_000),
+    currentPeriodEnd: new Date(now.getTime() + 2 * 86_400_000),
+  });
+  await prisma.subscriptionInvoice.create({
+    data: {
+      subscriptionId: pastDue.subscription.id,
+      amountMinor: pastDue.price.amountMinor,
+      currency: "EUR",
+      kind: "RENEWAL",
+      status: "FAILED",
+      providerRef: "seed-pastdue-renewal",
+      periodKey: "seed-pastdue-renewal",
+    },
+  });
+  await prisma.subscriptionAutomation.create({
+    data: { id: "default", enabled: true, reminderLeadHours: 24, gracePeriodHours: 72 },
+  });
+  await prisma.discountCode.create({
+    data: {
+      code: "FESTIVE20",
+      type: "PERCENT",
+      value: 20,
+      maxRedemptions: 100,
+      plans: { create: [{ planId: plan.id }] },
+    },
+  });
   await prisma.coupon.create({ data: { code: "WELCOME50", coins: 50, maxRedemptions: 100 } });
   console.log(
-    `Seeded admin ${admin.email}, viewer ${user.email}, ${bundles.length} bundles and 180 episodes.`,
+    `Seeded admin ${admin.email}, viewer ${user.email}, ${bundles.length} bundles, 180 episodes and VIP subscriptions.`,
   );
 }
 main()

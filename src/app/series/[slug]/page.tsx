@@ -1,15 +1,23 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { resolveEpisodeEntitlement } from "@/server/entitlements";
 
 export default async function SeriesPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  const session = await getSession();
   const series = await prisma.series.findUnique({
     where: { slug },
     include: { episodes: { orderBy: { number: "asc" } } },
   });
   if (!series) notFound();
+  const entitlements = session
+    ? await Promise.all(
+        series.episodes.map((episode) => resolveEpisodeEntitlement(session.userId, episode.id)),
+      )
+    : series.episodes.map(() => ({ entitled: false, reason: "LOCKED" as const }));
   return (
     <div className="pb-24">
       <Link href="/" className="fixed left-4 top-4 z-10 rounded-full bg-black/50 px-4 py-2">
@@ -43,7 +51,7 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
         </p>
         <h2 className="mt-8 mb-3 text-xl font-bold">Episodes</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-          {series.episodes.map((ep) => (
+          {series.episodes.map((ep, index) => (
             <Link
               key={ep.id}
               href={`/watch/${ep.id}`}
@@ -63,7 +71,9 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
                 <span>
                   {ep.isFree || ep.number <= series.freeEpisodeCount
                     ? "FREE"
-                    : `🪙 ${ep.coinPrice}`}
+                    : entitlements[index]?.reason === "SUBSCRIPTION"
+                      ? "VIP"
+                      : `🪙 ${ep.coinPrice}`}
                 </span>
               </div>
               <h3 className="mt-5 font-semibold">{ep.title}</h3>

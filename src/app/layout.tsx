@@ -1,12 +1,16 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getSession } from "@/server/auth";
+import { hasActiveSubscription } from "@/server/entitlements";
 
 export const metadata: Metadata = {
   title: "MicroDrama",
   description: "Vertical stories. One more episode.",
 };
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const session = await getSession();
+  const subscription = session ? await hasActiveSubscription(session.userId) : null;
   return (
     <html lang="en">
       <body>
@@ -15,6 +19,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <Link href="/">Discover</Link>
           <Link href="/search">Search</Link>
           <Link href="/wallet">Wallet</Link>
+          <Link href="/account/subscription">Subscription{subscription ? " · VIP" : ""}</Link>
           <Link href="/admin">Admin</Link>
         </nav>
       </body>

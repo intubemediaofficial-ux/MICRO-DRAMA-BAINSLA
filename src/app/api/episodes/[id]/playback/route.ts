@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { createStreamToken, watermark } from "@/server/tokens";
+import { resolveEpisodeEntitlement } from "@/server/entitlements";
+import { resolveCurrency } from "@/server/currency";
+import { getSubscriptionOffer } from "@/server/subscriptions";
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
@@ -11,12 +14,24 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     include: { series: true, subtitles: { select: { lang: true } } },
   });
   if (!episode) return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
-  const free = episode.isFree || episode.number <= episode.series.freeEpisodeCount;
-  const unlock = await prisma.episodeUnlock.findUnique({
-    where: { userId_episodeId: { userId: session.userId, episodeId: id } },
-  });
-  if (!free && !unlock)
-    return NextResponse.json({ locked: true, coinPrice: episode.coinPrice }, { status: 403 });
+  const entitlement = await resolveEpisodeEntitlement(session.userId, id);
+  if (!entitlement.entitled) {
+    const offer = await getSubscriptionOffer("VIP_ANNUAL", resolveCurrency(_request.headers));
+    return NextResponse.json(
+      {
+        locked: true,
+        coinPrice: episode.coinPrice,
+        subscriptionOffer: offer
+          ? {
+              currency: offer.price.currency,
+              trialAmountMinor: offer.price.trialAmountMinor,
+              trialDays: offer.plan.trialDays,
+            }
+          : null,
+      },
+      { status: 403 },
+    );
+  }
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: session.userId },
     select: { phone: true },
@@ -31,5 +46,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       url: `/api/episodes/${id}/subtitles/${subtitle.lang}`,
     })),
     expiresIn: 300,
+    entitlement: entitlement.reason,
   });
 }
