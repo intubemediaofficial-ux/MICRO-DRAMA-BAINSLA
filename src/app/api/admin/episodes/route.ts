@@ -5,14 +5,17 @@ import { prisma } from "@/server/db";
 
 const input = z.object({
   seriesId: z.string(),
-  episodes: z.array(
-    z.object({
-      number: z.number().int().positive(),
-      title: z.string().min(1),
-      coinPrice: z.number().int().positive(),
-      isFree: z.boolean(),
-    }),
-  ).min(1).max(500),
+  episodes: z
+    .array(
+      z.object({
+        number: z.number().int().positive(),
+        title: z.string().min(1),
+        coinPrice: z.number().int().positive(),
+        isFree: z.boolean(),
+      }),
+    )
+    .min(1)
+    .max(500),
 });
 
 export async function POST(request: Request) {
@@ -34,6 +37,7 @@ export async function POST(request: Request) {
             durationSec: 90,
             hlsPath: "sample.mp4",
             thumbnailUrl,
+            thumbnailSource: "LEGACY",
           },
         }),
       ),
@@ -41,6 +45,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ episodes }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Episode creation failed";
-    return NextResponse.json({ error: { message } }, { status: message === "FORBIDDEN" ? 403 : 400 });
+    return NextResponse.json(
+      { error: { message } },
+      { status: message === "FORBIDDEN" ? 403 : 400 },
+    );
   }
 }

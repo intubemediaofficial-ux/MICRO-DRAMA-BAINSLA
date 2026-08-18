@@ -142,13 +142,11 @@ async function main() {
         data: {
           seriesId: series.id,
           number,
-          title:
-            number === item.episodeCount
-              ? "The Finale"
-              : `${item.title} · Chapter ${number}`,
+          title: number === item.episodeCount ? "The Finale" : `${item.title} · Chapter ${number}`,
           durationSec: 60 + ((number * 17 + index * 11) % 121),
           hlsPath: "sample.mp4",
           thumbnailUrl: artwork.thumbnailUrl,
+          thumbnailSource: "CATALOGUE",
           isFree: number <= item.freeEpisodeCount,
           coinPrice: item.defaultCoinPrice,
           publishedAt: new Date(Date.now() - (item.episodeCount - number) * 86_400_000),

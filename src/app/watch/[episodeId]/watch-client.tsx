@@ -3,6 +3,7 @@
 import Hls from "hls.js";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { selectPlaybackMode } from "@/lib/playback";
 
 type Subtitle = { lang: string; url: string };
 type SubscriptionOffer = {
@@ -47,6 +48,12 @@ export default function WatchClient({
   const [showLongPressMenu, setShowLongPressMenu] = useState(false);
   const [pipAvailable, setPipAvailable] = useState(false);
   const [nextCountdown, setNextCountdown] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [playbackError, setPlaybackError] = useState("");
+  const [showTapToPlay, setShowTapToPlay] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [position, setPosition] = useState(0);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     setPipAvailable(Boolean(document.pictureInPictureEnabled));
@@ -66,43 +73,135 @@ export default function WatchClient({
   }, [nextCountdown, nextId]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     let hls: Hls | null = null;
-    void fetch(`/api/episodes/${episodeId}/playback`).then(async (response) => {
-      if (response.ok) {
-        const data = (await response.json()) as {
-          playbackUrl: string;
-          isHls: boolean;
-          watermark: string;
-          subtitles?: Subtitle[];
-          entitlement?: string;
-        };
-        if (video.current) {
-          if (data.isHls && Hls.isSupported()) {
-            hls = new Hls();
-            hls.loadSource(data.playbackUrl);
-            hls.attachMedia(video.current);
-          } else {
-            video.current.src = data.playbackUrl;
+    let networkRetries = 0;
+    let mediaRetries = 0;
+    const element = video.current;
+    setLoading(true);
+    setPlaybackError("");
+    setShowTapToPlay(false);
+    setLocked(false);
+    setMessage("");
+    setPosition(0);
+    setDuration(0);
+
+    async function attemptPlay() {
+      if (!active || !video.current) return;
+      try {
+        await video.current.play();
+        if (active) setShowTapToPlay(false);
+      } catch {
+        if (!active || !video.current) return;
+        video.current.muted = true;
+        setMuted(true);
+        try {
+          await video.current.play();
+          if (active) setShowTapToPlay(false);
+        } catch {
+          if (active) {
+            setShowTapToPlay(true);
+            setPlaybackError("Tap play to start this episode.");
           }
         }
-        setWatermark(data.watermark);
-        setSubscriber(data.entitlement === "SUBSCRIPTION");
-      } else if (response.status === 403) {
-        const data = (await response.json()) as {
-          coinPrice: number;
-          subscriptionOffer?: SubscriptionOffer | null;
-          trialAlreadyUsed?: boolean;
-        };
-        setLocked(true);
-        setCoinPrice(data.coinPrice);
-        setSubscriptionOffer(data.subscriptionOffer ?? null);
-        setTrialAlreadyUsed(Boolean(data.trialAlreadyUsed));
-      } else {
-        setMessage("Sign in to watch this episode.");
       }
-    });
-    return () => hls?.destroy();
-  }, [episodeId]);
+    }
+
+    void fetch(`/api/episodes/${episodeId}/playback`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!active) return;
+        if (response.ok) {
+          const data = (await response.json()) as {
+            playbackUrl: string;
+            isHls: boolean;
+            watermark: string;
+            entitlement?: string;
+          };
+          setWatermark(data.watermark);
+          setSubscriber(data.entitlement === "SUBSCRIPTION");
+          if (!element) return;
+          const mode = selectPlaybackMode(
+            data.isHls,
+            Hls.isSupported(),
+            Boolean(element.canPlayType("application/vnd.apple.mpegurl")),
+          );
+          if (mode === "hls.js") {
+            hls = new Hls({ enableWorker: true });
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+              if (!active) return;
+              setLoading(false);
+              void attemptPlay();
+            });
+            hls.on(Hls.Events.ERROR, (_event, errorData) => {
+              if (!active || !errorData.fatal) return;
+              if (errorData.type === Hls.ErrorTypes.NETWORK_ERROR && networkRetries < 2) {
+                networkRetries += 1;
+                setLoading(true);
+                hls?.startLoad();
+                return;
+              }
+              if (errorData.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRetries < 2) {
+                mediaRetries += 1;
+                hls?.recoverMediaError();
+                return;
+              }
+              setLoading(false);
+              setPlaybackError(
+                `Playback failed${errorData.details ? `: ${errorData.details}` : ""}`,
+              );
+            });
+            hls.loadSource(data.playbackUrl);
+            hls.attachMedia(element);
+          } else if (mode === "mp4" || mode === "native-hls") {
+            element.src = data.playbackUrl;
+            element.addEventListener(
+              "loadedmetadata",
+              () => {
+                if (!active) return;
+                setLoading(false);
+                void attemptPlay();
+              },
+              { once: true },
+            );
+          } else {
+            setLoading(false);
+            setPlaybackError("This browser cannot play HLS video.");
+          }
+        } else if (response.status === 403) {
+          const data = (await response.json()) as {
+            coinPrice: number;
+            subscriptionOffer?: SubscriptionOffer | null;
+            trialAlreadyUsed?: boolean;
+          };
+          setLocked(true);
+          setCoinPrice(data.coinPrice);
+          setSubscriptionOffer(data.subscriptionOffer ?? null);
+          setTrialAlreadyUsed(Boolean(data.trialAlreadyUsed));
+          setLoading(false);
+        } else {
+          setLoading(false);
+          setPlaybackError("Sign in to watch this episode.");
+        }
+      })
+      .catch((error: unknown) => {
+        if (active && (error as { name?: string }).name !== "AbortError") {
+          setLoading(false);
+          setPlaybackError("Could not load this episode. Try again.");
+        }
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+      hls?.destroy();
+      if (element) {
+        element.pause();
+        element.removeAttribute("src");
+        element.load();
+      }
+    };
+  }, [episodeId, retryNonce]);
 
   useEffect(() => {
     const textTrack = track.current?.track;
@@ -247,7 +346,21 @@ export default function WatchClient({
         onPointerUp={stopLongPress}
         onPointerLeave={stopLongPress}
         onEnded={() => autoNext && nextId && setNextCountdown(3)}
+        onError={() => {
+          setLoading(false);
+          setPlaybackError("This video could not be played.");
+        }}
+        onStalled={() => setLoading(true)}
+        onWaiting={() => setLoading(true)}
+        onCanPlay={() => setLoading(false)}
+        onLoadedMetadata={(event) => {
+          setDuration(
+            Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0,
+          );
+          setLoading(false);
+        }}
         onTimeUpdate={(event) => {
+          setPosition(event.currentTarget.currentTime);
           const positionSec = Math.floor(event.currentTarget.currentTime);
           if (positionSec >= 0 && positionSec % 10 === 0 && positionSec !== lastProgress.current) {
             lastProgress.current = positionSec;
@@ -270,6 +383,41 @@ export default function WatchClient({
           />
         ))}
       </video>
+      {loading && !locked && (
+        <div className="absolute inset-0 grid place-items-center bg-black/20 text-sm text-white">
+          Loading episode…
+        </div>
+      )}
+      {showTapToPlay && !locked && (
+        <button
+          type="button"
+          onClick={() => {
+            if (!video.current) return;
+            video.current.muted = muted;
+            void video.current
+              .play()
+              .then(() => setShowTapToPlay(false))
+              .catch(() => {
+                setPlaybackError("Tap play to start this episode.");
+              });
+          }}
+          className="absolute inset-0 z-10 grid place-items-center bg-black/40 text-lg font-bold"
+        >
+          Tap to play
+        </button>
+      )}
+      {playbackError && !locked && (
+        <div className="absolute left-4 right-4 top-16 z-20 rounded-2xl border border-rose-300/30 bg-zinc-950/95 p-4 text-sm text-rose-100">
+          <p>{playbackError}</p>
+          <button
+            type="button"
+            onClick={() => setRetryNonce((value) => value + 1)}
+            className="mt-3 rounded-full bg-rose-500 px-4 py-2 font-semibold text-white"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       <div className="pointer-events-none absolute right-3 top-1/2 -rotate-12 text-xs text-white/50">
         {watermark}
       </div>
@@ -308,11 +456,29 @@ export default function WatchClient({
         <div>
           <p className="text-xs text-zinc-300">NOW PLAYING</p>
           <h1 className="text-xl font-bold">{title}</h1>
-          <p className="text-xs text-zinc-400">Hold video: {speed}×</p>
+          <p className="text-xs text-zinc-400">
+            {Math.floor(position / 60)}:{String(Math.floor(position % 60)).padStart(2, "0")} /{" "}
+            {duration
+              ? `${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, "0")}`
+              : "--:--"}{" "}
+            · Hold video: {speed}×
+          </p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <button
-            onClick={() => setMuted((value) => !value)}
+            aria-label={muted ? "Unmute video" : "Mute video"}
+            onClick={() => {
+              const nextMuted = !muted;
+              setMuted(nextMuted);
+              if (video.current) {
+                video.current.muted = nextMuted;
+                if (!nextMuted)
+                  void video.current.play().catch(() => {
+                    setMuted(true);
+                    if (video.current) video.current.muted = true;
+                  });
+              }
+            }}
             className="rounded-full bg-black/60 px-3 py-2"
           >
             {muted ? "🔇" : "🔊"}

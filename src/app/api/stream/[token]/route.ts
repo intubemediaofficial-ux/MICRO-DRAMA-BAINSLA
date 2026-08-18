@@ -1,9 +1,14 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { NextResponse } from "next/server";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { resolveMediaPath, serveMediaFile } from "@/server/media";
+import { rewriteHlsManifest } from "@/server/hls";
 import { verifyStreamToken } from "@/server/tokens";
 import { resolveEpisodeEntitlement } from "@/server/entitlements";
-export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
+
+export async function GET(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const session = await getSession();
   const { token } = await params;
   const verified = verifyStreamToken(token);
@@ -20,10 +25,29 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   const entitlement = await resolveEpisodeEntitlement(session.userId, episode.id);
   if (!entitlement.entitled)
     return NextResponse.json({ error: { message: "Locked" } }, { status: 403 });
-  return NextResponse.redirect(
-    new URL(
-      `/media/${episode.hlsPath}`,
-      process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
-    ),
-  );
+
+  const requestedPath = new URL(request.url).searchParams.get("path");
+  if (requestedPath) {
+    const root = path.posix.dirname(episode.hlsPath.replace(/^\/media\//, ""));
+    const requested = path.posix.normalize(requestedPath.replace(/^\/media\//, ""));
+    if (requested !== root && !requested.startsWith(`${root}/`)) {
+      return NextResponse.json({ error: { message: "Invalid media path" } }, { status: 400 });
+    }
+    return serveMediaFile(request, requested);
+  }
+  if (!episode.hlsPath.endsWith(".m3u8")) return serveMediaFile(request, episode.hlsPath);
+
+  try {
+    const manifestPath = resolveMediaPath(episode.hlsPath);
+    const manifest = await fs.readFile(manifestPath, "utf8");
+    const rewritten = rewriteHlsManifest(manifest, token, episode.hlsPath);
+    return new NextResponse(rewritten, {
+      headers: {
+        "content-type": "application/vnd.apple.mpegurl",
+        "cache-control": "private, max-age=30",
+      },
+    });
+  } catch {
+    return NextResponse.json({ error: { message: "Media not found" } }, { status: 404 });
+  }
 }
