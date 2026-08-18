@@ -1,5 +1,6 @@
-import { promises as fs } from "node:fs";
+import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { NextResponse } from "next/server";
 import { env } from "./config";
 
@@ -82,14 +83,13 @@ export async function serveMediaFile(request: Request, key: string) {
         headers: { "content-range": `bytes */${stat.size}` },
       });
     }
-    const data = await fs.readFile(file);
     const start = range?.start ?? 0;
     const end = range?.end ?? stat.size - 1;
-    const body = data.subarray(start, end + 1);
+    const body = Readable.toWeb(createReadStream(file, { start, end })) as ReadableStream;
     const headers = new Headers({
       "content-type": mediaContentType(key),
       "accept-ranges": "bytes",
-      "content-length": String(body.byteLength),
+      "content-length": String(end - start + 1),
       "cache-control": "private, max-age=60",
     });
     if (range) {

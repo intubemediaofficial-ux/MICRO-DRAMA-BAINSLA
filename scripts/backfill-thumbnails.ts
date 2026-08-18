@@ -1,8 +1,13 @@
 import { PrismaClient } from "@prisma/client";
+import catalogueManifest from "../public/demo/manifest.json";
+import { isPlaceholderVideo } from "@/server/demo-media";
 import { isPlaceholderThumbnail } from "@/server/media";
 import { FfmpegVideoProcessor } from "@/server/video-processor";
 
 const prisma = new PrismaClient();
+const catalogueThumbnails = new Map(
+  catalogueManifest.map((item) => [item.slug, item.thumbnailUrl]),
+);
 
 async function main() {
   const episodes = await prisma.episode.findMany({
@@ -17,9 +22,30 @@ async function main() {
       skipped += 1;
       continue;
     }
-    const extension = episode.hlsPath.endsWith(".m3u8")
-      ? "mp4"
-      : episode.hlsPath.split(".").pop() || "mp4";
+    if (isPlaceholderVideo(episode.hlsPath)) {
+      const series = await prisma.series.findUnique({
+        where: { id: episode.seriesId },
+        select: { slug: true },
+      });
+      const thumbnailUrl = series ? catalogueThumbnails.get(series.slug) : undefined;
+      if (!thumbnailUrl) {
+        console.log(`${episode.id}: skipped (placeholder video and no catalogue thumbnail)`);
+        skipped += 1;
+        continue;
+      }
+      await prisma.episode.update({
+        where: { id: episode.id },
+        data: {
+          thumbnailUrl,
+          thumbnailSource: "CATALOGUE",
+          processingStatus: "READY",
+          processingError: null,
+        },
+      });
+      updated += 1;
+      console.log(`${episode.id}: used catalogue thumbnail for placeholder video`);
+      continue;
+    }
     const thumbnailKey = `episodes/${episode.id}-backfill.jpg`;
     const result = await processor.process(episode.hlsPath, thumbnailKey);
     if (result.status === "FAILED") {
@@ -41,7 +67,7 @@ async function main() {
       },
     });
     updated += 1;
-    console.log(`${episode.id}: generated thumbnail (${extension}, ${result.durationSec}s)`);
+    console.log(`${episode.id}: generated thumbnail (${result.durationSec}s)`);
   }
   console.log(`backfill complete: updated ${updated}, skipped ${skipped}`);
 }

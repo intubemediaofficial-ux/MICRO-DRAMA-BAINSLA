@@ -43,8 +43,8 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
           sizes="100vw"
           className="z-0 object-cover opacity-50"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
-        <div className="relative">
+        <div className="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
+        <div className="relative z-30">
           <p className="text-xs uppercase tracking-widest text-rose-200">{series.status}</p>
           <h1 className="mt-2 text-4xl font-black">{series.title}</h1>
           <p className="mt-2 max-w-xl text-sm text-zinc-200">{series.synopsis}</p>

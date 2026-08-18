@@ -35,11 +35,6 @@ export default function TeaserPlayer({
         });
       }
     }
-    try {
-      sessionStorage.setItem("microdrama-teaser-unmuted", String(!nextMuted));
-    } catch {
-      // Storage may be unavailable in private browsing.
-    }
   }
 
   if (failed || !src || src === "/media/sample.mp4") return null;

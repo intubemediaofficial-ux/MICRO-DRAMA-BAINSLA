@@ -87,6 +87,19 @@ enum DiscountType {
   FIXED_MINOR
 }
 
+enum EpisodeThumbnailSource {
+  LEGACY
+  CATALOGUE
+  AUTO
+  CUSTOM
+}
+
+enum EpisodeProcessingStatus {
+  READY
+  PROCESSING
+  FAILED
+}
+
 model User {
   id                              String                           @id @default(cuid())
   phone                           String?                          @unique
@@ -177,8 +190,8 @@ model Episode {
   durationSec  Int
   hlsPath      String
   thumbnailUrl String
-  thumbnailSource String @default("LEGACY")
-  processingStatus String @default("READY")
+  thumbnailSource EpisodeThumbnailSource @default(LEGACY)
+  processingStatus EpisodeProcessingStatus @default(READY)
   processingError String?
   isFree       Boolean         @default(false)
   coinPrice    Int

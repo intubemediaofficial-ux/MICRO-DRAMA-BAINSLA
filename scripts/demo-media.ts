@@ -2,7 +2,11 @@ import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { PrismaClient } from "@prisma/client";
+import {
+  EpisodeProcessingStatus,
+  EpisodeThumbnailSource,
+  PrismaClient,
+} from "@prisma/client";
 import { demoMedia, isPlaceholderVideo } from "@/server/demo-media";
 import { isPlaceholderThumbnail, resolveMediaPath } from "@/server/media";
 import { probeVideoDuration } from "@/server/video-processor";
@@ -145,7 +149,7 @@ async function main() {
     if (!media) continue;
     const series = await prisma.series.findUnique({
       where: { slug: item.slug },
-      include: { episodes: { orderBy: { number: "asc" }, take: 1 } },
+      include: { episodes: { orderBy: { number: "asc" } } },
     });
     if (!series) {
       console.log(`${item.slug}: skipped (series not found)`);
@@ -157,35 +161,40 @@ async function main() {
         data: { teaserUrl: `/media/${media.videoKey}` },
       });
     }
-    const episode = series.episodes[0];
-    if (!episode) {
+    if (series.episodes.length === 0) {
       console.log(`${item.slug}: skipped (no episode)`);
       continue;
     }
-    const data: {
-      hlsPath?: string;
-      durationSec?: number;
-      thumbnailUrl?: string;
-      thumbnailSource?: string;
-      processingStatus: string;
-      processingError: null;
-    } = { processingStatus: "READY", processingError: null };
-    if (isPlaceholderVideo(episode.hlsPath)) {
-      data.hlsPath = media.hlsKey ?? media.videoKey;
-      data.durationSec = media.durationSec;
+    let wiredEpisodes = 0;
+    let updatedThumbnails = 0;
+    for (const episode of series.episodes) {
+      const data: {
+        hlsPath?: string;
+        durationSec?: number;
+        thumbnailUrl?: string;
+        thumbnailSource?: EpisodeThumbnailSource;
+        processingStatus?: EpisodeProcessingStatus;
+        processingError?: null;
+      } = {};
+      if (isPlaceholderVideo(episode.hlsPath)) {
+        data.hlsPath = media.hlsKey ?? media.videoKey;
+        data.durationSec = media.durationSec;
+        data.processingStatus = EpisodeProcessingStatus.READY;
+        data.processingError = null;
+        wiredEpisodes += 1;
+      }
+      if (isPlaceholderThumbnail(episode.thumbnailUrl) && episode.thumbnailSource !== "CUSTOM") {
+        data.thumbnailUrl = `/media/${media.thumbnailKey}`;
+        data.thumbnailSource = EpisodeThumbnailSource.CATALOGUE;
+        updatedThumbnails += 1;
+      }
+      if (Object.keys(data).length > 0) {
+        await prisma.episode.update({ where: { id: episode.id }, data });
+      }
     }
-    if (isPlaceholderThumbnail(episode.thumbnailUrl) && episode.thumbnailSource !== "CUSTOM") {
-      data.thumbnailUrl = `/media/${media.thumbnailKey}`;
-      data.thumbnailSource = "CATALOGUE";
-    }
-    if (Object.keys(data).length > 2) {
-      await prisma.episode.update({ where: { id: episode.id }, data });
-      console.log(
-        `${item.slug}: wired episode ${episode.number} to ${data.hlsPath ?? "existing media"}`,
-      );
-    } else {
-      console.log(`${item.slug}: left episode ${episode.number} alone`);
-    }
+    console.log(
+      `${item.slug}: wired ${wiredEpisodes} placeholder episodes, updated ${updatedThumbnails} thumbnails`,
+    );
   }
 }
 

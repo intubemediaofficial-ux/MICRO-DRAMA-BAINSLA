@@ -10,6 +10,7 @@ import { isPlaceholderThumbnail } from "../src/server/media";
 import {
   parseDuration,
   selectThumbnailTimestamp,
+  thumbnailPersistence,
   shouldReplaceThumbnail,
 } from "../src/server/video-processor";
 import { selectPlaybackMode } from "../src/lib/playback";
@@ -32,6 +33,14 @@ describe("media processing helpers", () => {
     expect(shouldReplaceThumbnail("CUSTOM")).toBe(false);
     expect(shouldReplaceThumbnail("AUTO")).toBe(true);
     expect(shouldReplaceThumbnail(undefined)).toBe(true);
+  });
+
+  it("persists generated thumbnails only when the current one is not custom", () => {
+    expect(thumbnailPersistence("CUSTOM", "/media/generated.jpg")).toEqual({});
+    expect(thumbnailPersistence("AUTO", "/media/generated.jpg")).toEqual({
+      thumbnailUrl: "/media/generated.jpg",
+      thumbnailSource: "AUTO",
+    });
   });
 
   it("recognizes only placeholders for non-destructive replacement", () => {

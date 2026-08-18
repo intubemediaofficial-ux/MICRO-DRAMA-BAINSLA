@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { adminSession } from "@/server/admin";
 import { prisma } from "@/server/db";
 import { storage } from "@/server/storage";
-import { FfmpegVideoProcessor, shouldReplaceThumbnail } from "@/server/video-processor";
+import { FfmpegVideoProcessor, thumbnailPersistence } from "@/server/video-processor";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -37,9 +37,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         durationSec: processed.durationSec,
         processingStatus: "READY",
         processingError: null,
-        ...(shouldReplaceThumbnail(existing.thumbnailSource)
-          ? {}
-          : { thumbnailUrl: processed.thumbnailUrl, thumbnailSource: "AUTO" }),
+        ...thumbnailPersistence(existing.thumbnailSource, processed.thumbnailUrl),
       },
     });
     return NextResponse.json({ episode, processing: processed });

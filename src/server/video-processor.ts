@@ -37,6 +37,15 @@ export function shouldReplaceThumbnail(thumbnailSource: string | null | undefine
   return thumbnailSource !== "CUSTOM";
 }
 
+export function thumbnailPersistence(
+  thumbnailSource: string | null | undefined,
+  thumbnailUrl: string,
+) {
+  return shouldReplaceThumbnail(thumbnailSource)
+    ? { thumbnailUrl, thumbnailSource: "AUTO" as const }
+    : {};
+}
+
 async function run(command: string, args: string[], timeout = DEFAULT_TIMEOUT_MS) {
   try {
     return await execFileAsync(command, args, {
@@ -103,5 +112,3 @@ export class FfmpegVideoProcessor implements VideoProcessor {
     }
   }
 }
-
-export class PassThroughVideoProcessor extends FfmpegVideoProcessor {}
