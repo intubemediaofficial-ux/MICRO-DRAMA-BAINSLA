@@ -1,19 +1,22 @@
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
   USER
   ADMIN
 }
+
 enum SeriesStatus {
   ONGOING
   COMPLETED
 }
+
 enum LedgerType {
   PURCHASE
   EPISODE_UNLOCK
@@ -22,11 +25,13 @@ enum LedgerType {
   REFERRAL_BONUS
   ADMIN_ADJUST
 }
+
 enum UnlockSource {
   COIN
   AD
   FREE
 }
+
 enum PurchaseProvider {
   APPLE_IAP
   GOOGLE_PLAY
@@ -34,221 +39,447 @@ enum PurchaseProvider {
   CARD
   PAYPAL
 }
+
 enum PurchaseStatus {
   PENDING
   COMPLETED
   FAILED
 }
 
+enum SubscriptionInterval {
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum SubscriptionProvider {
+  DEV
+  STRIPE
+  APPLE_IAP
+  GOOGLE_PLAY
+}
+
+enum SubscriptionEventActor {
+  SYSTEM
+  ADMIN
+  USER
+}
+
+enum SubscriptionInvoiceKind {
+  TRIAL
+  RENEWAL
+}
+
+enum SubscriptionInvoiceStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED_MINOR
+}
+
 model User {
-  id String @id @default(cuid())
-  phone String? @unique
-  email String? @unique
-  name String?
-  role Role @default(USER)
-  coinBalance Int @default(0)
-  referralCode String @unique
-  referredById String?
-  referredBy User? @relation("Referrals", fields: [referredById], references: [id])
-  referrals User[] @relation("Referrals")
-  transactions CoinTransaction[]
-  unlocks EpisodeUnlock[]
-  purchases Purchase[]
-  checkins DailyCheckin[]
-  progress WatchProgress[]
-  likes EpisodeLike[]
-  couponRedemptions CouponRedemption[]
-  notifications NotificationLog[]
-  createdAt DateTime @default(now())
+  id                              String                           @id @default(cuid())
+  phone                           String?                          @unique
+  email                           String?                          @unique
+  name                            String?
+  role                            Role                             @default(USER)
+  coinBalance                     Int                              @default(0)
+  referralCode                    String                           @unique
+  referredById                    String?
+  referredBy                      User?                            @relation("Referrals", fields: [referredById], references: [id])
+  referrals                       User[]                           @relation("Referrals")
+  transactions                    CoinTransaction[]
+  unlocks                         EpisodeUnlock[]
+  purchases                       Purchase[]
+  checkins                        DailyCheckin[]
+  progress                        WatchProgress[]
+  likes                           EpisodeLike[]
+  couponRedemptions               CouponRedemption[]
+  notifications                   NotificationLog[]
+  subscriptions                   Subscription[]
+  subscriptionEvents              SubscriptionEvent[]
+  subscriptionDiscountRedemptions SubscriptionDiscountRedemption[]
+  createdAt                       DateTime                         @default(now())
+
   @@index([referredById])
 }
+
 model Series {
-  id String @id @default(cuid())
-  slug String @unique
-  title String
-  synopsis String
-  posterUrl String
-  teaserUrl String
-  status SeriesStatus @default(ONGOING)
-  genres String[]
-  tropeTags String[]
-  castNames String[]
-  freeEpisodeCount Int @default(5)
-  defaultCoinPrice Int @default(10)
-  isPublished Boolean @default(false)
-  createdAt DateTime @default(now())
-  episodes Episode[]
-  banners Banner[]
-  campaigns PushCampaign[]
+  id               String         @id @default(cuid())
+  slug             String         @unique
+  title            String
+  synopsis         String
+  posterUrl        String
+  teaserUrl        String
+  status           SeriesStatus   @default(ONGOING)
+  genres           String[]
+  tropeTags        String[]
+  castNames        String[]
+  freeEpisodeCount Int            @default(5)
+  defaultCoinPrice Int            @default(10)
+  isPublished      Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  episodes         Episode[]
+  banners          Banner[]
+  campaigns        PushCampaign[]
+
   @@index([isPublished, createdAt])
   @@index([status])
 }
+
 model Episode {
-  id String @id @default(cuid())
-  seriesId String
-  series Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
-  number Int
-  title String
-  durationSec Int
-  hlsPath String
+  id           String          @id @default(cuid())
+  seriesId     String
+  series       Series          @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  number       Int
+  title        String
+  durationSec  Int
+  hlsPath      String
   thumbnailUrl String
-  isFree Boolean @default(false)
-  coinPrice Int
-  publishedAt DateTime?
-  subtitles Subtitle[]
-  unlocks EpisodeUnlock[]
-  progress WatchProgress[]
-  likes EpisodeLike[]
+  isFree       Boolean         @default(false)
+  coinPrice    Int
+  publishedAt  DateTime?
+  subtitles    Subtitle[]
+  unlocks      EpisodeUnlock[]
+  progress     WatchProgress[]
+  likes        EpisodeLike[]
+
   @@unique([seriesId, number])
   @@index([seriesId])
   @@index([publishedAt])
 }
+
 model Subtitle {
-  id String @id @default(cuid())
+  id        String  @id @default(cuid())
   episodeId String
-  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
-  lang String
-  srtPath String
+  episode   Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  lang      String
+  srtPath   String
+
   @@unique([episodeId, lang])
   @@index([episodeId])
 }
+
 model CoinTransaction {
-  id String @id @default(cuid())
-  userId String
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  delta Int
-  type LedgerType
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delta        Int
+  type         LedgerType
   balanceAfter Int
-  refType String?
-  refId String?
-  createdAt DateTime @default(now())
+  refType      String?
+  refId        String?
+  createdAt    DateTime   @default(now())
+
   @@index([userId, createdAt])
   @@index([type, createdAt])
 }
+
 model EpisodeUnlock {
-  id String @id @default(cuid())
-  userId String
+  id        String       @id @default(cuid())
+  userId    String
   episodeId String
-  source UnlockSource
-  createdAt DateTime @default(now())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  source    UnlockSource
+  createdAt DateTime     @default(now())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episode   Episode      @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
   @@unique([userId, episodeId])
   @@index([episodeId])
 }
+
 model CoinBundle {
-  id String @id @default(cuid())
-  coins Int
-  bonusCoins Int @default(0)
+  id         String     @id @default(cuid())
+  coins      Int
+  bonusCoins Int        @default(0)
   priceMinor Int
-  currency String @default("INR")
-  isActive Boolean @default(true)
-  sortOrder Int @default(0)
-  purchases Purchase[]
+  currency   String     @default("INR")
+  isActive   Boolean    @default(true)
+  sortOrder  Int        @default(0)
+  purchases  Purchase[]
 }
+
 model Purchase {
-  id String @id @default(cuid())
-  userId String
-  bundleId String
-  provider PurchaseProvider
-  providerRef String @unique
-  status PurchaseStatus @default(PENDING)
+  id           String           @id @default(cuid())
+  userId       String
+  bundleId     String
+  provider     PurchaseProvider
+  providerRef  String           @unique
+  status       PurchaseStatus   @default(PENDING)
   coinsGranted Int
-  createdAt DateTime @default(now())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bundle CoinBundle @relation(fields: [bundleId], references: [id])
+  createdAt    DateTime         @default(now())
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bundle       CoinBundle       @relation(fields: [bundleId], references: [id])
+
   @@index([userId, createdAt])
   @@index([provider, status])
 }
+
 model DailyCheckin {
-  id String @id @default(cuid())
+  id     String   @id @default(cuid())
   userId String
-  day DateTime
+  day    DateTime
   streak Int
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([userId, day])
   @@index([userId, day])
 }
+
 model WatchProgress {
-  id String @id @default(cuid())
-  userId String
-  episodeId String
-  positionSec Int @default(0)
-  completed Boolean @default(false)
-  updatedAt DateTime @updatedAt
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  userId      String
+  episodeId   String
+  positionSec Int      @default(0)
+  completed   Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episode     Episode  @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
   @@unique([userId, episodeId])
   @@index([episodeId, updatedAt])
 }
+
 model EpisodeLike {
-  id String @id @default(cuid())
-  userId String
+  id        String   @id @default(cuid())
+  userId    String
   episodeId String
   createdAt DateTime @default(now())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episode   Episode  @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
   @@unique([userId, episodeId])
 }
+
 model Banner {
-  id String @id @default(cuid())
-  title String
-  imageUrl String
+  id             String    @id @default(cuid())
+  title          String
+  imageUrl       String
   targetSeriesId String?
-  sortOrder Int @default(0)
-  isActive Boolean @default(true)
-  startsAt DateTime?
-  endsAt DateTime?
-  targetSeries Series? @relation(fields: [targetSeriesId], references: [id], onDelete: SetNull)
+  sortOrder      Int       @default(0)
+  isActive       Boolean   @default(true)
+  startsAt       DateTime?
+  endsAt         DateTime?
+  targetSeries   Series?   @relation(fields: [targetSeriesId], references: [id], onDelete: SetNull)
+
   @@index([isActive, sortOrder])
 }
+
 model Coupon {
-  id String @id @default(cuid())
-  code String @unique
-  coins Int
+  id             String             @id @default(cuid())
+  code           String             @unique
+  coins          Int
   maxRedemptions Int
-  redeemedCount Int @default(0)
-  expiresAt DateTime?
-  isActive Boolean @default(true)
-  redemptions CouponRedemption[]
+  redeemedCount  Int                @default(0)
+  expiresAt      DateTime?
+  isActive       Boolean            @default(true)
+  redemptions    CouponRedemption[]
 }
+
 model CouponRedemption {
-  id String @id @default(cuid())
-  userId String
-  couponId String
+  id         String   @id @default(cuid())
+  userId     String
+  couponId   String
   redeemedAt DateTime @default(now())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coupon     Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
   @@unique([userId, couponId])
 }
+
 model PushCampaign {
-  id String @id @default(cuid())
-  seriesId String
-  title String
-  staleDays Int @default(2)
-  isActive Boolean @default(true)
-  series Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
-  logs NotificationLog[]
+  id        String            @id @default(cuid())
+  seriesId  String
+  title     String
+  staleDays Int               @default(2)
+  isActive  Boolean           @default(true)
+  series    Series            @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  logs      NotificationLog[]
 }
+
 model NotificationLog {
-  id String @id @default(cuid())
-  userId String
-  seriesId String
-  episodeNumber Int
-  message String
-  sentAt DateTime @default(now())
-  dryRun Boolean @default(true)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  campaign PushCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  campaignId String?
+  id             String        @id @default(cuid())
+  userId         String
+  seriesId       String?
+  episodeNumber  Int?
+  message        String
+  sentAt         DateTime      @default(now())
+  dryRun         Boolean       @default(true)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign       PushCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  campaignId     String?
+  subscriptionId String?
+  kind           String        @default("CLIFFHANGER")
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, kind])
   @@index([userId, seriesId, sentAt])
 }
+
 model AdRewardNonce {
-  id String @id @default(cuid())
-  nonce String @unique
-  userId String
+  id        String    @id @default(cuid())
+  nonce     String    @unique
+  userId    String
   episodeId String
   expiresAt DateTime
-  usedAt DateTime?
+  usedAt    DateTime?
+
   @@index([userId, episodeId])
+}
+
+model Plan {
+  id            String               @id @default(cuid())
+  code          String               @unique
+  name          String
+  interval      SubscriptionInterval @default(ANNUAL)
+  trialDays     Int                  @default(3)
+  isActive      Boolean              @default(true)
+  prices        PlanPrice[]
+  subscriptions Subscription[]
+  discounts     DiscountCodePlan[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+}
+
+model PlanPrice {
+  id               String         @id @default(cuid())
+  planId           String
+  currency         String
+  amountMinor      Int
+  trialAmountMinor Int
+  countryCodes     String[]
+  isActive         Boolean        @default(true)
+  plan             Plan           @relation(fields: [planId], references: [id], onDelete: Cascade)
+  subscriptions    Subscription[]
+
+  @@unique([planId, currency])
+  @@index([currency, isActive])
+}
+
+model Subscription {
+  id                  String                           @id @default(cuid())
+  userId              String
+  planId              String
+  priceId             String
+  status              SubscriptionStatus               @default(TRIALING)
+  trialEndsAt         DateTime
+  currentPeriodStart  DateTime
+  currentPeriodEnd    DateTime
+  cancelAtPeriodEnd   Boolean                          @default(false)
+  provider            SubscriptionProvider
+  providerRef         String?                          @unique
+  currency            String
+  country             String                           @default("IN")
+  renewalStartedAt    DateTime?
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
+  user                User                             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                Plan                             @relation(fields: [planId], references: [id])
+  price               PlanPrice                        @relation(fields: [priceId], references: [id])
+  events              SubscriptionEvent[]
+  invoices            SubscriptionInvoice[]
+  reminders           NotificationLog[]
+  webhookEvents       SubscriptionWebhookEvent[]
+  discountRedemptions SubscriptionDiscountRedemption[]
+
+  @@index([userId, status])
+  @@index([status, trialEndsAt])
+  @@index([status, currentPeriodEnd])
+}
+
+model SubscriptionEvent {
+  id             String                 @id @default(cuid())
+  subscriptionId String
+  fromStatus     SubscriptionStatus?
+  toStatus       SubscriptionStatus
+  reason         String
+  actorType      SubscriptionEventActor
+  actorId        String?
+  createdAt      DateTime               @default(now())
+  subscription   Subscription           @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  actor          User?                  @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([subscriptionId, createdAt])
+}
+
+model SubscriptionInvoice {
+  id             String                    @id @default(cuid())
+  subscriptionId String
+  amountMinor    Int
+  currency       String
+  kind           SubscriptionInvoiceKind
+  status         SubscriptionInvoiceStatus @default(PENDING)
+  providerRef    String?
+  periodKey      String
+  paidAt         DateTime?
+  createdAt      DateTime                  @default(now())
+  subscription   Subscription              @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, kind, periodKey])
+  @@index([status, currency])
+}
+
+model DiscountCode {
+  id             String                           @id @default(cuid())
+  code           String                           @unique
+  type           DiscountType
+  value          Int
+  startsAt       DateTime?
+  endsAt         DateTime?
+  maxRedemptions Int
+  redeemedCount  Int                              @default(0)
+  isActive       Boolean                          @default(true)
+  plans          DiscountCodePlan[]
+  redemptions    SubscriptionDiscountRedemption[]
+  createdAt      DateTime                         @default(now())
+}
+
+model DiscountCodePlan {
+  discountCodeId String
+  planId         String
+  discountCode   DiscountCode @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
+  plan           Plan         @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@id([discountCodeId, planId])
+}
+
+model SubscriptionDiscountRedemption {
+  id             String       @id @default(cuid())
+  userId         String
+  subscriptionId String
+  discountCodeId String
+  redeemedAt     DateTime     @default(now())
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  discountCode   DiscountCode @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, discountCodeId])
+  @@index([subscriptionId])
+}
+
+model SubscriptionWebhookEvent {
+  id              String               @id @default(cuid())
+  provider        SubscriptionProvider
+  providerEventId String               @unique
+  subscriptionId  String?
+  receivedAt      DateTime             @default(now())
+  payload         Json?
+  subscription    Subscription?        @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+}
+
+model SubscriptionAutomation {
+  id                String   @id
+  enabled           Boolean  @default(true)
+  reminderLeadHours Int      @default(24)
+  updatedAt         DateTime @updatedAt
 }
