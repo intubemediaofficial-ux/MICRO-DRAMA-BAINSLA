@@ -21,6 +21,29 @@ coins spent per paying user, seven-day coin velocity, top genres by unlock, and 
 rates. Each definition is immediately above its query, and the metrics are available under
 `/api/admin/analytics/*`.
 
+## Subscriptions and entitlement
+
+`Plan` and `PlanPrice` store integer minor-unit prices per currency; no exchange-rate arithmetic is
+used. Currency resolution checks `cf-ipcountry` / `x-vercel-ip-country`, then `Accept-Language`,
+then falls back to INR. `/api/subscriptions` starts the ₹9 three-day trial (or its fixed localized
+row), records a paid trial invoice and audit event, and supports cancellation-at-period-end and
+resume. `src/server/entitlements.ts` is the single resolver used by playback, stream delivery,
+the series grid, and the watch paywall. Free episodes, coin unlocks, and active/trialing
+subscriptions remain compatible.
+
+`POST /api/cron/subscriptions` is protected by `CRON_SECRET`. It structurally deduplicates
+24-hour reminders through the unique subscription notification kind and renewals through the
+unique subscription invoice period key. Renewal failures become `PAST_DUE`; access remains
+available until the current period ends. A partial PostgreSQL unique index on `Subscription.userId`
+for `TRIALING`, `ACTIVE`, and `PAST_DUE` enforces one non-terminal subscription per user.
+
+`/admin/subscriptions` computes trial conversion, country revenue, and annual revenue run rate
+with SQL aggregates and provides price, discount, user override, and reminder controls. The Dev
+provider is implemented and used without keys. The Stripe adapter and signed webhook path are
+code-complete but unverified without Stripe credentials. Apple and Google receipt verification
+remain integration stubs; their native cancel flows must link users to Apple/Google subscription
+management.
+
 ## Playback, anti-piracy, and integrations
 
 `src/server/tokens.ts` signs short-lived stream and ad tokens. `GET /api/stream/[token]` verifies session, expiry, identity, and unlock before redirecting to local media. Ad nonces are atomically claimed for single use. `src/server/storage.ts` is a local adapter; S3/Cloudflare Stream signed URL support is a TODO. `src/server/video-processor.ts` is a pass-through adapter; MediaConvert/ffmpeg, DRM, forensic watermarking, and screen-recording detection are intentionally not implemented.

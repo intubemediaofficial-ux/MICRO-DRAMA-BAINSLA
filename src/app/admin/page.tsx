@@ -47,6 +47,12 @@ export default async function AdminPage() {
             Funnel, revenue, consumption and genre metrics.
           </p>
         </Link>
+        <Link href="/admin/subscriptions" className="rounded-2xl bg-zinc-900 p-5">
+          <h2 className="font-bold">Subscriptions →</h2>
+          <p className="mt-2 text-sm text-zinc-400">
+            Trials, conversion, localized prices and reminder automation.
+          </p>
+        </Link>
       </div>
     </div>
   );

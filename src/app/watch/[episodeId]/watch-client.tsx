@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Subtitle = { lang: string; url: string };
+type SubscriptionOffer = { currency: string; trialAmountMinor: number; trialDays: number };
 
 export default function WatchClient({
   episodeId,
@@ -35,6 +36,8 @@ export default function WatchClient({
   const [subtitleOn, setSubtitleOn] = useState(false);
   const [autoNext, setAutoNext] = useState(true);
   const [message, setMessage] = useState("");
+  const [subscriptionOffer, setSubscriptionOffer] = useState<SubscriptionOffer | null>(null);
+  const [subscriber, setSubscriber] = useState(false);
 
   useEffect(() => {
     let hls: Hls | null = null;
@@ -45,6 +48,7 @@ export default function WatchClient({
           isHls: boolean;
           watermark: string;
           subtitles?: Subtitle[];
+          entitlement?: string;
         };
         if (video.current) {
           if (data.isHls && Hls.isSupported()) {
@@ -56,10 +60,15 @@ export default function WatchClient({
           }
         }
         setWatermark(data.watermark);
+        setSubscriber(data.entitlement === "SUBSCRIPTION");
       } else if (response.status === 403) {
-        const data = (await response.json()) as { coinPrice: number };
+        const data = (await response.json()) as {
+          coinPrice: number;
+          subscriptionOffer?: SubscriptionOffer | null;
+        };
         setLocked(true);
         setCoinPrice(data.coinPrice);
+        setSubscriptionOffer(data.subscriptionOffer ?? null);
       } else {
         setMessage("Sign in to watch this episode.");
       }
@@ -134,6 +143,25 @@ export default function WatchClient({
           "Unlock failed",
       );
   }
+  async function startTrial() {
+    const response = await fetch("/api/subscriptions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ planCode: "VIP_ANNUAL" }),
+    });
+    if (response.ok) location.reload();
+    else
+      setMessage(
+        ((await response.json()) as { error?: { message?: string } }).error?.message ??
+          "Could not start trial",
+      );
+  }
+  const trialLabel = subscriptionOffer
+    ? new Intl.NumberFormat("en", {
+        style: "currency",
+        currency: subscriptionOffer.currency,
+      }).format(subscriptionOffer.trialAmountMinor / 100)
+    : "₹9";
 
   return (
     <div
@@ -233,6 +261,17 @@ export default function WatchClient({
         <div className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-zinc-950 p-6">
           <p className="text-sm text-zinc-400">The cliffhanger continues.</p>
           <h2 className="mt-1 text-2xl font-black">Unlock for 🪙 {coinPrice}</h2>
+          {subscriptionOffer && (
+            <button
+              onClick={() => void startTrial()}
+              className="mt-4 w-full rounded-2xl bg-amber-400 px-5 py-4 text-left font-bold text-zinc-950"
+            >
+              <span className="block text-lg">Unlock Full Series</span>
+              <span className="block text-sm">
+                Start {subscriptionOffer.trialDays}-Day Trial for only {trialLabel}
+              </span>
+            </button>
+          )}
           <div className="mt-5 flex flex-wrap gap-3">
             <button
               onClick={() => void unlock("coin")}
@@ -240,12 +279,14 @@ export default function WatchClient({
             >
               Spend coins
             </button>
-            <button
-              onClick={() => void unlock("ad")}
-              className="rounded-full bg-zinc-800 px-5 py-3"
-            >
-              Watch ad
-            </button>
+            {!subscriber && (
+              <button
+                onClick={() => void unlock("ad")}
+                className="rounded-full bg-zinc-800 px-5 py-3"
+              >
+                Watch ad
+              </button>
+            )}
             <button
               onClick={() => router.push("/wallet")}
               className="rounded-full bg-zinc-800 px-5 py-3"

@@ -12,6 +12,21 @@ Use the JSON endpoints under `/api`: request and verify OTP, list `/api/series`,
 
 Development purchases immediately complete through `/api/purchases`. Implement Apple IAP, Google Play, UPI, card, and PayPal provider adapters with server-side receipt verification, idempotent provider references, and webhook reconciliation before enabling real payments.
 
+## Subscriptions
+
+The subscription API exposes a fixed-price annual VIP plan with a three-day trial, localized by
+country headers and fixed `PlanPrice` rows for INR, USD, EUR, and AED. A successful trial creates
+an invoice immediately; the cron endpoint sends a dry-run 24-hour reminder, converts expired
+trials, charges annual renewals, and expires canceled or past-due periods. Run it locally with
+`curl -X POST http://localhost:3000/api/cron/subscriptions -H "x-cron-secret: $CRON_SECRET"`.
+
+`DevSubscriptionProvider` is the local immediate-success adapter. `StripeSubscriptionProvider`
+uses Stripe's HTTP API and signed webhook verification when `STRIPE_SECRET_KEY` and
+`STRIPE_WEBHOOK_SECRET` are configured; this path is implemented but unverified without keys.
+Apple IAP and Google Play receipt validation remain stubs. Their cancel buttons must open the
+native Apple/Google subscription-management path rather than pretending cancellation is controlled
+by this server.
+
 ## Push and safety
 
 Push campaigns and dry-run `NotificationLog` persistence are modeled. Add FCM/APNs adapters for actual delivery. The dynamic watermark is a visible deterrent only; production anti-piracy should combine forensic watermarking, DRM, token binding, device limits, and platform screen-capture controls.
