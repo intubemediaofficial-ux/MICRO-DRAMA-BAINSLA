@@ -39,10 +39,46 @@ type Data = {
     isActive: boolean;
   }[];
 };
+const listPaths = ["bundles", "banners", "coupons", "plans", "discounts"] as const;
+
 export default function AdminCommerceClient({ initial }: { initial: Data }) {
   const [data, setData] = useState(initial);
   const [pending, setPending] = useState<string | null>(null);
   const toast = useToast();
+
+  async function refreshLists() {
+    const results = await Promise.allSettled(
+      listPaths.map(async (path) => {
+        const response = await fetch(`/api/admin/${path}`);
+        const body = await response.json().catch(() => null);
+        if (!response.ok) {
+          const message =
+            (body as { error?: { message?: string } } | null)?.error?.message ??
+            `HTTP ${response.status}`;
+          throw new Error(message);
+        }
+        return { path, body };
+      }),
+    );
+    const next = { ...data };
+    const failures: string[] = [];
+    results.forEach((result, index) => {
+      const path = listPaths[index];
+      if (result.status === "fulfilled") {
+        const value = result.value.body;
+        if (path === "bundles") next.bundles = value;
+        if (path === "banners") next.banners = value;
+        if (path === "coupons") next.coupons = value;
+        if (path === "plans") next.plans = value;
+        if (path === "discounts") next.discounts = value;
+      } else {
+        failures.push(`${path}: ${result.reason instanceof Error ? result.reason.message : "Request failed"}`);
+      }
+    });
+    setData(next);
+    return failures;
+  }
+
   async function request(url: string, method: string, body: unknown, success: string, key: string) {
     setPending(key);
     try {
@@ -56,14 +92,9 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
         toast(error?.error?.message ?? "Request failed.", "error");
         return;
       }
-      const [bundles, banners, coupons, plans, discounts] = await Promise.all(
-        ["bundles", "banners", "coupons", "plans", "discounts"].map(async (path) => {
-          const result = await fetch(`/api/admin/${path}`);
-          return result.json();
-        }),
-      );
-      setData({ bundles, banners, coupons, plans, discounts });
+      const failures = await refreshLists();
       toast(success);
+      failures.forEach((failure) => toast(`Could not refresh ${failure}`, "error"));
     } finally {
       setPending(null);
     }
@@ -241,7 +272,7 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
               title: "New banner",
               imageUrl: "/demo/banners/banner-tonight.jpg",
               sortOrder: data.banners.length,
-            }, "Flash sale banner created.", "banner-create")
+            }, "New banner created — edit its title and image below.", "banner-create")
           }
           pending={pending === "banner-create"}
           className="mt-3 rounded bg-rose-500 px-3 py-2"
