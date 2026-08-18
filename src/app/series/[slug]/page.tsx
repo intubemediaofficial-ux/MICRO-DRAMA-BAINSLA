@@ -71,10 +71,6 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
           episodes: series.episodes.map(toEpisodeView),
         },
       ];
-  const groupedEpisodeCount = seasonGroups.reduce((count, season) => count + season.episodes.length, 0);
-  if (groupedEpisodeCount !== series.episodes.length) {
-    throw new Error(`Season grouping mismatch for series ${series.id}`);
-  }
   return (
     <div className="pb-24">
       <Link href="/" className="fixed left-4 top-4 z-10 rounded-full bg-black/50 px-4 py-2">
