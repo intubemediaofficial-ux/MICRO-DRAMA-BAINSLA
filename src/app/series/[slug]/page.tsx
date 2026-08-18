@@ -5,6 +5,7 @@ import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { resolveEpisodeEntitlement } from "@/server/entitlements";
 import { getWatchedEpisodeIds } from "@/server/discovery";
+import TeaserPlayer from "./teaser-player";
 
 export default async function SeriesPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -34,12 +35,13 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
         ←
       </Link>
       <div className="relative h-72 overflow-hidden bg-zinc-900 p-6 pt-20">
+        <TeaserPlayer src={series.teaserUrl} poster={series.posterUrl} title={series.title} />
         <Image
           src={series.posterUrl}
           alt=""
           fill
           sizes="100vw"
-          className="object-cover opacity-50"
+          className="z-0 object-cover opacity-50"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
         <div className="relative">
@@ -61,11 +63,23 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
             ? series.castMembers
             : series.castNames.map((name) => ({ id: name, name, role: null, photo: null }))
           ).map((member) => (
-            <div key={member.id} className="flex items-center gap-2 rounded-full bg-zinc-900 px-3 py-2">
+            <div
+              key={member.id}
+              className="flex items-center gap-2 rounded-full bg-zinc-900 px-3 py-2"
+            >
               {member.photo && (
-                <Image src={member.photo} alt="" width={28} height={28} className="h-7 w-7 rounded-full object-cover" />
+                <Image
+                  src={member.photo}
+                  alt=""
+                  width={28}
+                  height={28}
+                  className="h-7 w-7 rounded-full object-cover"
+                />
               )}
-              <span>{member.name}{member.role ? ` · ${member.role}` : ""}</span>
+              <span>
+                {member.name}
+                {member.role ? ` · ${member.role}` : ""}
+              </span>
             </div>
           ))}
           <span className="self-center">· {series.episodes.length} episodes</span>

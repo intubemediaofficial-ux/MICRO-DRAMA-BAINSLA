@@ -18,8 +18,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     await adminSession();
     const { id } = await params;
+    const data = input.parse(await request.json());
     return NextResponse.json(
-      await prisma.episode.update({ where: { id }, data: input.parse(await request.json()) }),
+      await prisma.episode.update({
+        where: { id },
+        data: { ...data, ...(data.thumbnailUrl ? { thumbnailSource: "CUSTOM" } : {}) },
+      }),
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Episode update failed";

@@ -13,7 +13,9 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
-    "db:demo-content": "tsx prisma/demo-content.ts"
+    "db:demo-content": "tsx prisma/demo-content.ts",
+    "media:demo": "tsx scripts/demo-media.ts",
+    "media:backfill-thumbnails": "tsx scripts/backfill-thumbnails.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

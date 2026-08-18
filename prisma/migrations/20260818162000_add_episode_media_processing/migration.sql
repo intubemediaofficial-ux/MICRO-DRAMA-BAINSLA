@@ -1,0 +1,4 @@
+ALTER TABLE "Episode"
+ADD COLUMN "thumbnailSource" TEXT NOT NULL DEFAULT 'LEGACY',
+ADD COLUMN "processingStatus" TEXT NOT NULL DEFAULT 'READY',
+ADD COLUMN "processingError" TEXT;

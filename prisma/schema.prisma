@@ -177,6 +177,9 @@ model Episode {
   durationSec  Int
   hlsPath      String
   thumbnailUrl String
+  thumbnailSource String @default("LEGACY")
+  processingStatus String @default("READY")
+  processingError String?
   isFree       Boolean         @default(false)
   coinPrice    Int
   publishedAt  DateTime?

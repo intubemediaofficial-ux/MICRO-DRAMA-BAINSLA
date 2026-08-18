@@ -161,10 +161,12 @@ export async function syncDemoContent(
           data: {
             seriesId: series.id,
             number,
-            title: number === item.episodeCount ? "The Finale" : `${item.title} · Chapter ${number}`,
+            title:
+              number === item.episodeCount ? "The Finale" : `${item.title} · Chapter ${number}`,
             durationSec: episodeDuration(number, catalogueIndex),
             hlsPath: "sample.mp4",
             thumbnailUrl: artwork.thumbnailUrl,
+            thumbnailSource: "CATALOGUE",
             isFree: number <= item.freeEpisodeCount,
             coinPrice: item.defaultCoinPrice,
             publishedAt: new Date(Date.now() - (item.episodeCount - number) * 86_400_000),
@@ -213,7 +215,8 @@ export async function syncDemoContent(
   });
   const placeholdersUnpublished: string[] = [];
   for (const series of placeholders) {
-    if (catalogueSlugs.has(series.slug) || !/^\/media\/poster-\d+\.jpg$/.test(series.posterUrl)) continue;
+    if (catalogueSlugs.has(series.slug) || !/^\/media\/poster-\d+\.jpg$/.test(series.posterUrl))
+      continue;
     if (series.isPublished) {
       await prisma.series.update({ where: { id: series.id }, data: { isPublished: false } });
       placeholdersUnpublished.push(series.slug);
