@@ -1,0 +1,155 @@
+[
+  {
+    "slug": "second-chance-cafe",
+    "title": "Second Chance Cafe",
+    "synopsis": "Meera returns to her hometown to save her late mother's failing cafe, only to find the new landlord is the boy she left at the altar nine years ago. Every espresso comes with an old wound and a reason to stay.",
+    "genres": ["Sweet Romance", "Slice of Life"],
+    "tropeTags": ["second chance", "small town", "found family"],
+    "status": "ONGOING",
+    "freeEpisodeCount": 6,
+    "defaultCoinPrice": 15,
+    "episodeCount": 60,
+    "homeSections": ["hero-1", "for-you", "trending"],
+    "cast": [
+      { "name": "Aanya Kapoor", "role": "Meera Joshi" },
+      { "name": "Rohan Malhotra", "role": "Kabir Sethi" },
+      { "name": "Sneha Iyer", "role": "Tara" }
+    ]
+  },
+  {
+    "slug": "room-404",
+    "title": "Room 404",
+    "synopsis": "A hotel auditor checks into a room that does not exist on any floor plan and finds a guest list of people who never checked out. The deeper she digs, the more the hotel remembers her.",
+    "genres": ["Revenge Thriller", "Mystery"],
+    "tropeTags": ["locked room", "cover-up", "amnesia"],
+    "status": "ONGOING",
+    "freeEpisodeCount": 5,
+    "defaultCoinPrice": 20,
+    "episodeCount": 60,
+    "homeSections": ["hero-2", "trending", "for-you"],
+    "cast": [
+      { "name": "Ishaan Verma", "role": "Detective Rane" },
+      { "name": "Nikita Rao", "role": "Alisha Nanda" },
+      { "name": "Arjun Sethi", "role": "Mr. Khanna" }
+    ]
+  },
+  {
+    "slug": "crimson-promises",
+    "title": "Crimson Promises",
+    "synopsis": "To keep her father's factory out of receivership, Naina signs a one-year marriage contract with the ruthless heir who bankrupted him. He wants an heir and an alibi; she wants everything back.",
+    "genres": ["Billionaire Boss", "Revenge Romance"],
+    "tropeTags": ["contract marriage", "enemies to lovers", "corporate revenge"],
+    "status": "ONGOING",
+    "freeEpisodeCount": 5,
+    "defaultCoinPrice": 25,
+    "episodeCount": 60,
+    "homeSections": ["hero-3", "trending"],
+    "cast": [
+      { "name": "Vivaan Chauhan", "role": "Aditya Rathore" },
+      { "name": "Myra Sen", "role": "Naina Bhatia" },
+      { "name": "Kabir Joshi", "role": "Dev" }
+    ]
+  },
+  {
+    "slug": "contract-marriage",
+    "title": "Contract Marriage",
+    "synopsis": "Rhea agrees to a six-month fake wedding so her grandmother can die happy, and her grandmother promptly recovers. Now the whole family is planning a real anniversary neither of them can cancel.",
+    "genres": ["Arranged Marriage", "Rom-Com"],
+    "tropeTags": ["fake relationship", "family pressure", "slow burn"],
+    "status": "ONGOING",
+    "freeEpisodeCount": 8,
+    "defaultCoinPrice": 15,
+    "episodeCount": 60,
+    "homeSections": ["for-you", "new-releases"],
+    "cast": [
+      { "name": "Diya Nair", "role": "Rhea Malhotra" },
+      { "name": "Aryan Bhatt", "role": "Veer Ahuja" },
+      { "name": "Leela Menon", "role": "Dadi" }
+    ]
+  },
+  {
+    "slug": "midnight-metro",
+    "title": "Midnight Metro",
+    "synopsis": "The last train of the night drops one extra passenger at every station, and inspector Zoya is the only one who notices. The city's missing-persons files all begin on the same platform.",
+    "genres": ["Urban Mystery", "Suspense"],
+    "tropeTags": ["serial mystery", "unreliable witness", "city noir"],
+    "status": "ONGOING",
+    "freeEpisodeCount": 5,
+    "defaultCoinPrice": 20,
+    "episodeCount": 48,
+    "homeSections": ["trending", "new-releases"],
+    "cast": [
+      { "name": "Zoya Khan", "role": "Inspector Zoya Mirza" },
+      { "name": "Samar Dutt", "role": "Nikhil" },
+      { "name": "Reva Pillai", "role": "Reva, news anchor" }
+    ]
+  },
+  {
+    "slug": "rain-never-lies",
+    "title": "Rain Never Lies",
+    "synopsis": "Saira only meets him when it rains, and he never remembers the last monsoon. She starts writing their story down before the sky clears again.",
+    "genres": ["Slow-burn Romance", "Fantasy"],
+    "tropeTags": ["time loop", "memory loss", "destined lovers"],
+    "status": "ONGOING",
+    "freeEpisodeCount": 6,
+    "defaultCoinPrice": 15,
+    "episodeCount": 45,
+    "homeSections": ["for-you", "new-releases"],
+    "cast": [
+      { "name": "Aarohi Desai", "role": "Saira" },
+      { "name": "Neel Kulkarni", "role": "Ranveer" },
+      { "name": "Tanya Bose", "role": "Ira" }
+    ]
+  },
+  {
+    "slug": "the-last-monsoon",
+    "title": "The Last Monsoon",
+    "synopsis": "Three siblings come home for a funeral and inherit a house, a debt and a secret their mother took to the pyre. The rains have six weeks to wash it out.",
+    "genres": ["Family Drama"],
+    "tropeTags": ["inheritance", "siblings", "hidden past"],
+    "status": "COMPLETED",
+    "freeEpisodeCount": 10,
+    "defaultCoinPrice": 12,
+    "episodeCount": 40,
+    "homeSections": ["for-you"],
+    "cast": [
+      { "name": "Gauri Shinde", "role": "Amma" },
+      { "name": "Rudra Pratap", "role": "Shekhar" },
+      { "name": "Pia Grewal", "role": "Nandini" }
+    ]
+  },
+  {
+    "slug": "heiress-in-hiding",
+    "title": "Heiress in Hiding",
+    "synopsis": "Simran fakes her own disappearance to find out which cousin ordered the hit, and takes a job as a maid in her own guest house. The staff quarters know more than the boardroom.",
+    "genres": ["Secret Identity", "Billionaire Boss"],
+    "tropeTags": ["hidden identity", "revenge", "class divide"],
+    "status": "ONGOING",
+    "freeEpisodeCount": 5,
+    "defaultCoinPrice": 25,
+    "episodeCount": 60,
+    "homeSections": ["trending", "for-you"],
+    "cast": [
+      { "name": "Ira Ahluwalia", "role": "Simran Grover" },
+      { "name": "Yash Deora", "role": "Karan" },
+      { "name": "Bela Fernandes", "role": "Aunt Bela" }
+    ]
+  },
+  {
+    "slug": "vow-of-ashes",
+    "title": "Vow of Ashes",
+    "synopsis": "Burned alive on her wedding night, Devika wakes up seven years earlier with the same vow on her lips and a list of names. This time she marries the man who lit the fire.",
+    "genres": ["Fantasy Revenge", "Period Drama"],
+    "tropeTags": ["rebirth", "revenge", "cursed vow"],
+    "status": "COMPLETED",
+    "freeEpisodeCount": 5,
+    "defaultCoinPrice": 30,
+    "episodeCount": 72,
+    "homeSections": ["new-releases", "trending"],
+    "cast": [
+      { "name": "Anvi Rathi", "role": "Devika" },
+      { "name": "Om Shergill", "role": "Raghav" },
+      { "name": "Mira Lal", "role": "The Oracle" }
+    ]
+  }
+]

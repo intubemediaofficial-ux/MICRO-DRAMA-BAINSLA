@@ -137,9 +137,35 @@ model Series {
   episodes         Episode[]
   banners          Banner[]
   campaigns        PushCampaign[]
+  castMembers      CastMember[]
+  homeRailItems    HomeRailItem[]
 
   @@index([isPublished, createdAt])
   @@index([status])
+}
+
+model CastMember {
+  id        String   @id @default(cuid())
+  seriesId  String
+  name      String
+  role      String?
+  photo     String?
+  sortOrder Int      @default(0)
+  series    Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@index([seriesId, sortOrder])
+}
+
+model HomeRailItem {
+  id        String   @id @default(cuid())
+  railKey   String
+  position  Int
+  seriesId  String?
+  bannerUrl String?
+  series    Series?  @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([railKey, position])
+  @@index([railKey, position])
 }
 
 model Episode {

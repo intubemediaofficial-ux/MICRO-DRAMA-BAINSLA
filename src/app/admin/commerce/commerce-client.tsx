@@ -203,7 +203,7 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
           </form>
         ))}
       </section>
-      <section className="rounded-2xl bg-zinc-900 p-5">
+      <section id="marketing" className="rounded-2xl bg-zinc-900 p-5">
         <h2 className="text-xl font-bold">Banners</h2>
         {data.banners.map((banner) => (
           <form
