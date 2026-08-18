@@ -9,6 +9,7 @@ const input = z.discriminatedUnion("kind", [
     kind: z.literal("settings"),
     enabled: z.boolean(),
     reminderLeadHours: z.number().int().positive(),
+    gracePeriodHours: z.number().int().positive(),
   }),
   z.object({
     kind: z.literal("discount"),
@@ -69,8 +70,17 @@ export async function POST(request: Request) {
     if (data.kind === "settings") {
       const settings = await prisma.subscriptionAutomation.upsert({
         where: { id: "default" },
-        update: { enabled: data.enabled, reminderLeadHours: data.reminderLeadHours },
-        create: { id: "default", enabled: data.enabled, reminderLeadHours: data.reminderLeadHours },
+        update: {
+          enabled: data.enabled,
+          reminderLeadHours: data.reminderLeadHours,
+          gracePeriodHours: data.gracePeriodHours,
+        },
+        create: {
+          id: "default",
+          enabled: data.enabled,
+          reminderLeadHours: data.reminderLeadHours,
+          gracePeriodHours: data.gracePeriodHours,
+        },
       });
       return NextResponse.json(settings);
     }

@@ -323,7 +323,7 @@ async function main() {
     },
   });
   await prisma.subscriptionAutomation.create({
-    data: { id: "default", enabled: true, reminderLeadHours: 24 },
+    data: { id: "default", enabled: true, reminderLeadHours: 24, gracePeriodHours: 72 },
   });
   await prisma.discountCode.create({
     data: {

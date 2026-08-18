@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Fragment } from "react";
 import { getSession } from "@/server/auth";
 import { getAnalytics } from "@/server/analytics";
 import { prisma } from "@/server/db";
@@ -76,11 +75,11 @@ export default async function AnalyticsPage({
           <b>Viewers</b>
           <b>Drop</b>
           {analytics.funnel.map((row) => (
-            <Fragment key={row.episodeNumber}>
-              <span>{row.episodeNumber}</span>
-              <span>{row.viewers}</span>
-              <span>{(row.dropPercent * 100).toFixed(1)}%</span>
-            </Fragment>
+            <>
+              <span key={`n${row.episodeNumber}`}>{row.episodeNumber}</span>
+              <span key={`v${row.episodeNumber}`}>{row.viewers}</span>
+              <span key={`d${row.episodeNumber}`}>{(row.dropPercent * 100).toFixed(1)}%</span>
+            </>
           ))}
         </div>
       </section>

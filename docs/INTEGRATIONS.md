@@ -17,7 +17,10 @@ Development purchases immediately complete through `/api/purchases`. Implement A
 The subscription API exposes a fixed-price annual VIP plan with a three-day trial, localized by
 country headers and fixed `PlanPrice` rows for INR, USD, EUR, and AED. A successful trial creates
 an invoice immediately; the cron endpoint sends a dry-run 24-hour reminder, converts expired
-trials, charges annual renewals, and expires canceled or past-due periods. Run it locally with
+trials, retries failed renewals during the configured dunning grace window, charges annual
+renewals on the prior period boundary, and expires canceled or past-due periods after their
+applicable window. Cron and webhook payment success share an invoice period key, preventing
+double settlement. Run it locally with
 `curl -X POST http://localhost:3000/api/cron/subscriptions -H "x-cron-secret: $CRON_SECRET"`.
 
 `DevSubscriptionProvider` is the local immediate-success adapter. `StripeSubscriptionProvider`

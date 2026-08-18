@@ -27,7 +27,11 @@ export async function resolveEpisodeEntitlement(
       where: {
         userId,
         OR: [
-          { status: "TRIALING", trialEndsAt: { gt: new Date() } },
+          {
+            status: "TRIALING",
+            trialEndsAt: { gt: new Date() },
+            invoices: { some: { kind: "TRIAL", status: "PAID" } },
+          },
           { status: "ACTIVE", currentPeriodEnd: { gt: new Date() } },
           { status: "PAST_DUE", currentPeriodEnd: { gt: new Date() } },
         ],
@@ -51,7 +55,11 @@ export async function hasActiveSubscription(userId: string) {
     where: {
       userId,
       OR: [
-        { status: "TRIALING", trialEndsAt: { gt: new Date() } },
+        {
+          status: "TRIALING",
+          trialEndsAt: { gt: new Date() },
+          invoices: { some: { kind: "TRIAL", status: "PAID" } },
+        },
         { status: "ACTIVE", currentPeriodEnd: { gt: new Date() } },
         { status: "PAST_DUE", currentPeriodEnd: { gt: new Date() } },
       ],

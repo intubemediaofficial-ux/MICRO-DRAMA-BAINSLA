@@ -44,7 +44,7 @@ export default function AdminSubscriptionsClient({
 }: {
   metrics: Metrics;
   plans: Plan[];
-  settings: { enabled: boolean; reminderLeadHours: number };
+  settings: { enabled: boolean; reminderLeadHours: number; gracePeriodHours: number };
 }) {
   const [message, setMessage] = useState("");
   const [currentMetrics, setCurrentMetrics] = useState(metrics);
@@ -53,6 +53,7 @@ export default function AdminSubscriptionsClient({
   const [search, setSearch] = useState("");
   const [enabled, setEnabled] = useState(settings.enabled);
   const [leadHours, setLeadHours] = useState(settings.reminderLeadHours);
+  const [graceHours, setGraceHours] = useState(settings.gracePeriodHours);
   async function save(body: unknown) {
     const response = await fetch("/api/admin/subscriptions", {
       method: "POST",
@@ -167,8 +168,23 @@ export default function AdminSubscriptionsClient({
             className="w-24 rounded-xl bg-zinc-800 p-3"
           />
           <span className="text-sm text-zinc-400">hours before trial ends</span>
+          <input
+            type="number"
+            min="1"
+            value={graceHours}
+            onChange={(event) => setGraceHours(Number(event.target.value))}
+            className="w-24 rounded-xl bg-zinc-800 p-3"
+          />
+          <span className="text-sm text-zinc-400">dunning grace hours</span>
           <button
-            onClick={() => void save({ kind: "settings", enabled, reminderLeadHours: leadHours })}
+            onClick={() =>
+              void save({
+                kind: "settings",
+                enabled,
+                reminderLeadHours: leadHours,
+                gracePeriodHours: graceHours,
+              })
+            }
             className="rounded-full bg-rose-500 px-4 py-2 font-bold"
           >
             Save

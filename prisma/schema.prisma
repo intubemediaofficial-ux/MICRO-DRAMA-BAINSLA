@@ -381,6 +381,7 @@ model Subscription {
   currency            String
   country             String                           @default("IN")
   renewalStartedAt    DateTime?
+  pastDueSince        DateTime?
   createdAt           DateTime                         @default(now())
   updatedAt           DateTime                         @updatedAt
   user                User                             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -478,8 +479,9 @@ model SubscriptionWebhookEvent {
 }
 
 model SubscriptionAutomation {
-  id                String   @id
-  enabled           Boolean  @default(true)
+  id               String   @id
+  enabled          Boolean  @default(true)
   reminderLeadHours Int      @default(24)
-  updatedAt         DateTime @updatedAt
+  gracePeriodHours Int      @default(72)
+  updatedAt        DateTime @updatedAt
 }

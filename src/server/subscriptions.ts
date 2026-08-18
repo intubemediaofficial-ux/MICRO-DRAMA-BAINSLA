@@ -15,6 +15,12 @@ function addAnnual(date: Date) {
   return result;
 }
 
+function nextAnnualBoundary(periodBoundary: Date, now: Date) {
+  let next = addAnnual(periodBoundary);
+  while (next <= now) next = addAnnual(next);
+  return next;
+}
+
 function statusEvent(
   tx: Prisma.TransactionClient,
   subscriptionId: string,
@@ -34,6 +40,7 @@ async function activeForUser(userId: string) {
     where: {
       userId,
       status: { in: ["TRIALING", "ACTIVE", "PAST_DUE"] },
+      invoices: { some: { kind: "TRIAL", status: "PAID" } },
     },
     orderBy: { currentPeriodEnd: "desc" },
   });
@@ -103,15 +110,9 @@ export async function startTrial(
   const trialEndsAt = addDays(now, plan.trialDays);
   const subscriptionId = crypto.randomUUID();
   const provider = subscriptionProvider();
-  const charge = await provider.createTrialCheckout({
-    userId,
-    subscriptionId,
-    amountMinor: selected.discount?.trialAmountMinor ?? price.trialAmountMinor,
-    currency: price.currency,
-    trial: true,
-  });
+  const trialAmountMinor = selected.discount?.trialAmountMinor ?? price.trialAmountMinor;
   try {
-    return await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       const subscription = await tx.subscription.create({
         data: {
           id: subscriptionId,
@@ -123,7 +124,7 @@ export async function startTrial(
           currentPeriodStart: now,
           currentPeriodEnd: trialEndsAt,
           provider: provider.name,
-          providerRef: charge.providerRef,
+          providerRef: null,
           currency: price.currency,
           country,
         },
@@ -131,16 +132,72 @@ export async function startTrial(
       await tx.subscriptionInvoice.create({
         data: {
           subscriptionId,
-          amountMinor: selected.discount?.trialAmountMinor ?? price.trialAmountMinor,
+          amountMinor: trialAmountMinor,
           currency: price.currency,
           kind: "TRIAL",
-          status: "PAID",
-          providerRef: charge.providerRef,
+          status: "PENDING",
           periodKey: `trial-${trialEndsAt.toISOString()}`,
-          paidAt: now,
         },
       });
       await statusEvent(tx, subscriptionId, null, "TRIALING", "Trial started", "SYSTEM");
+      return subscription;
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return prisma.subscription.findFirstOrThrow({
+        where: { userId, status: { in: ["TRIALING", "ACTIVE", "PAST_DUE"] } },
+        orderBy: { currentPeriodEnd: "desc" },
+      });
+    }
+    throw error;
+  }
+  let charge;
+  try {
+    charge = await provider.createTrialCheckout({
+      userId,
+      subscriptionId,
+      amountMinor: trialAmountMinor,
+      currency: price.currency,
+      trial: true,
+      periodKey: `trial-${trialEndsAt.toISOString()}`,
+    });
+  } catch (error) {
+    await prisma.$transaction(async (tx) => {
+      await tx.subscriptionInvoice.update({
+        where: {
+          subscriptionId_kind_periodKey: {
+            subscriptionId,
+            kind: "TRIAL",
+            periodKey: `trial-${trialEndsAt.toISOString()}`,
+          },
+        },
+        data: { status: "FAILED" },
+      });
+      await tx.subscription.update({
+        where: { id: subscriptionId },
+        data: { status: "EXPIRED", renewalStartedAt: null },
+      });
+      await statusEvent(tx, subscriptionId, "TRIALING", "EXPIRED", "Trial charge failed", "SYSTEM");
+    });
+    throw error;
+  }
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const subscription = await tx.subscription.update({
+        where: { id: subscriptionId },
+        data: { providerRef: charge.providerRef },
+      });
+      await tx.subscriptionInvoice.update({
+        where: {
+          subscriptionId_kind_periodKey: {
+            subscriptionId,
+            kind: "TRIAL",
+            periodKey: `trial-${trialEndsAt.toISOString()}`,
+          },
+        },
+        data: { status: "PAID", providerRef: charge.providerRef, paidAt: now },
+      });
+      await statusEvent(tx, subscriptionId, "TRIALING", "TRIALING", "Trial charge paid", "SYSTEM");
       if (selected.discount) {
         await tx.discountCode.update({
           where: { id: selected.discount.id },
@@ -157,11 +214,33 @@ export async function startTrial(
       return subscription;
     });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return prisma.subscription.findFirstOrThrow({
-        where: { userId, status: { in: ["TRIALING", "ACTIVE", "PAST_DUE"] } },
-        orderBy: { currentPeriodEnd: "desc" },
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.subscription.update({
+          where: { id: subscriptionId },
+          data: { providerRef: charge.providerRef },
+        });
+        await tx.subscriptionInvoice.update({
+          where: {
+            subscriptionId_kind_periodKey: {
+              subscriptionId,
+              kind: "TRIAL",
+              periodKey: `trial-${trialEndsAt.toISOString()}`,
+            },
+          },
+          data: { status: "PAID", providerRef: charge.providerRef, paidAt: now },
+        });
+        await statusEvent(
+          tx,
+          subscriptionId,
+          "TRIALING",
+          "TRIALING",
+          "Trial charge paid; reconciliation required",
+          "SYSTEM",
+        );
       });
+    } catch {
+      throw new Error("TRIAL_CHARGE_RECONCILIATION_FAILED");
     }
     throw error;
   }
@@ -188,13 +267,15 @@ async function sendTrialReminder(subscriptionId: string, now: Date, leadHours: n
   }
 }
 
-async function renewSubscription(subscriptionId: string, now: Date) {
+async function renewSubscription(subscriptionId: string, now: Date, gracePeriodHours: number) {
+  const graceSince = new Date(now.getTime() - gracePeriodHours * 60 * 60 * 1_000);
   const claimed = await prisma.subscription.updateMany({
     where: {
       id: subscriptionId,
       OR: [
         { status: "TRIALING", trialEndsAt: { lte: now } },
         { status: "ACTIVE", currentPeriodEnd: { lte: now } },
+        { status: "PAST_DUE", pastDueSince: { gt: graceSince, lte: now } },
       ],
       renewalStartedAt: null,
       cancelAtPeriodEnd: false,
@@ -217,8 +298,9 @@ async function renewSubscription(subscriptionId: string, now: Date) {
       amountMinor: subscription.price.amountMinor,
       currency: subscription.currency,
       trial: false,
+      periodKey,
     });
-    const nextEnd = addAnnual(now);
+    const nextEnd = nextAnnualBoundary(periodBoundary, now);
     await prisma.$transaction(async (tx) => {
       await tx.subscriptionInvoice.upsert({
         where: {
@@ -244,9 +326,11 @@ async function renewSubscription(subscriptionId: string, now: Date) {
         where: { id: subscriptionId },
         data: {
           status: "ACTIVE",
-          currentPeriodStart: now,
+          currentPeriodStart: periodBoundary,
           currentPeriodEnd: nextEnd,
+          providerRef: charge.providerRef,
           renewalStartedAt: null,
+          pastDueSince: null,
         },
       });
       await statusEvent(
@@ -281,7 +365,11 @@ async function renewSubscription(subscriptionId: string, now: Date) {
       });
       await tx.subscription.update({
         where: { id: subscriptionId },
-        data: { status: "PAST_DUE" },
+        data: {
+          status: "PAST_DUE",
+          renewalStartedAt: null,
+          pastDueSince: subscription.pastDueSince ?? now,
+        },
       });
       await statusEvent(
         tx,
@@ -320,6 +408,13 @@ export async function runSubscriptionCron(now = new Date()) {
       OR: [
         { status: "TRIALING", trialEndsAt: { lte: now } },
         { status: "ACTIVE", currentPeriodEnd: { lte: now } },
+        {
+          status: "PAST_DUE",
+          pastDueSince: {
+            gt: new Date(now.getTime() - settings.gracePeriodHours * 60 * 60 * 1_000),
+            lte: now,
+          },
+        },
       ],
       cancelAtPeriodEnd: false,
     },
@@ -329,7 +424,7 @@ export async function runSubscriptionCron(now = new Date()) {
   let failed = 0;
   const failedSubscriptionIds: string[] = [];
   for (const subscription of due) {
-    const result = await renewSubscription(subscription.id, now);
+    const result = await renewSubscription(subscription.id, now, settings.gracePeriodHours);
     if (result.converted) converted += 1;
     if (result.failed) {
       failed += 1;
@@ -340,10 +435,24 @@ export async function runSubscriptionCron(now = new Date()) {
     where: {
       id: { notIn: failedSubscriptionIds },
       OR: [
-        { status: { in: ["CANCELED", "PAST_DUE"] } },
-        { cancelAtPeriodEnd: true, status: { in: ["TRIALING", "ACTIVE"] } },
+        {
+          status: "PAST_DUE",
+          pastDueSince: {
+            lte: new Date(now.getTime() - settings.gracePeriodHours * 60 * 60 * 1_000),
+          },
+        },
+        {
+          status: "PAST_DUE",
+          pastDueSince: null,
+          currentPeriodEnd: { lt: now },
+        },
+        { status: "CANCELED", currentPeriodEnd: { lt: now } },
+        {
+          cancelAtPeriodEnd: true,
+          status: { in: ["TRIALING", "ACTIVE"] },
+          currentPeriodEnd: { lt: now },
+        },
       ],
-      currentPeriodEnd: { lt: now },
     },
     select: { id: true, status: true },
   });
@@ -462,34 +571,172 @@ export async function processSubscriptionWebhook(
       },
     });
     const subscription = await prisma.subscription.findFirst({
-      where: { providerRef: webhook.providerRef },
+      where: {
+        OR: [
+          { providerRef: webhook.providerRef },
+          { invoices: { some: { providerRef: webhook.providerRef } } },
+        ],
+      },
+      include: { invoices: true },
     });
     if (!subscription) return { duplicate: false, handled: false };
-    await prisma.$transaction(async (tx) => {
-      const toStatus =
-        webhook.type === "PAYMENT_SUCCEEDED"
-          ? "ACTIVE"
-          : webhook.type === "PAYMENT_FAILED"
-            ? "PAST_DUE"
-            : "CANCELED";
-      await tx.subscription.update({
+    return prisma.$transaction(async (tx) => {
+      const current = await tx.subscription.findUniqueOrThrow({
         where: { id: subscription.id },
-        data: { status: toStatus, renewalStartedAt: null },
+        include: { invoices: true },
       });
-      await statusEvent(
-        tx,
-        subscription.id,
-        subscription.status,
-        toStatus,
-        `Webhook ${webhook.type}`,
-        "SYSTEM",
+      const matchedInvoice = current.invoices.find(
+        (invoice) => invoice.providerRef === webhook.providerRef,
       );
+      const terminal = current.status === "CANCELED" || current.status === "EXPIRED";
+      const ignored = async (reason: string) => {
+        await statusEvent(tx, current.id, current.status, current.status, reason, "SYSTEM");
+        await tx.subscriptionWebhookEvent.update({
+          where: { id: recorded.id },
+          data: { subscriptionId: current.id },
+        });
+        return { duplicate: false, handled: false, ignored: true };
+      };
+      if (terminal) return ignored(`Ignored illegal webhook transition: ${webhook.type}`);
+
+      const now = new Date();
+      if (webhook.type === "SUBSCRIPTION_CANCELED") {
+        if (!["TRIALING", "ACTIVE", "PAST_DUE"].includes(current.status))
+          return ignored(`Ignored illegal webhook transition: ${webhook.type}`);
+        await tx.subscription.update({
+          where: { id: current.id },
+          data: { status: "CANCELED", cancelAtPeriodEnd: true, renewalStartedAt: null },
+        });
+        await statusEvent(
+          tx,
+          current.id,
+          current.status,
+          "CANCELED",
+          `Webhook ${webhook.type}`,
+          "SYSTEM",
+        );
+      } else {
+        const isTrialPayment =
+          current.status === "TRIALING" &&
+          current.trialEndsAt > now &&
+          !matchedInvoice?.periodKey.startsWith("renewal-");
+        const periodBoundary =
+          current.status === "TRIALING" ? current.trialEndsAt : current.currentPeriodEnd;
+        const periodKey =
+          matchedInvoice?.periodKey ??
+          (isTrialPayment
+            ? `trial-${current.trialEndsAt.toISOString()}`
+            : `renewal-${periodBoundary.toISOString()}`);
+        if (webhook.type === "PAYMENT_SUCCEEDED") {
+          if (matchedInvoice?.status === "PAID")
+            return ignored("Ignored duplicate payment success for settled invoice");
+          await tx.subscriptionInvoice.upsert({
+            where: {
+              subscriptionId_kind_periodKey: {
+                subscriptionId: current.id,
+                kind: isTrialPayment ? "TRIAL" : "RENEWAL",
+                periodKey,
+              },
+            },
+            update: {
+              status: "PAID",
+              providerRef: webhook.providerRef,
+              paidAt: now,
+            },
+            create: {
+              subscriptionId: current.id,
+              amountMinor: current.priceId
+                ? (await tx.planPrice.findUniqueOrThrow({ where: { id: current.priceId } }))
+                    .amountMinor
+                : 0,
+              currency: current.currency,
+              kind: isTrialPayment ? "TRIAL" : "RENEWAL",
+              status: "PAID",
+              providerRef: webhook.providerRef,
+              periodKey,
+              paidAt: now,
+            },
+          });
+          if (!isTrialPayment) {
+            await tx.subscription.update({
+              where: { id: current.id },
+              data: {
+                status: "ACTIVE",
+                currentPeriodStart: periodBoundary,
+                currentPeriodEnd: nextAnnualBoundary(periodBoundary, now),
+                providerRef: webhook.providerRef,
+                renewalStartedAt: null,
+                pastDueSince: null,
+              },
+            });
+            await statusEvent(
+              tx,
+              current.id,
+              current.status,
+              "ACTIVE",
+              `Webhook ${webhook.type}`,
+              "SYSTEM",
+            );
+          } else {
+            await tx.subscription.update({
+              where: { id: current.id },
+              data: { providerRef: webhook.providerRef },
+            });
+            await statusEvent(
+              tx,
+              current.id,
+              current.status,
+              current.status,
+              `Webhook ${webhook.type}`,
+              "SYSTEM",
+            );
+          }
+        } else {
+          await tx.subscriptionInvoice.upsert({
+            where: {
+              subscriptionId_kind_periodKey: {
+                subscriptionId: current.id,
+                kind: isTrialPayment ? "TRIAL" : "RENEWAL",
+                periodKey,
+              },
+            },
+            update: { status: "FAILED", providerRef: webhook.providerRef },
+            create: {
+              subscriptionId: current.id,
+              amountMinor: (
+                await tx.planPrice.findUniqueOrThrow({ where: { id: current.priceId } })
+              ).amountMinor,
+              currency: current.currency,
+              kind: isTrialPayment ? "TRIAL" : "RENEWAL",
+              status: "FAILED",
+              providerRef: webhook.providerRef,
+              periodKey,
+            },
+          });
+          await tx.subscription.update({
+            where: { id: current.id },
+            data: {
+              status: "PAST_DUE",
+              renewalStartedAt: null,
+              pastDueSince: current.pastDueSince ?? now,
+            },
+          });
+          await statusEvent(
+            tx,
+            current.id,
+            current.status,
+            "PAST_DUE",
+            `Webhook ${webhook.type}`,
+            "SYSTEM",
+          );
+        }
+      }
       await tx.subscriptionWebhookEvent.update({
         where: { id: recorded.id },
-        data: { subscriptionId: subscription.id },
+        data: { subscriptionId: current.id },
       });
+      return { duplicate: false, handled: true, ignored: false };
     });
-    return { duplicate: false, handled: true };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
       return { duplicate: true, handled: false };

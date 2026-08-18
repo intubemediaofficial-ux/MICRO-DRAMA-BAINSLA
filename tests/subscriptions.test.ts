@@ -30,6 +30,18 @@ let failedUserId = "";
 let seriesId = "";
 let lockedEpisodeId = "";
 let freeEpisodeId = "";
+const extraUserIds: string[] = [];
+
+async function createExtraUser(prefix: string) {
+  const user = await prisma.user.create({
+    data: {
+      email: `${prefix}-${suffix}@test.local`,
+      referralCode: `${prefix.toUpperCase()}${suffix.slice(0, 8)}`,
+    },
+  });
+  extraUserIds.push(user.id);
+  return user;
+}
 
 describe("subscription lifecycle and entitlements", () => {
   beforeAll(async () => {
@@ -112,6 +124,7 @@ describe("subscription lifecycle and entitlements", () => {
   });
 
   afterAll(async () => {
+    for (const userId of extraUserIds) await prisma.user.delete({ where: { id: userId } });
     await prisma.user.delete({ where: { id: trialUserId } });
     await prisma.user.delete({ where: { id: reminderUserId } });
     await prisma.user.delete({ where: { id: failedUserId } });
@@ -130,6 +143,57 @@ describe("subscription lifecycle and entitlements", () => {
     expect(
       await prisma.subscriptionInvoice.count({
         where: { subscriptionId: first.id, kind: "TRIAL" },
+      }),
+    ).toBe(1);
+  });
+
+  it("records a failed trial charge without leaving entitlement", async () => {
+    const user = await createExtraUser("trial-failure");
+    class FailingTrialProvider extends DevSubscriptionProvider {
+      override async createTrialCheckout(_input: CheckoutInput): Promise<never> {
+        throw new Error("TEST_TRIAL_FAILURE");
+      }
+    }
+    const providerSpy = vi
+      .spyOn(providerModule, "subscriptionProvider")
+      .mockReturnValue(new FailingTrialProvider());
+    await expect(startTrial(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR")).rejects.toThrow(
+      "TEST_TRIAL_FAILURE",
+    );
+    providerSpy.mockRestore();
+    const subscription = await prisma.subscription.findFirstOrThrow({ where: { userId: user.id } });
+    expect(subscription.status).toBe("EXPIRED");
+    expect(
+      await prisma.subscriptionInvoice.findFirstOrThrow({
+        where: { subscriptionId: subscription.id, kind: "TRIAL" },
+      }),
+    ).toMatchObject({ status: "FAILED", providerRef: null });
+    expect((await resolveEpisodeEntitlement(user.id, lockedEpisodeId)).entitled).toBe(false);
+  });
+
+  it("charges only the winner of a concurrent trial claim", async () => {
+    const user = await createExtraUser("trial-race");
+    let charges = 0;
+    class CountingProvider extends DevSubscriptionProvider {
+      override async createTrialCheckout(input: CheckoutInput) {
+        charges += 1;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return super.createTrialCheckout(input);
+      }
+    }
+    const providerSpy = vi
+      .spyOn(providerModule, "subscriptionProvider")
+      .mockReturnValue(new CountingProvider());
+    const results = await Promise.all([
+      startTrial(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR"),
+      startTrial(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR"),
+    ]);
+    providerSpy.mockRestore();
+    expect(charges).toBe(1);
+    expect(new Set(results.map((result) => result.id)).size).toBe(1);
+    expect(
+      await prisma.subscriptionInvoice.count({
+        where: { subscriptionId: results[0].id, kind: "TRIAL", status: "PAID" },
       }),
     ).toBe(1);
   });
@@ -208,6 +272,58 @@ describe("subscription lifecycle and entitlements", () => {
     ).toBe(1);
   });
 
+  it("retries past-due renewals within grace and expires after grace", async () => {
+    const retryUser = await createExtraUser("dunning-retry");
+    const retry = await startTrial(retryUser.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR");
+    await prisma.subscription.update({
+      where: { id: retry.id },
+      data: {
+        status: "PAST_DUE",
+        currentPeriodEnd: new Date(Date.now() - 1_000),
+        pastDueSince: new Date(Date.now() - 60 * 60 * 1_000),
+      },
+    });
+    const retried = await runSubscriptionCron();
+    expect(retried.converted).toBeGreaterThanOrEqual(1);
+    expect((await prisma.subscription.findUniqueOrThrow({ where: { id: retry.id } })).status).toBe(
+      "ACTIVE",
+    );
+
+    const expireUser = await createExtraUser("dunning-expire");
+    const expiring = await startTrial(expireUser.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR");
+    await prisma.subscription.update({
+      where: { id: expiring.id },
+      data: {
+        status: "PAST_DUE",
+        currentPeriodEnd: new Date(Date.now() + 86_400_000),
+        pastDueSince: new Date(Date.now() - 100 * 60 * 60 * 1_000),
+      },
+    });
+    await runSubscriptionCron();
+    expect(
+      (await prisma.subscription.findUniqueOrThrow({ where: { id: expiring.id } })).status,
+    ).toBe("EXPIRED");
+  });
+
+  it("anchors late renewals to the previous period boundary", async () => {
+    const user = await createExtraUser("boundary");
+    const subscription = await startTrial(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR");
+    const boundary = new Date("2025-01-15T00:00:00.000Z");
+    const now = new Date("2026-02-20T00:00:00.000Z");
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        status: "ACTIVE",
+        currentPeriodStart: new Date("2024-01-15T00:00:00.000Z"),
+        currentPeriodEnd: boundary,
+      },
+    });
+    await runSubscriptionCron(now);
+    const renewed = await prisma.subscription.findUniqueOrThrow({ where: { id: subscription.id } });
+    expect(renewed.currentPeriodStart).toEqual(boundary);
+    expect(renewed.currentPeriodEnd).toEqual(new Date("2027-01-15T00:00:00.000Z"));
+  });
+
   it("resolves free, coin, subscription, and expired access", async () => {
     const free = await resolveEpisodeEntitlement(trialUserId, freeEpisodeId);
     expect(free).toMatchObject({ entitled: true, reason: "FREE" });
@@ -276,5 +392,66 @@ describe("subscription lifecycle and entitlements", () => {
     expect(await processSubscriptionWebhook("DEV", event, event)).toMatchObject({
       duplicate: true,
     });
+  });
+
+  it("settles a webhook renewal once when cron already processed it", async () => {
+    const user = await createExtraUser("webhook-renewal");
+    const subscription = await startTrial(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR");
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: { status: "ACTIVE", currentPeriodEnd: new Date(Date.now() - 1_000) },
+    });
+    await runSubscriptionCron();
+    const renewed = await prisma.subscription.findUniqueOrThrow({ where: { id: subscription.id } });
+    const invoice = await prisma.subscriptionInvoice.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, kind: "RENEWAL", status: "PAID" },
+    });
+    const periodEnd = renewed.currentPeriodEnd;
+    const result = await processSubscriptionWebhook(
+      "DEV",
+      {
+        eventId: `renewal-event-${suffix}`,
+        type: "PAYMENT_SUCCEEDED",
+        providerRef: invoice.providerRef!,
+      },
+      { invoiceId: invoice.id },
+    );
+    expect(result).toMatchObject({ handled: false, ignored: true });
+    expect(
+      await prisma.subscriptionInvoice.count({
+        where: { subscriptionId: subscription.id, kind: "RENEWAL" },
+      }),
+    ).toBe(1);
+    expect(
+      (await prisma.subscription.findUniqueOrThrow({ where: { id: subscription.id } }))
+        .currentPeriodEnd,
+    ).toEqual(periodEnd);
+  });
+
+  it("ignores webhook transitions against expired subscriptions", async () => {
+    const user = await createExtraUser("webhook-expired");
+    const subscription = await startTrial(user.id, `TEST_VIP_${suffix.slice(0, 8)}`, "INR");
+    await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: { status: "EXPIRED", providerRef: `expired-provider-${suffix}` },
+    });
+    const result = await processSubscriptionWebhook(
+      "DEV",
+      {
+        eventId: `expired-event-${suffix}`,
+        type: "PAYMENT_SUCCEEDED",
+        providerRef: subscription.providerRef!,
+      },
+      {},
+    );
+    expect(result).toMatchObject({ handled: false, ignored: true });
+    expect(
+      (await prisma.subscription.findUniqueOrThrow({ where: { id: subscription.id } })).status,
+    ).toBe("EXPIRED");
+    expect(
+      await prisma.subscriptionEvent.findFirst({
+        where: { subscriptionId: subscription.id, reason: { contains: "Ignored illegal" } },
+      }),
+    ).not.toBeNull();
   });
 });

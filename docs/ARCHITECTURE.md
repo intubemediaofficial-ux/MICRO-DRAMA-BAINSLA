@@ -33,12 +33,17 @@ subscriptions remain compatible.
 
 `POST /api/cron/subscriptions` is protected by `CRON_SECRET`. It structurally deduplicates
 24-hour reminders through the unique subscription notification kind and renewals through the
-unique subscription invoice period key. Renewal failures become `PAST_DUE`; access remains
-available until the current period ends. A partial PostgreSQL unique index on `Subscription.userId`
-for `TRIALING`, `ACTIVE`, and `PAST_DUE` enforces one non-terminal subscription per user.
+unique subscription invoice period key. Trial claims are persisted before charging, and a failed
+charge is recorded as a failed invoice before the subscription becomes terminal. Renewal failures
+become `PAST_DUE`, reset the renewal claim, and retry within the configurable dunning grace window;
+they expire only after that window. Access remains available through the current period. Renewal
+periods are anchored to the prior period boundary so cron lag does not drift future renewals.
+Webhook and cron payment success share the invoice period key, so either order settles one invoice
+and extends one period. A partial PostgreSQL unique index on `Subscription.userId` for `TRIALING`,
+`ACTIVE`, and `PAST_DUE` enforces one non-terminal subscription per user.
 
 `/admin/subscriptions` computes trial conversion, country revenue, and annual revenue run rate
-with SQL aggregates and provides price, discount, user override, and reminder controls. The Dev
+with SQL aggregates and provides price, discount, user override, reminder, and dunning controls. The Dev
 provider is implemented and used without keys. The Stripe adapter and signed webhook path are
 code-complete but unverified without Stripe credentials. Apple and Google receipt verification
 remain integration stubs; their native cancel flows must link users to Apple/Google subscription

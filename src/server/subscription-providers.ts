@@ -7,6 +7,7 @@ export type CheckoutInput = {
   amountMinor: number;
   currency: string;
   trial: boolean;
+  periodKey?: string;
 };
 export type ProviderCharge = { providerRef: string };
 export type ProviderWebhook = {
@@ -26,10 +27,12 @@ export interface SubscriptionProvider {
 export class DevSubscriptionProvider implements SubscriptionProvider {
   readonly name = "DEV" as const;
   async createTrialCheckout(input: CheckoutInput) {
-    return { providerRef: `dev_trial_${input.subscriptionId}` };
+    return { providerRef: `dev_trial_${input.periodKey ?? input.subscriptionId}` };
   }
   async chargeRenewal(input: CheckoutInput) {
-    return { providerRef: `dev_renewal_${input.subscriptionId}_${Date.now()}` };
+    return {
+      providerRef: `dev_renewal_${input.subscriptionId}_${input.periodKey ?? Date.now()}`,
+    };
   }
   async cancel(_providerRef: string) {}
   verifyWebhook(payload: string) {
@@ -60,6 +63,9 @@ export class StripeSubscriptionProvider implements SubscriptionProvider {
       headers: {
         Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
         "content-type": "application/x-www-form-urlencoded",
+        ...(body.get("metadata[period_key]")
+          ? { "Idempotency-Key": body.get("metadata[period_key]")! }
+          : {}),
       },
       body,
     });
@@ -75,6 +81,7 @@ export class StripeSubscriptionProvider implements SubscriptionProvider {
         currency: input.currency.toLowerCase(),
         "metadata[user_id]": input.userId,
         "metadata[subscription_id]": input.subscriptionId,
+        ...(input.periodKey ? { "metadata[period_key]": input.periodKey } : {}),
       }),
     )) as { id: string };
     return { providerRef: result.id };

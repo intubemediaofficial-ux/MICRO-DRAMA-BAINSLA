@@ -40,10 +40,10 @@ calculates prices with live FX.
 | `SESSION_SECRET`        | JWT cookie signing secret                          |
 | `STREAM_TOKEN_SECRET`   | Playback and ad token signing secret               |
 | `OTP_DEV_CODE`          | Fixed OTP used in development                      |
-| `MEDIA_DIR`             | Local media storage directory                      |
-| `NEXT_PUBLIC_APP_URL`   | Public app URL                                     |
 | `STRIPE_SECRET_KEY`     | Optional Stripe secret; enables the Stripe adapter |
 | `STRIPE_WEBHOOK_SECRET` | Optional Stripe webhook signature secret           |
-| `CRON_SECRET`           | Shared secret for the subscription cron endpoint   |
+| `CRON_SECRET`           | Shared secret for subscription lifecycle cron      |
+| `MEDIA_DIR`             | Local media storage directory                      |
+| `NEXT_PUBLIC_APP_URL`   | Public app URL                                     |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
