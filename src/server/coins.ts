@@ -12,6 +12,7 @@ export const CHECKIN_REWARDS = [5, 8, 12, 16, 22, 30, 50];
 export async function adjustCoins(userId: string, delta: number, reason: string, actorId: string) {
   if (!Number.isInteger(delta) || delta === 0) throw new Error("INVALID_COIN_ADJUSTMENT");
   if (!reason.trim()) throw new Error("ADJUSTMENT_REASON_REQUIRED");
+  if (reason.length > 240) throw new Error("ADJUSTMENT_REASON_TOO_LONG");
   return prisma.$transaction(async (tx) => {
     const updated = await tx.user.updateMany({
       where: { id: userId, ...(delta < 0 ? { coinBalance: { gte: -delta } } : {}) },
@@ -29,7 +30,8 @@ export async function adjustCoins(userId: string, delta: number, reason: string,
         type: "ADMIN_ADJUST",
         balanceAfter: user.coinBalance,
         refType: "admin",
-        refId: `${actorId}:${reason.trim()}`,
+        refId: actorId,
+        reason: reason.trim(),
       },
     });
   });

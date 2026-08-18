@@ -11,7 +11,7 @@ const adjustmentInput = z.object({
     .number()
     .int()
     .refine((value) => value !== 0),
-  reason: z.string().min(3).max(240),
+  reason: z.string().trim().min(3).max(240),
 });
 
 export async function GET(request: Request) {

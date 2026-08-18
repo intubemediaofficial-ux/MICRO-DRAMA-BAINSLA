@@ -107,8 +107,15 @@ describe("admin full-access controls", () => {
       where: { userId },
       _sum: { delta: true },
     });
+    const adjustment = await prisma.coinTransaction.findFirstOrThrow({
+      where: { userId, type: "ADMIN_ADJUST" },
+      orderBy: { createdAt: "desc" },
+    });
     expect(user.coinBalance).toBe(25);
     expect(sum._sum.delta).toBe(user.coinBalance);
+    expect(adjustment.reason).toBe("Customer support grant");
+    expect(adjustment.refType).toBe("admin");
+    expect(adjustment.refId).toBe(adminId);
   });
 
   it("updates exactly the selected episodes in bulk", async () => {

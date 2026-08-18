@@ -19,6 +19,7 @@ type UserDetail = Omit<User, "subscriptions"> & {
     type: string;
     refType: string | null;
     refId: string | null;
+    reason: string | null;
     createdAt: string | Date;
   }[];
   unlocks: { id: string; episode: { number: number; title: string; series: { title: string } } }[];
@@ -209,6 +210,7 @@ export default function AdminUsersClient({ initialUsers }: { initialUsers: User[
               <li key={transaction.id}>
                 {transaction.delta > 0 ? "+" : ""}
                 {transaction.delta} · {transaction.type} · {transaction.refId ?? "—"} ·{" "}
+                {transaction.reason ?? "No reason"} ·{" "}
                 {new Date(transaction.createdAt).toLocaleDateString()}
               </li>
             ))}
