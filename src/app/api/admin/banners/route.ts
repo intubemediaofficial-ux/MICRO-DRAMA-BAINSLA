@@ -13,6 +13,19 @@ const input = z.object({
   endsAt: z.coerce.date().nullable().optional(),
 });
 
+export async function GET() {
+  try {
+    await adminSession();
+    return NextResponse.json(await prisma.banner.findMany({ orderBy: { sortOrder: "asc" } }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Banner lookup failed";
+    return NextResponse.json(
+      { error: { message } },
+      { status: message === "FORBIDDEN" ? 403 : 401 },
+    );
+  }
+}
+
 export async function POST(request: Request) {
   try {
     await adminSession();

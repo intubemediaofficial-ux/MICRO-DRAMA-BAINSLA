@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button, Confirm, useToast } from "@/components/admin/admin-ui";
 
 type Data = {
   bundles: {
@@ -38,33 +39,71 @@ type Data = {
     isActive: boolean;
   }[];
 };
+const listPaths = ["bundles", "banners", "coupons", "plans", "discounts"] as const;
+
 export default function AdminCommerceClient({ initial }: { initial: Data }) {
   const [data, setData] = useState(initial);
-  const [message, setMessage] = useState("");
-  async function request(url: string, method: string, body?: unknown) {
-    const response = await fetch(url, {
-      method,
-      headers: { "content-type": "application/json" },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
-    setMessage(
-      response.ok ? "Saved." : ((await response.json()).error?.message ?? "Request failed"),
+  const [pending, setPending] = useState<string | null>(null);
+  const toast = useToast();
+
+  async function refreshLists() {
+    const results = await Promise.allSettled(
+      listPaths.map(async (path) => {
+        const response = await fetch(`/api/admin/${path}`);
+        const body = await response.json().catch(() => null);
+        if (!response.ok) {
+          const message =
+            (body as { error?: { message?: string } } | null)?.error?.message ??
+            `HTTP ${response.status}`;
+          throw new Error(message);
+        }
+        return { path, body };
+      }),
     );
-    if (response.ok) {
-      const [bundles, banners, coupons, plans, discounts] = await Promise.all(
-        ["bundles", "banners", "coupons", "plans", "discounts"].map((path) =>
-          fetch(`/api/admin/${path}`).then((result) => result.json()),
-        ),
-      );
-      setData({ bundles, banners, coupons, plans, discounts });
+    const next = { ...data };
+    const failures: string[] = [];
+    results.forEach((result, index) => {
+      const path = listPaths[index];
+      if (result.status === "fulfilled") {
+        const value = result.value.body;
+        if (path === "bundles") next.bundles = value;
+        if (path === "banners") next.banners = value;
+        if (path === "coupons") next.coupons = value;
+        if (path === "plans") next.plans = value;
+        if (path === "discounts") next.discounts = value;
+      } else {
+        failures.push(`${path}: ${result.reason instanceof Error ? result.reason.message : "Request failed"}`);
+      }
+    });
+    setData(next);
+    return failures;
+  }
+
+  async function request(url: string, method: string, body: unknown, success: string, key: string) {
+    setPending(key);
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: { "content-type": "application/json" },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      });
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        toast(error?.error?.message ?? "Request failed.", "error");
+        return;
+      }
+      const failures = await refreshLists();
+      toast(success);
+      failures.forEach((failure) => toast(`Could not refresh ${failure}`, "error"));
+    } finally {
+      setPending(null);
     }
   }
   return (
     <div className="mt-6 space-y-6">
-      <p className="text-sm text-emerald-400">{message}</p>
       <section className="rounded-2xl bg-zinc-900 p-5">
         <h2 className="text-xl font-bold">Coin bundles</h2>
-        <button
+        <Button
           onClick={() =>
             void request("/api/admin/bundles", "POST", {
               coins: 100,
@@ -72,12 +111,13 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
               priceMinor: 4900,
               currency: "INR",
               sortOrder: data.bundles.length,
-            })
+            }, "100-coin bundle created.", "bundle-create")
           }
+          pending={pending === "bundle-create"}
           className="mt-3 rounded bg-rose-500 px-3 py-2"
         >
           Add bundle
-        </button>
+        </Button>
         {data.bundles.map((bundle) => (
           <form
             key={bundle.id}
@@ -95,7 +135,7 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                   isActive: form.get("isActive") === "on",
                   sortOrder: Number(form.get("sortOrder")),
                 },
-              });
+              }, `Bundle updated — ${Number(form.get("coins"))} coins.`, `bundle-${bundle.id}`);
             }}
           >
             <input
@@ -127,34 +167,27 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
               type="number"
               className="rounded bg-zinc-800 p-2"
             />
-            <button className="rounded bg-zinc-800 p-2">Save</button>
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm("Delete this bundle? Purchases block deletion."))
-                  void request("/api/admin/bundles", "DELETE", { id: bundle.id });
-              }}
-              className="rounded bg-zinc-950 p-2 text-rose-300"
-            >
-              Delete
-            </button>
+            <Button type="submit" variant="secondary" pending={pending === `bundle-${bundle.id}`}>Save</Button>
+            <Confirm pending={pending === `bundle-delete-${bundle.id}`} message="Delete this bundle? Purchases block deletion." onConfirm={() => void request("/api/admin/bundles", "DELETE", { id: bundle.id }, "Coin bundle deleted.", `bundle-delete-${bundle.id}`)}>Delete</Confirm>
           </form>
         ))}
       </section>
       <section className="rounded-2xl bg-zinc-900 p-5">
         <h2 className="text-xl font-bold">Coupons</h2>
-        <button
-          onClick={() =>
+        <Button
+          onClick={() => {
+            const code = `ADMIN${Date.now()}`;
             void request("/api/admin/coupons", "POST", {
-              code: `ADMIN${Date.now()}`,
+              code,
               coins: 50,
               maxRedemptions: 100,
-            })
-          }
+            }, `Coupon ${code} created — 50 coins.`, "coupon-create");
+          }}
+          pending={pending === "coupon-create"}
           className="mt-3 rounded bg-rose-500 px-3 py-2"
         >
           Add coupon
-        </button>
+        </Button>
         {data.coupons.map((coupon) => (
           <form
             key={coupon.id}
@@ -170,7 +203,7 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                   maxRedemptions: Number(form.get("maxRedemptions")),
                   isActive: form.get("isActive") === "on",
                 },
-              });
+              }, `Coupon ${String(form.get("code"))} updated — ${Number(form.get("coins"))} coins.`, `coupon-${coupon.id}`);
             }}
           >
             <input name="code" defaultValue={coupon.code} className="rounded bg-zinc-800 p-2" />
@@ -189,21 +222,12 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
             <label className="p-2">
               <input name="isActive" type="checkbox" defaultChecked={coupon.isActive} /> Active
             </label>
-            <button className="rounded bg-zinc-800 p-2">Save</button>
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm("Delete this coupon? Redemptions block deletion."))
-                  void request("/api/admin/coupons", "DELETE", { id: coupon.id });
-              }}
-              className="rounded bg-zinc-950 p-2 text-rose-300"
-            >
-              Delete
-            </button>
+            <Button type="submit" variant="secondary" pending={pending === `coupon-${coupon.id}`}>Save</Button>
+            <Confirm pending={pending === `coupon-delete-${coupon.id}`} message="Delete this coupon? Redemptions block deletion." onConfirm={() => void request("/api/admin/coupons", "DELETE", { id: coupon.id }, "Coupon deleted.", `coupon-delete-${coupon.id}`)}>Delete</Confirm>
           </form>
         ))}
       </section>
-      <section className="rounded-2xl bg-zinc-900 p-5">
+      <section id="marketing" className="rounded-2xl bg-zinc-900 p-5">
         <h2 className="text-xl font-bold">Banners</h2>
         {data.banners.map((banner) => (
           <form
@@ -220,7 +244,7 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                   sortOrder: Number(form.get("sortOrder")),
                   isActive: form.get("isActive") === "on",
                 },
-              });
+              }, `Banner ${String(form.get("title"))} updated.`, `banner-${banner.id}`);
             }}
           >
             <input name="title" defaultValue={banner.title} className="rounded bg-zinc-800 p-2" />
@@ -238,35 +262,27 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
             <label className="p-2">
               <input name="isActive" type="checkbox" defaultChecked={banner.isActive} /> Active
             </label>
-            <button className="rounded bg-zinc-800 p-2">Save</button>
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm("Delete this banner?"))
-                  void request("/api/admin/banners", "DELETE", { id: banner.id });
-              }}
-              className="rounded bg-zinc-950 p-2 text-rose-300"
-            >
-              Delete
-            </button>
+            <Button type="submit" variant="secondary" pending={pending === `banner-${banner.id}`}>Save</Button>
+            <Confirm pending={pending === `banner-delete-${banner.id}`} message="Delete this banner?" onConfirm={() => void request("/api/admin/banners", "DELETE", { id: banner.id }, "Banner deleted.", `banner-delete-${banner.id}`)}>Delete</Confirm>
           </form>
         ))}
-        <button
+        <Button
           onClick={() =>
             void request("/api/admin/banners", "POST", {
               title: "New banner",
-              imageUrl: "/media/poster-0.jpg",
+              imageUrl: "/demo/banners/banner-tonight.jpg",
               sortOrder: data.banners.length,
-            })
+            }, "New banner created — edit its title and image below.", "banner-create")
           }
+          pending={pending === "banner-create"}
           className="mt-3 rounded bg-rose-500 px-3 py-2"
         >
           Add banner
-        </button>
+        </Button>
       </section>
       <section className="rounded-2xl bg-zinc-900 p-5">
         <h2 className="text-xl font-bold">Plans</h2>
-        <button
+        <Button
           onClick={() =>
             void request("/api/admin/plans", "POST", {
               code: `VIP_${Date.now()}`,
@@ -280,12 +296,13 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                   countryCodes: ["IN"],
                 },
               ],
-            })
+            }, "VIP plan created — 3-day trial.", "plan-create")
           }
+          pending={pending === "plan-create"}
           className="mt-3 rounded bg-rose-500 px-3 py-2"
         >
           Add plan
-        </button>
+        </Button>
         {data.plans.map((plan) => (
           <div key={plan.id}>
             <form
@@ -300,7 +317,7 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                     trialDays: Number(form.get("trialDays")),
                     isActive: form.get("isActive") === "on",
                   },
-                });
+                }, `Plan ${String(form.get("name"))} updated.`, `plan-${plan.id}`);
               }}
             >
               <input name="name" defaultValue={plan.name} className="rounded bg-zinc-700 p-2" />
@@ -315,17 +332,8 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
               <label className="p-2">
                 <input name="isActive" type="checkbox" defaultChecked={plan.isActive} /> Active
               </label>
-              <button className="rounded bg-zinc-700 p-2">Save plan</button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.confirm("Delete this plan? Existing subscriptions block deletion."))
-                    void request("/api/admin/plans", "DELETE", { id: plan.id });
-                }}
-                className="rounded bg-zinc-950 px-3 py-2 text-rose-300"
-              >
-                Delete
-              </button>
+              <Button type="submit" variant="secondary" pending={pending === `plan-${plan.id}`}>Save plan</Button>
+              <Confirm pending={pending === `plan-delete-${plan.id}`} message="Delete this plan? Existing subscriptions block deletion." onConfirm={() => void request("/api/admin/plans", "DELETE", { id: plan.id }, "Plan deleted.", `plan-delete-${plan.id}`)}>Delete</Confirm>
             </form>
             {plan.prices.map((price) => (
               <form
@@ -334,7 +342,7 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                 onSubmit={(event) => {
                   event.preventDefault();
                   const form = new FormData(event.currentTarget);
-                  void request("/api/admin/plan-prices", "PATCH", {
+                    void request("/api/admin/plan-prices", "PATCH", {
                     id: price.id,
                     data: {
                       currency: String(form.get("currency")),
@@ -346,7 +354,7 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                         .filter(Boolean),
                       isActive: form.get("isActive") === "on",
                     },
-                  });
+                    }, `${price.currency} localized price updated.`, `price-${price.id}`);
                 }}
               >
                 <input
@@ -378,23 +386,12 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                   <input name="isActive" type="checkbox" defaultChecked={price.isActive} /> Active
                 </label>
                 <span className="flex gap-2">
-                  <button className="rounded bg-zinc-700 p-2">Save price</button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (
-                        window.confirm("Delete this localized price? Subscriptions block deletion.")
-                      )
-                        void request("/api/admin/plan-prices", "DELETE", { id: price.id });
-                    }}
-                    className="rounded bg-zinc-950 p-2 text-rose-300"
-                  >
-                    Delete
-                  </button>
+                  <Button type="submit" variant="secondary" pending={pending === `price-${price.id}`}>Save price</Button>
+                  <Confirm pending={pending === `price-delete-${price.id}`} message="Delete this localized price? Subscriptions block deletion." onConfirm={() => void request("/api/admin/plan-prices", "DELETE", { id: price.id }, `${price.currency} localized price deleted.`, `price-delete-${price.id}`)}>Delete</Confirm>
                 </span>
               </form>
             ))}
-            <button
+            <Button
               onClick={() =>
                 void request("/api/admin/plan-prices", "POST", {
                   planId: plan.id,
@@ -402,31 +399,34 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                   amountMinor: 9999,
                   trialAmountMinor: 99,
                   countryCodes: ["US"],
-                })
+                }, "USD localized price added.", `price-create-${plan.id}`)
               }
+              pending={pending === `price-create-${plan.id}`}
               className="mt-2 rounded bg-zinc-800 px-3 py-2"
             >
               Add USD price
-            </button>
+            </Button>
           </div>
         ))}
       </section>
       <section className="rounded-2xl bg-zinc-900 p-5">
         <h2 className="text-xl font-bold">Discount codes</h2>
-        <button
-          onClick={() =>
+        <Button
+          onClick={() => {
+            const code = `SALE${Date.now()}`;
             void request("/api/admin/discounts", "POST", {
-              code: `SALE${Date.now()}`,
+              code,
               type: "PERCENT",
               value: 20,
               maxRedemptions: 100,
               planIds: data.plans.map((plan) => plan.id),
-            })
-          }
+            }, `Discount ${code} created — 20%.`, "discount-create");
+          }}
+          pending={pending === "discount-create"}
           className="mt-3 rounded bg-rose-500 px-3 py-2"
         >
           Add 20% discount
-        </button>
+        </Button>
         {data.discounts.map((discount) => (
           <form
             key={discount.id}
@@ -443,7 +443,7 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                   maxRedemptions: Number(form.get("maxRedemptions")),
                   isActive: form.get("isActive") === "on",
                 },
-              });
+              }, `Discount ${String(form.get("code"))} updated.`, `discount-${discount.id}`);
             }}
           >
             <input name="code" defaultValue={discount.code} className="rounded bg-zinc-800 p-2" />
@@ -463,17 +463,8 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
               type="number"
               className="rounded bg-zinc-800 p-2"
             />
-            <button className="rounded bg-zinc-800 p-2">Save</button>
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm("Delete this discount? Redemptions block deletion."))
-                  void request("/api/admin/discounts", "DELETE", { id: discount.id });
-              }}
-              className="rounded bg-zinc-950 p-2 text-rose-300"
-            >
-              Delete
-            </button>
+            <Button type="submit" variant="secondary" pending={pending === `discount-${discount.id}`}>Save</Button>
+            <Confirm pending={pending === `discount-delete-${discount.id}`} message="Delete this discount? Redemptions block deletion." onConfirm={() => void request("/api/admin/discounts", "DELETE", { id: discount.id }, "Discount deleted.", `discount-delete-${discount.id}`)}>Delete</Confirm>
           </form>
         ))}
       </section>

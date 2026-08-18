@@ -2,14 +2,28 @@ import Image from "next/image";
 import Link from "next/link";
 import { getSession } from "@/server/auth";
 import { getDiscovery } from "@/server/discovery";
+import { getHomeCuration } from "@/server/home-curation";
 
 export default async function HomePage() {
   const session = await getSession();
-  const discovery = await getDiscovery(session?.userId);
+  const [discovery, curated] = await Promise.all([
+    getDiscovery(session?.userId),
+    getHomeCuration(),
+  ]);
+  const curatedRail = (railKey: string) =>
+    curated
+      .filter((item) => item.railKey === railKey && item.series)
+      .map((item) => item.series)
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  const hero = ["hero-1", "hero-2", "hero-3"].flatMap(curatedRail);
+  const heroItems = hero.length ? hero : discovery.trending;
+  const forYou = curatedRail("for-you");
+  const trending = curatedRail("trending");
+  const newReleases = curatedRail("new-releases");
   const groups = [
-    { title: "For You", items: discovery.forYou },
-    { title: "Trending Today", items: discovery.trending },
-    { title: "New Releases", items: discovery.newReleases },
+    { title: "For You", items: forYou.length ? forYou : discovery.forYou },
+    { title: "Trending Today", items: trending.length ? trending : discovery.trending },
+    { title: "New Releases", items: newReleases.length ? newReleases : discovery.newReleases },
     ...discovery.genreRows.map((row) => ({ title: `Genre: ${row.title}`, items: row.items })),
     ...discovery.tropeRows.map((row) => ({ title: `Trope: ${row.title}`, items: row.items })),
   ];
@@ -28,7 +42,7 @@ export default async function HomePage() {
         </Link>
       </header>
       <section className="feed-snap hide-scrollbar flex h-[70vh] snap-y overflow-y-auto md:h-[620px]">
-        {discovery.trending.map((item) => (
+        {heroItems.map((item) => (
           <article
             key={item.id}
             className="relative min-w-full snap-start overflow-hidden rounded-3xl bg-zinc-900 md:min-w-[340px]"

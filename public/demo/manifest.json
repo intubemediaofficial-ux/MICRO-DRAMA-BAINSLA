@@ -1,0 +1,218 @@
+[
+  {
+    "slug": "second-chance-cafe",
+    "title": "Second Chance Cafe",
+    "genre": "Sweet Romance",
+    "posterUrl": "/demo/posters/second-chance-cafe.jpg",
+    "thumbnailUrl": "/demo/thumbs/second-chance-cafe.jpg",
+    "cast": [
+      {
+        "name": "Aanya Kapoor",
+        "role": "Meera",
+        "photoUrl": "/demo/cast/second-chance-cafe-1.jpg"
+      },
+      {
+        "name": "Rohan Malhotra",
+        "role": "Kabir",
+        "photoUrl": "/demo/cast/second-chance-cafe-2.jpg"
+      },
+      {
+        "name": "Sneha Iyer",
+        "role": "Tara",
+        "photoUrl": "/demo/cast/second-chance-cafe-3.jpg"
+      }
+    ]
+  },
+  {
+    "slug": "room-404",
+    "title": "Room 404",
+    "genre": "Revenge Thriller",
+    "posterUrl": "/demo/posters/room-404.jpg",
+    "thumbnailUrl": "/demo/thumbs/room-404.jpg",
+    "cast": [
+      {
+        "name": "Ishaan Verma",
+        "role": "Detective Rane",
+        "photoUrl": "/demo/cast/room-404-1.jpg"
+      },
+      {
+        "name": "Nikita Rao",
+        "role": "Alisha",
+        "photoUrl": "/demo/cast/room-404-2.jpg"
+      },
+      {
+        "name": "Arjun Sethi",
+        "role": "Mr. Khanna",
+        "photoUrl": "/demo/cast/room-404-3.jpg"
+      }
+    ]
+  },
+  {
+    "slug": "crimson-promises",
+    "title": "Crimson Promises",
+    "genre": "Billionaire Boss",
+    "posterUrl": "/demo/posters/crimson-promises.jpg",
+    "thumbnailUrl": "/demo/thumbs/crimson-promises.jpg",
+    "cast": [
+      {
+        "name": "Vivaan Chauhan",
+        "role": "Aditya Rathore",
+        "photoUrl": "/demo/cast/crimson-promises-1.jpg"
+      },
+      {
+        "name": "Myra Sen",
+        "role": "Naina",
+        "photoUrl": "/demo/cast/crimson-promises-2.jpg"
+      },
+      {
+        "name": "Kabir Joshi",
+        "role": "Dev",
+        "photoUrl": "/demo/cast/crimson-promises-3.jpg"
+      }
+    ]
+  },
+  {
+    "slug": "contract-marriage",
+    "title": "Contract Marriage",
+    "genre": "Arranged Marriage",
+    "posterUrl": "/demo/posters/contract-marriage.jpg",
+    "thumbnailUrl": "/demo/thumbs/contract-marriage.jpg",
+    "cast": [
+      {
+        "name": "Diya Nair",
+        "role": "Rhea",
+        "photoUrl": "/demo/cast/contract-marriage-1.jpg"
+      },
+      {
+        "name": "Aryan Bhatt",
+        "role": "Veer",
+        "photoUrl": "/demo/cast/contract-marriage-2.jpg"
+      },
+      {
+        "name": "Leela Menon",
+        "role": "Dadi",
+        "photoUrl": "/demo/cast/contract-marriage-3.jpg"
+      }
+    ]
+  },
+  {
+    "slug": "midnight-metro",
+    "title": "Midnight Metro",
+    "genre": "Urban Mystery",
+    "posterUrl": "/demo/posters/midnight-metro.jpg",
+    "thumbnailUrl": "/demo/thumbs/midnight-metro.jpg",
+    "cast": [
+      {
+        "name": "Zoya Khan",
+        "role": "Inspector Zoya",
+        "photoUrl": "/demo/cast/midnight-metro-1.jpg"
+      },
+      {
+        "name": "Samar Dutt",
+        "role": "Nikhil",
+        "photoUrl": "/demo/cast/midnight-metro-2.jpg"
+      },
+      {
+        "name": "Reva Pillai",
+        "role": "Anchor Reva",
+        "photoUrl": "/demo/cast/midnight-metro-3.jpg"
+      }
+    ]
+  },
+  {
+    "slug": "rain-never-lies",
+    "title": "Rain Never Lies",
+    "genre": "Slow-burn Romance",
+    "posterUrl": "/demo/posters/rain-never-lies.jpg",
+    "thumbnailUrl": "/demo/thumbs/rain-never-lies.jpg",
+    "cast": [
+      {
+        "name": "Aarohi Desai",
+        "role": "Saira",
+        "photoUrl": "/demo/cast/rain-never-lies-1.jpg"
+      },
+      {
+        "name": "Neel Kulkarni",
+        "role": "Ranveer",
+        "photoUrl": "/demo/cast/rain-never-lies-2.jpg"
+      },
+      {
+        "name": "Tanya Bose",
+        "role": "Ira",
+        "photoUrl": "/demo/cast/rain-never-lies-3.jpg"
+      }
+    ]
+  },
+  {
+    "slug": "the-last-monsoon",
+    "title": "The Last Monsoon",
+    "genre": "Family Drama",
+    "posterUrl": "/demo/posters/the-last-monsoon.jpg",
+    "thumbnailUrl": "/demo/thumbs/the-last-monsoon.jpg",
+    "cast": [
+      {
+        "name": "Gauri Shinde",
+        "role": "Amma",
+        "photoUrl": "/demo/cast/the-last-monsoon-1.jpg"
+      },
+      {
+        "name": "Rudra Pratap",
+        "role": "Shekhar",
+        "photoUrl": "/demo/cast/the-last-monsoon-2.jpg"
+      },
+      {
+        "name": "Pia Grewal",
+        "role": "Nandini",
+        "photoUrl": "/demo/cast/the-last-monsoon-3.jpg"
+      }
+    ]
+  },
+  {
+    "slug": "heiress-in-hiding",
+    "title": "Heiress in Hiding",
+    "genre": "Secret Identity",
+    "posterUrl": "/demo/posters/heiress-in-hiding.jpg",
+    "thumbnailUrl": "/demo/thumbs/heiress-in-hiding.jpg",
+    "cast": [
+      {
+        "name": "Ira Ahluwalia",
+        "role": "Simran",
+        "photoUrl": "/demo/cast/heiress-in-hiding-1.jpg"
+      },
+      {
+        "name": "Yash Deora",
+        "role": "Karan",
+        "photoUrl": "/demo/cast/heiress-in-hiding-2.jpg"
+      },
+      {
+        "name": "Bela Fernandes",
+        "role": "Aunt Bela",
+        "photoUrl": "/demo/cast/heiress-in-hiding-3.jpg"
+      }
+    ]
+  },
+  {
+    "slug": "vow-of-ashes",
+    "title": "Vow of Ashes",
+    "genre": "Fantasy Revenge",
+    "posterUrl": "/demo/posters/vow-of-ashes.jpg",
+    "thumbnailUrl": "/demo/thumbs/vow-of-ashes.jpg",
+    "cast": [
+      {
+        "name": "Anvi Rathi",
+        "role": "Devika",
+        "photoUrl": "/demo/cast/vow-of-ashes-1.jpg"
+      },
+      {
+        "name": "Om Shergill",
+        "role": "Raghav",
+        "photoUrl": "/demo/cast/vow-of-ashes-2.jpg"
+      },
+      {
+        "name": "Mira Lal",
+        "role": "The Oracle",
+        "photoUrl": "/demo/cast/vow-of-ashes-3.jpg"
+      }
+    ]
+  }
+]

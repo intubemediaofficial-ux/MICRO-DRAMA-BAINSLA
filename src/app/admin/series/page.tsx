@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
-import AdminCmsClient from "./cms-client";
+import SeriesListClient from "./series-list-client";
 
 export default async function AdminSeriesPage() {
   const session = await getSession();
@@ -15,36 +15,26 @@ export default async function AdminSeriesPage() {
       </div>
     );
   }
-  const [series, banners] = await Promise.all([
-    prisma.series.findMany({
-      include: {
-        episodes: {
-          orderBy: { number: "asc" },
-          select: {
-            id: true,
-            number: true,
-            title: true,
-            durationSec: true,
-            hlsPath: true,
-            thumbnailUrl: true,
-            publishedAt: true,
-            isFree: true,
-            coinPrice: true,
-            subtitles: { select: { lang: true } },
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.banner.findMany({ orderBy: { sortOrder: "asc" } }),
-  ]);
+  const series = await prisma.series.findMany({
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      posterUrl: true,
+      status: true,
+      isPublished: true,
+      freeEpisodeCount: true,
+      defaultCoinPrice: true,
+      episodes: { select: { isFree: true } },
+    },
+  });
   return (
-    <div className="p-5 pb-24">
-      <Link href="/admin" className="text-zinc-400">
-        ← CMS
-      </Link>
-      <h1 className="mt-7 text-3xl font-black">Catalogue management</h1>
-      <AdminCmsClient series={series} banners={banners} />
+    <div>
+      <p className="text-xs font-bold uppercase tracking-[0.2em] text-rose-400">Content</p>
+      <h1 className="mt-2 text-3xl font-black">Series library</h1>
+      <p className="mt-2 text-sm text-zinc-400">See publishing state, pricing and free episodes at a glance.</p>
+      <SeriesListClient initial={series} />
     </div>
   );
 }

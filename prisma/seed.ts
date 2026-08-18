@@ -1,5 +1,32 @@
 import { PrismaClient, Role, LedgerType } from "@prisma/client";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 const prisma = new PrismaClient();
+const catalogue = JSON.parse(
+  readFileSync(path.join(process.cwd(), "prisma/demo-catalogue.json"), "utf8"),
+) as {
+  slug: string;
+  title: string;
+  synopsis: string;
+  genres: string[];
+  tropeTags: string[];
+  status: "ONGOING" | "COMPLETED";
+  freeEpisodeCount: number;
+  defaultCoinPrice: number;
+  episodeCount: number;
+  homeSections: string[];
+  cast: { name: string; role: string }[];
+}[];
+const manifest = JSON.parse(
+  readFileSync(path.join(process.cwd(), "public/demo/manifest.json"), "utf8"),
+) as {
+  slug: string;
+  posterUrl: string;
+  thumbnailUrl: string;
+  cast: { name: string; role: string; photoUrl: string }[];
+}[];
+const manifestBySlug = new Map(manifest.map((item) => [item.slug, item]));
 
 async function main() {
   await prisma.notificationLog.deleteMany();
@@ -26,6 +53,7 @@ async function main() {
   await prisma.episodeUnlock.deleteMany();
   await prisma.subtitle.deleteMany();
   await prisma.episode.deleteMany();
+  await prisma.homeRailItem.deleteMany();
   await prisma.series.deleteMany();
   await prisma.user.deleteMany();
   const admin = await prisma.user.create({
@@ -72,42 +100,58 @@ async function main() {
       prisma.coinBundle.create({ data: { coins, bonusCoins, priceMinor, sortOrder: index } }),
     ),
   );
-  const palette = [
-    ["Crimson Promises", "romance", "cliffhanger"],
-    ["Room 404", "thriller", "mystery"],
-    ["Second Chance Café", "comedy", "found-family"],
-  ];
-  for (let index = 0; index < palette.length; index += 1) {
-    const [title, genre, trope] = palette[index];
-    const slug = title.toLowerCase().replaceAll(" ", "-");
+  const homePositions = new Map<string, number>();
+  for (let index = 0; index < catalogue.length; index += 1) {
+    const item = catalogue[index];
+    const artwork = manifestBySlug.get(item.slug);
+    if (!artwork) throw new Error(`Missing demo artwork for ${item.slug}`);
     const series = await prisma.series.create({
       data: {
-        slug,
-        title,
-        synopsis: `Every secret has a price in ${title}.`,
-        posterUrl: `/media/poster-${index}.jpg`,
+        slug: item.slug,
+        title: item.title,
+        synopsis: item.synopsis,
+        posterUrl: artwork.posterUrl,
         teaserUrl: "/media/sample.mp4",
-        genres: [genre],
-        tropeTags: [trope],
-        castNames: ["Aarav Bainsla", "Mira Sen"],
-        freeEpisodeCount: 7,
-        defaultCoinPrice: 12,
+        genres: item.genres,
+        tropeTags: item.tropeTags,
+        castNames: item.cast.map((member) => member.name),
+        freeEpisodeCount: item.freeEpisodeCount,
+        defaultCoinPrice: item.defaultCoinPrice,
         isPublished: true,
-        status: index === 2 ? "COMPLETED" : "ONGOING",
+        status: item.status,
       },
     });
-    for (let number = 1; number <= 60; number += 1) {
+    await prisma.castMember.createMany({
+      data: item.cast.map((member, castIndex) => ({
+        seriesId: series.id,
+        name: member.name,
+        role: member.role,
+        photo: artwork.cast[castIndex]?.photoUrl ?? null,
+        sortOrder: castIndex,
+      })),
+    });
+    for (const railKey of item.homeSections) {
+      const position = homePositions.get(railKey) ?? 0;
+      await prisma.homeRailItem.create({
+        data: { railKey, position, seriesId: series.id },
+      });
+      homePositions.set(railKey, position + 1);
+    }
+    for (let number = 1; number <= item.episodeCount; number += 1) {
       const episode = await prisma.episode.create({
         data: {
           seriesId: series.id,
           number,
-          title: number === 60 ? "The Finale" : `The secret in scene ${number}`,
-          durationSec: 90 + number,
+          title:
+            number === item.episodeCount
+              ? "The Finale"
+              : `${item.title} · Chapter ${number}`,
+          durationSec: 60 + ((number * 17 + index * 11) % 121),
           hlsPath: "sample.mp4",
-          thumbnailUrl: `/media/thumb-${index}.jpg`,
-          isFree: number <= 3,
-          coinPrice: 12,
-          publishedAt: new Date(Date.now() - (60 - number) * 86_400_000),
+          thumbnailUrl: artwork.thumbnailUrl,
+          isFree: number <= item.freeEpisodeCount,
+          coinPrice: item.defaultCoinPrice,
+          publishedAt: new Date(Date.now() - (item.episodeCount - number) * 86_400_000),
         },
       });
       if (number <= 2)
@@ -126,17 +170,16 @@ async function main() {
         });
     }
     await prisma.pushCampaign.create({
-      data: { seriesId: series.id, title: `Cliffhanger: ${title}` },
+      data: { seriesId: series.id, title: `Cliffhanger: ${item.title}` },
     });
-    if (index === 0)
-      await prisma.banner.create({
-        data: {
-          title,
-          imageUrl: `/media/poster-${index}.jpg`,
-          targetSeriesId: series.id,
-          sortOrder: index,
-        },
-      });
+    await prisma.banner.create({
+      data: {
+        title: item.title,
+        imageUrl: `/demo/banners/${["banner-tonight.jpg", "banner-trial.jpg", "banner-double-coins.jpg"][index % 3]}`,
+        targetSeriesId: series.id,
+        sortOrder: index,
+      },
+    });
   }
   const paidEpisode = await prisma.episode.findFirstOrThrow({
     where: { series: { slug: "crimson-promises" }, number: 8 },
@@ -336,7 +379,7 @@ async function main() {
   });
   await prisma.coupon.create({ data: { code: "WELCOME50", coins: 50, maxRedemptions: 100 } });
   console.log(
-    `Seeded admin ${admin.email}, viewer ${user.email}, ${bundles.length} bundles, 180 episodes and VIP subscriptions.`,
+    `Seeded admin ${admin.email}, viewer ${user.email}, ${bundles.length} bundles, ${catalogue.reduce((total, item) => total + item.episodeCount, 0)} episodes and VIP subscriptions.`,
   );
 }
 main()

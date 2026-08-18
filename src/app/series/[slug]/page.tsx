@@ -11,7 +11,10 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
   const session = await getSession();
   const series = await prisma.series.findUnique({
     where: { slug },
-    include: { episodes: { orderBy: { number: "asc" } } },
+    include: {
+      episodes: { orderBy: { number: "asc" } },
+      castMembers: { orderBy: { sortOrder: "asc" } },
+    },
   });
   if (!series) notFound();
   const entitlements = session
@@ -53,9 +56,20 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
             </span>
           ))}
         </div>
-        <p className="mt-5 text-sm text-zinc-400">
-          Cast: {series.castNames.join(", ")} · {series.episodes.length} episodes
-        </p>
+        <div className="mt-5 flex flex-wrap gap-3 text-sm text-zinc-400">
+          {(series.castMembers.length
+            ? series.castMembers
+            : series.castNames.map((name) => ({ id: name, name, role: null, photo: null }))
+          ).map((member) => (
+            <div key={member.id} className="flex items-center gap-2 rounded-full bg-zinc-900 px-3 py-2">
+              {member.photo && (
+                <Image src={member.photo} alt="" width={28} height={28} className="h-7 w-7 rounded-full object-cover" />
+              )}
+              <span>{member.name}{member.role ? ` · ${member.role}` : ""}</span>
+            </div>
+          ))}
+          <span className="self-center">· {series.episodes.length} episodes</span>
+        </div>
         <h2 className="mt-8 mb-3 text-xl font-bold">Episodes</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
           {series.episodes.map((ep, index) => (
