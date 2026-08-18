@@ -316,6 +316,7 @@ model WatchProgress {
 
   @@unique([userId, episodeId])
   @@index([episodeId, updatedAt])
+  @@index([userId, updatedAt])
 }
 
 model EpisodeLike {

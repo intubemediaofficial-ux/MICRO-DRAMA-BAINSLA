@@ -5,6 +5,7 @@ import { createStreamToken, watermark } from "@/server/tokens";
 import { resolveEpisodeEntitlement } from "@/server/entitlements";
 import { resolveCurrency } from "@/server/currency";
 import { getSubscriptionOffer, hasUsedTrial } from "@/server/subscriptions";
+import { getResumePositionForEpisode } from "@/server/watch-history";
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
@@ -40,6 +41,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     select: { phone: true },
   });
   const token = createStreamToken(session.userId, id);
+  const resumePositionSec = await getResumePositionForEpisode(
+    session.userId,
+    id,
+    episode.durationSec,
+  );
   return NextResponse.json({
     playbackUrl: `/api/stream/${token}`,
     isHls: episode.hlsPath.endsWith(".m3u8"),
@@ -50,5 +56,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     })),
     expiresIn: 300,
     entitlement: entitlement.reason,
+    resumePositionSec,
   });
 }

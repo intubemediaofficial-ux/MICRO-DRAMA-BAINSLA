@@ -33,6 +33,8 @@ export default function WatchClient({
   const lastTap = useRef(0);
   const longPress = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProgress = useRef(-1);
+  const resumePosition = useRef(0);
+  const resumeApplied = useRef(false);
   const [locked, setLocked] = useState(false);
   const [coinPrice, setCoinPrice] = useState(0);
   const [muted, setMuted] = useState(true);
@@ -86,6 +88,9 @@ export default function WatchClient({
     setMessage("");
     setPosition(0);
     setDuration(0);
+    lastProgress.current = -1;
+    resumePosition.current = 0;
+    resumeApplied.current = false;
 
     async function attemptPlay() {
       if (!active || !video.current) return;
@@ -117,9 +122,11 @@ export default function WatchClient({
             isHls: boolean;
             watermark: string;
             entitlement?: string;
+            resumePositionSec?: number;
           };
           setWatermark(data.watermark);
           setSubscriber(data.entitlement === "SUBSCRIPTION");
+          resumePosition.current = data.resumePositionSec ?? 0;
           if (!element) return;
           const mode = selectPlaybackMode(
             data.isHls,
@@ -202,6 +209,16 @@ export default function WatchClient({
       }
     };
   }, [episodeId, retryNonce]);
+
+  function applyResumePosition() {
+    if (resumeApplied.current || !video.current) return;
+    const mediaDuration = video.current.duration;
+    if (!Number.isFinite(mediaDuration) || mediaDuration <= 0) return;
+    const target = resumePosition.current;
+    video.current.currentTime = target > 0 && target < mediaDuration ? target : 0;
+    setPosition(video.current.currentTime);
+    resumeApplied.current = true;
+  }
 
   useEffect(() => {
     const textTrack = track.current?.track;
@@ -345,7 +362,18 @@ export default function WatchClient({
         onPointerDown={startLongPress}
         onPointerUp={stopLongPress}
         onPointerLeave={stopLongPress}
-        onEnded={() => autoNext && nextId && setNextCountdown(3)}
+        onEnded={(event) => {
+          void fetch("/api/progress", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              episodeId,
+              positionSec: Math.floor(event.currentTarget.duration || duration),
+              completed: true,
+            }),
+          });
+          if (autoNext && nextId) setNextCountdown(3);
+        }}
         onError={() => {
           setLoading(false);
           setPlaybackError("This video could not be played.");
@@ -357,6 +385,7 @@ export default function WatchClient({
           setDuration(
             Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0,
           );
+          applyResumePosition();
           setLoading(false);
         }}
         onTimeUpdate={(event) => {
