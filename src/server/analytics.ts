@@ -55,12 +55,13 @@ export async function getRevenueMetrics() {
     { activeUsers: bigint; recentSpent: bigint | null }[]
   >(Prisma.sql`
     SELECT
-      COUNT(DISTINCT CASE WHEN ct."createdAt" >= ${activeSince} THEN ct."userId" END) AS "activeUsers",
+      COUNT(DISTINCT ct."userId") AS "activeUsers",
       COALESCE(
-        SUM(CASE WHEN ct.delta < 0 AND ct."createdAt" >= ${activeSince} THEN ABS(ct.delta) ELSE 0 END),
+        SUM(CASE WHEN ct.delta < 0 THEN ABS(ct.delta) ELSE 0 END),
         0
       ) AS "recentSpent"
     FROM "CoinTransaction" ct
+    WHERE ct."createdAt" >= ${activeSince}
   `);
   const revenueMinor = Number(purchaseMetrics[0]?.revenueMinor ?? 0);
   const payingUsers = Number(purchaseMetrics[0]?.payingUsers ?? 0);
