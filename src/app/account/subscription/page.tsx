@@ -4,6 +4,7 @@ import { getSession } from "@/server/auth";
 import { resolveCurrency } from "@/server/currency";
 import { getSubscriptionOffer, getUserSubscription } from "@/server/subscriptions";
 import SubscriptionActions from "./actions";
+import PasswordChange from "./password-change";
 
 export default async function SubscriptionPage() {
   const session = await getSession();
@@ -110,6 +111,7 @@ export default async function SubscriptionPage() {
           </section>
         </>
       )}
+      <PasswordChange />
     </div>
   );
 }

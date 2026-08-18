@@ -13,6 +13,8 @@ const input = z.discriminatedUnion("action", [
     days: z.number().int().positive(),
   }),
   z.object({ action: z.literal("cancel"), subscriptionId: z.string() }),
+  z.object({ action: z.literal("password"), password: z.string().min(8).max(128) }),
+  z.object({ action: z.literal("clearPassword") }),
 ]);
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -28,6 +30,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         name: true,
         role: true,
         isDisabled: true,
+        passwordHash: true,
         coinBalance: true,
         createdAt: true,
         transactions: { orderBy: { createdAt: "desc" }, take: 50 },
@@ -41,7 +44,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         },
       },
     });
-    return NextResponse.json(user);
+    const { passwordHash, ...safeUser } = user;
+    return NextResponse.json({ ...safeUser, hasPassword: Boolean(passwordHash) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "User lookup failed";
     return NextResponse.json(
@@ -56,15 +60,26 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const session = await adminSession();
     const { id } = await params;
     const data = input.parse(await request.json());
-    if (data.action === "role")
-      return NextResponse.json(
-        await prisma.user.update({ where: { id }, data: { role: data.role } }),
-      );
+    if (data.action === "role") {
+      await prisma.user.update({ where: { id }, data: { role: data.role } });
+      return NextResponse.json({ ok: true });
+    }
     if (data.action === "disable") {
       if (id === session.userId && data.disabled) throw new Error("CANNOT_DISABLE_SELF");
-      return NextResponse.json(
-        await prisma.user.update({ where: { id }, data: { isDisabled: data.disabled } }),
-      );
+      await prisma.user.update({ where: { id }, data: { isDisabled: data.disabled } });
+      return NextResponse.json({ ok: true });
+    }
+    if (data.action === "password") {
+      const { hashPassword } = await import("@/server/password");
+      await prisma.user.update({
+        where: { id },
+        data: { passwordHash: await hashPassword(data.password) },
+      });
+      return NextResponse.json({ ok: true });
+    }
+    if (data.action === "clearPassword") {
+      await prisma.user.update({ where: { id }, data: { passwordHash: null } });
+      return NextResponse.json({ ok: true });
     }
     const user = await prisma.user.findUniqueOrThrow({ where: { id }, select: { id: true } });
     if (data.action === "extend")

@@ -25,6 +25,13 @@ coupons, plans, localized integer-minor-unit prices, and discount codes. Destruc
 require confirmation; records with paid history are blocked from deletion to preserve financial
 and ledger history.
 
+Login supports both the existing development OTP flow and email/password accounts. Password
+hashes use Node scrypt in the format `scrypt$<N>$<saltHex>$<hashHex>`; no production password
+is seeded or committed. The production administrator can set the password for
+`admin@intubemedia.com` from the admin user controls without putting the credential in this
+repository. Signed-in users can change their password from `/account/subscription` after
+entering the current password.
+
 Useful commands: `npm run format`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm test`, `npm run db:reset`, and `npm run db:seed`.
 
 The seed creates three 60-episode series, posters/thumbnails, subtitles, progress, likes,

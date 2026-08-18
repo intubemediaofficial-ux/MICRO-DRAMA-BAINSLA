@@ -20,7 +20,9 @@ import { prisma } from "../src/server/db";
 import { POST as usersPost, GET as usersGet } from "../src/app/api/admin/users/route";
 import { PATCH as bulkPatch } from "../src/app/api/admin/episodes/bulk/route";
 import { DELETE as episodeDelete } from "../src/app/api/admin/episodes/[id]/route";
+import { PATCH as userPatch } from "../src/app/api/admin/users/[id]/route";
 import { credit } from "../src/server/coins";
+import { POST as passwordLogin } from "../src/app/api/auth/password/login/route";
 
 const suffix = crypto.randomUUID();
 let adminId = "";
@@ -116,6 +118,45 @@ describe("admin full-access controls", () => {
     expect(adjustment.reason).toBe("Customer support grant");
     expect(adjustment.refType).toBe("admin");
     expect(adjustment.refId).toBe(adminId);
+  });
+
+  it("lets only admins set a password and never stores plaintext", async () => {
+    await issueSession({ userId, role: "USER" });
+    const denied = await userPatch(
+      new Request("http://localhost", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "password", password: "throwaway password" }),
+        headers: { "content-type": "application/json" },
+      }),
+      { params: Promise.resolve({ id: userId }) },
+    );
+    expect(denied.status).toBe(403);
+
+    await issueSession({ userId: adminId, role: "ADMIN" });
+    const response = await userPatch(
+      new Request("http://localhost", {
+        method: "PATCH",
+        body: JSON.stringify({ action: "password", password: "throwaway password" }),
+        headers: { "content-type": "application/json" },
+      }),
+      { params: Promise.resolve({ id: userId }) },
+    );
+    expect(response.status).toBe(200);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    expect(stored.passwordHash).toMatch(/^scrypt\$/);
+    expect(stored.passwordHash).not.toContain("throwaway password");
+    const login = await passwordLogin(
+      new Request("http://localhost", {
+        method: "POST",
+        body: JSON.stringify({
+          email: `viewer-${suffix}@test.local`,
+          password: "throwaway password",
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(login.status).toBe(200);
+    await issueSession({ userId: adminId, role: "ADMIN" });
   });
 
   it("updates exactly the selected episodes in bulk", async () => {

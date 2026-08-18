@@ -13,6 +13,7 @@ type User = {
   subscriptions: { id: string; status: string; currentPeriodEnd: string | Date }[];
 };
 type UserDetail = Omit<User, "subscriptions"> & {
+  hasPassword: boolean;
   transactions: {
     id: string;
     delta: number;
@@ -44,6 +45,7 @@ export default function AdminUsersClient({ initialUsers }: { initialUsers: User[
   const [users, setUsers] = useState(initialUsers);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<UserDetail | null>(null);
+  const [passwordInput, setPasswordInput] = useState("");
   const [message, setMessage] = useState("");
   async function reload() {
     const response = await fetch(`/api/admin/users?q=${encodeURIComponent(query)}`);
@@ -153,6 +155,40 @@ export default function AdminUsersClient({ initialUsers }: { initialUsers: User[
             Balance: {selected.coinBalance} · {selected.role} ·{" "}
             {selected.isDisabled ? "disabled" : "enabled"}
           </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <input
+              type="password"
+              minLength={8}
+              value={passwordInput}
+              onChange={(event) => setPasswordInput(event.target.value)}
+              placeholder="New password (8+ characters)"
+              className="rounded bg-zinc-800 px-3 py-2 text-sm"
+            />
+            <button
+              className="rounded bg-zinc-800 px-3 py-2 text-sm"
+              onClick={() => {
+                if (passwordInput.length >= 8) {
+                  void action(selected, { action: "password", password: passwordInput });
+                  setPasswordInput("");
+                }
+              }}
+            >
+              {selected.hasPassword ? "Reset password" : "Set password"}
+            </button>
+            {selected.hasPassword && (
+              <button
+                className="rounded bg-rose-950 px-3 py-2 text-sm text-rose-200"
+                onClick={() => {
+                  if (window.confirm("Clear this user's password?")) {
+                    void action(selected, { action: "clearPassword" });
+                    setSelected({ ...selected, hasPassword: false });
+                  }
+                }}
+              >
+                Clear password
+              </button>
+            )}
+          </div>
           <h3 className="mt-5 font-bold">Subscriptions and invoices</h3>
           {selected.subscriptions.map((subscription) => (
             <div key={subscription.id} className="mt-2 rounded-xl bg-zinc-950 p-3 text-sm">

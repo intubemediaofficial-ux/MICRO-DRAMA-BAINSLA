@@ -4,6 +4,14 @@
 
 The single Next.js 15 App Router app is in `src/app`; route handlers under `src/app/api` are the JSON API. Prisma models and indexes live in `prisma/schema.prisma`, and `src/server/db.ts` owns the server-only client. Zod validates every API payload.
 
+Cookie JWT sessions support both the development OTP flow and email/password login. Passwords
+are hashed with Node's built-in scrypt implementation and stored only as
+`scrypt$<N>$<saltHex>$<hashHex>` strings. Password login performs a dummy hash comparison when
+the account is unknown or has no password hash, and returns one generic error for wrong,
+unknown, disabled, or unset-password accounts. Users can change a password only after supplying
+the current password; admins can set or clear a password through the server-admin-authenticated
+user mutation route.
+
 ## Viewer flows
 
 `/` is a snap-scrolling discovery feed and database-ranked rows for For You, trending, releases, genres, and tropes. For You scores genre/trope affinity from the viewer's WatchProgress and EpisodeUnlock rows in SQL and falls back deterministically to trending for cold-start users. `/series/[slug]` renders poster/thumbnail metadata and a free/coin/VIP episode grid with a Watched badge derived from existing WatchProgress. `/watch/[episodeId]` uses an HTML5 9:16 player with hls.js manifest support, MP4 fallback, swipe and keyboard navigation, double-tap likes, long-press speed changes with feature-detected picture-in-picture, subtitles, cancellable three-second autoplay, watermark, progress, and a bottom-sheet unlock flow. `/wallet`, `/login`, and database-backed `/search` cover account flows; search suggestions are debounced DB queries over titles and tags.
