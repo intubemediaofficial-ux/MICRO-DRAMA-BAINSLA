@@ -20,8 +20,11 @@ export default async function HomePage() {
           <p className="text-xs font-bold uppercase tracking-[0.3em] text-rose-400">MICRODRAMA</p>
           <h1 className="text-2xl font-black">Your next obsession.</h1>
         </div>
-        <Link href="/login" className="rounded-full bg-zinc-800 px-4 py-2 text-sm">
-          Sign in
+        <Link
+          href={session ? "/account/subscription" : "/login"}
+          className="rounded-full bg-zinc-800 px-4 py-2 text-sm"
+        >
+          {session ? "My account" : "Sign in"}
         </Link>
       </header>
       <section className="feed-snap hide-scrollbar flex h-[70vh] snap-y overflow-y-auto md:h-[620px]">

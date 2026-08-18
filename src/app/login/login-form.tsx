@@ -4,7 +4,7 @@ export default function LoginForm() {
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
   const [requested, setRequested] = useState(false);
-  const [mode, setMode] = useState<"otp" | "password">("otp");
+  const [mode, setMode] = useState<"otp" | "password">("password");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   async function submit(event: React.FormEvent) {
