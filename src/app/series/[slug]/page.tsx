@@ -6,6 +6,7 @@ import { prisma } from "@/server/db";
 import { resolveEpisodeEntitlement } from "@/server/entitlements";
 import { getWatchedEpisodeIds } from "@/server/discovery";
 import TeaserPlayer from "./teaser-player";
+import SeasonEpisodes from "./season-episodes";
 
 export default async function SeriesPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -14,6 +15,10 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
     where: { slug },
     include: {
       episodes: { orderBy: { number: "asc" } },
+      seasons: {
+        orderBy: [{ sortOrder: "asc" }, { number: "asc" }],
+        include: { episodes: { orderBy: { number: "asc" } } },
+      },
       castMembers: { orderBy: { sortOrder: "asc" } },
     },
   });
@@ -85,44 +90,50 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
           <span className="self-center">· {series.episodes.length} episodes</span>
         </div>
         <h2 className="mt-8 mb-3 text-xl font-bold">Episodes</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-          {series.episodes.map((ep, index) => (
-            <Link
-              key={ep.id}
-              href={`/watch/${ep.id}`}
-              className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 hover:border-rose-500"
-            >
-              <div className="relative mb-3 aspect-video overflow-hidden rounded-xl bg-zinc-800">
-                <Image
-                  src={ep.thumbnailUrl}
-                  alt=""
-                  fill
-                  sizes="(max-width: 768px) 50vw, 180px"
-                  className="object-cover"
-                />
-              </div>
-              <div className="flex items-center justify-between text-xs text-zinc-500">
-                <span>EP {ep.number}</span>
-                <span className="flex items-center gap-1">
-                  {watchedIds.has(ep.id) && (
-                    <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-emerald-300">
-                      WATCHED
-                    </span>
-                  )}
-                  <span>
-                    {ep.isFree || ep.number <= series.freeEpisodeCount
-                      ? "FREE"
-                      : entitlements[index]?.reason === "SUBSCRIPTION"
-                        ? "VIP"
-                        : `🪙 ${ep.coinPrice}`}
-                  </span>
-                </span>
-              </div>
-              <h3 className="mt-5 font-semibold">{ep.title}</h3>
-              <p className="mt-2 text-xs text-zinc-500">{Math.ceil(ep.durationSec / 60)} min</p>
-            </Link>
-          ))}
-        </div>
+        <SeasonEpisodes
+          freeEpisodeCount={series.freeEpisodeCount}
+          seasons={
+            series.seasons.length
+              ? series.seasons.map((season) => ({
+                  id: season.id,
+                  number: season.number,
+                  title: season.title,
+                  episodes: season.episodes.map((episode) => ({
+                    id: episode.id,
+                    number: episode.number,
+                    title: episode.title,
+                    durationSec: episode.durationSec,
+                    thumbnailUrl: episode.thumbnailUrl,
+                    isFree: episode.isFree,
+                    coinPrice: episode.coinPrice,
+                    watched: watchedIds.has(episode.id),
+                    access:
+                      entitlements[series.episodes.findIndex((item) => item.id === episode.id)]
+                        ?.reason ?? "LOCKED",
+                  })),
+                }))
+              : [
+                  {
+                    id: "legacy",
+                    number: 1,
+                    title: "Season 1",
+                    episodes: series.episodes.map((episode) => ({
+                      id: episode.id,
+                      number: episode.number,
+                      title: episode.title,
+                      durationSec: episode.durationSec,
+                      thumbnailUrl: episode.thumbnailUrl,
+                      isFree: episode.isFree,
+                      coinPrice: episode.coinPrice,
+                      watched: watchedIds.has(episode.id),
+                      access:
+                        entitlements[series.episodes.findIndex((item) => item.id === episode.id)]
+                          ?.reason ?? "LOCKED",
+                    })),
+                  },
+                ]
+          }
+        />
       </section>
     </div>
   );

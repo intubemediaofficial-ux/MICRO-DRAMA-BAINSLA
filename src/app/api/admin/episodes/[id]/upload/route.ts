@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminSession } from "@/server/admin";
 import { prisma } from "@/server/db";
+import { buildEpisodeUploadMetadata } from "@/server/episode-validation";
 import { storage } from "@/server/storage";
 import { FfmpegVideoProcessor, thumbnailPersistence } from "@/server/video-processor";
 
@@ -19,7 +20,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await storage.put(key, Buffer.from(await file.arrayBuffer()));
     await prisma.episode.update({
       where: { id },
-      data: { processingStatus: "PROCESSING", processingError: null },
+      data: {
+        processingStatus: "PROCESSING",
+        processingError: null,
+        originalFilename: existing.originalFilename ?? file.name,
+      },
     });
     const thumbnailKey = `${key.replace(/\.[^.]+$/, "")}.jpg`;
     const processed = await new FfmpegVideoProcessor().process(key, thumbnailKey);
@@ -34,7 +39,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       where: { id },
       data: {
         hlsPath: processed.hlsPath,
-        durationSec: processed.durationSec,
+        ...buildEpisodeUploadMetadata({
+          originalFilename: existing.originalFilename ?? file.name,
+          durationSec: processed.durationSec,
+          sku: existing.sku,
+        }),
         processingStatus: "READY",
         processingError: null,
         ...thumbnailPersistence(existing.thumbnailSource, processed.thumbnailUrl),

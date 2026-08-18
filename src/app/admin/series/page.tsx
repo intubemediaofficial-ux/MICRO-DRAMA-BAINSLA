@@ -21,6 +21,7 @@ export default async function AdminSeriesPage() {
       id: true,
       slug: true,
       title: true,
+      synopsis: true,
       posterUrl: true,
       status: true,
       isPublished: true,
