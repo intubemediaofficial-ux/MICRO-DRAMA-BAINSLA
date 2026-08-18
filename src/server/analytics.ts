@@ -18,6 +18,7 @@ export async function getSeriesFunnel(seriesId: string) {
   let previous = 0;
   return rows.map((row) => {
     const viewers = Number(row.viewers);
+    // Keep drop rates non-negative if late or corrected progress makes a later count rise.
     const dropPercent = previous === 0 ? 0 : Math.max(0, (previous - viewers) / previous);
     previous = viewers;
     return { episodeNumber: row.number, viewers, dropPercent };
@@ -25,40 +26,52 @@ export async function getSeriesFunnel(seriesId: string) {
 }
 
 export async function getRevenueMetrics() {
-  // ARPU is completed purchase revenue in INR divided by distinct paying users.
-  const purchases = await prisma.purchase.findMany({
-    where: { status: "COMPLETED" },
-    select: { userId: true, bundle: { select: { priceMinor: true } } },
-  });
-  const revenueMinor = purchases.reduce((total, purchase) => total + purchase.bundle.priceMinor, 0);
-  const payingUsers = new Set(purchases.map((purchase) => purchase.userId)).size;
-  const spent = await prisma.coinTransaction.findMany({
-    where: { delta: { lt: 0 } },
-    select: { userId: true, delta: true, createdAt: true },
-  });
-  const spentByPayingUser = spent.filter((transaction) =>
-    purchases.some((purchase) => purchase.userId === transaction.userId),
-  );
   const activeSince = since(7);
-  const activeUsers = new Set(
-    (
-      await prisma.coinTransaction.findMany({
-        where: { createdAt: { gte: activeSince } },
-        select: { userId: true },
-      })
-    ).map((transaction) => transaction.userId),
-  ).size;
-  const recentSpent = spent
-    .filter((transaction) => transaction.createdAt >= activeSince)
-    .reduce((total, transaction) => total + Math.abs(transaction.delta), 0);
+  // ARPU is completed purchase revenue in INR divided by distinct users with completed purchases.
+  const purchaseMetrics = await prisma.$queryRaw<
+    { revenueMinor: bigint | null; payingUsers: bigint }[]
+  >(Prisma.sql`
+    SELECT
+      COALESCE(SUM(cb."priceMinor"), 0) AS "revenueMinor",
+      COUNT(DISTINCT p."userId") AS "payingUsers"
+    FROM "Purchase" p
+    INNER JOIN "CoinBundle" cb ON cb.id = p."bundleId"
+    WHERE p.status = 'COMPLETED'
+  `);
+  // Coins spent per paying user is all negative ledger activity for users with a completed purchase.
+  const spentMetrics = await prisma.$queryRaw<{ spent: bigint | null }[]>(Prisma.sql`
+    SELECT COALESCE(SUM(ABS(ct.delta)), 0) AS spent
+    FROM "CoinTransaction" ct
+    WHERE ct.delta < 0
+      AND EXISTS (
+        SELECT 1
+        FROM "Purchase" p
+        WHERE p."userId" = ct."userId"
+          AND p.status = 'COMPLETED'
+      )
+  `);
+  // Consumption velocity is recent negative ledger activity divided by recent active users and seven days.
+  const activityMetrics = await prisma.$queryRaw<
+    { activeUsers: bigint; recentSpent: bigint | null }[]
+  >(Prisma.sql`
+    SELECT
+      COUNT(DISTINCT CASE WHEN ct."createdAt" >= ${activeSince} THEN ct."userId" END) AS "activeUsers",
+      COALESCE(
+        SUM(CASE WHEN ct.delta < 0 AND ct."createdAt" >= ${activeSince} THEN ABS(ct.delta) ELSE 0 END),
+        0
+      ) AS "recentSpent"
+    FROM "CoinTransaction" ct
+  `);
+  const revenueMinor = Number(purchaseMetrics[0]?.revenueMinor ?? 0);
+  const payingUsers = Number(purchaseMetrics[0]?.payingUsers ?? 0);
+  const spentByPayingUsers = Number(spentMetrics[0]?.spent ?? 0);
+  const activeUsers = Number(activityMetrics[0]?.activeUsers ?? 0);
+  const recentSpent = Number(activityMetrics[0]?.recentSpent ?? 0);
   return {
     revenueInr: revenueMinor / 100,
     payingUsers,
     arpuInr: payingUsers ? revenueMinor / 100 / payingUsers : 0,
-    coinsSpentPerPayingUser: payingUsers
-      ? spentByPayingUser.reduce((total, transaction) => total + Math.abs(transaction.delta), 0) /
-        payingUsers
-      : 0,
+    coinsSpentPerPayingUser: payingUsers ? spentByPayingUsers / payingUsers : 0,
     coinConsumptionVelocityPerActiveUserPerDay: activeUsers ? recentSpent / activeUsers / 7 : 0,
   };
 }
