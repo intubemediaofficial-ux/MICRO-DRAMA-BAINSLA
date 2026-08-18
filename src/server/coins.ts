@@ -9,6 +9,32 @@ export class InsufficientCoins extends Error {
 type Ref = { type: string; id: string };
 export const CHECKIN_REWARDS = [5, 8, 12, 16, 22, 30, 50];
 
+export async function adjustCoins(userId: string, delta: number, reason: string, actorId: string) {
+  if (!Number.isInteger(delta) || delta === 0) throw new Error("INVALID_COIN_ADJUSTMENT");
+  if (!reason.trim()) throw new Error("ADJUSTMENT_REASON_REQUIRED");
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.user.updateMany({
+      where: { id: userId, ...(delta < 0 ? { coinBalance: { gte: -delta } } : {}) },
+      data: { coinBalance: { increment: delta } },
+    });
+    if (updated.count !== 1) throw new Error(delta < 0 ? "INSUFFICIENT_COINS" : "USER_NOT_FOUND");
+    const user = await tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { coinBalance: true },
+    });
+    return tx.coinTransaction.create({
+      data: {
+        userId,
+        delta,
+        type: "ADMIN_ADJUST",
+        balanceAfter: user.coinBalance,
+        refType: "admin",
+        refId: `${actorId}:${reason.trim()}`,
+      },
+    });
+  });
+}
+
 export async function credit(userId: string, delta: number, type: LedgerType, ref?: Ref) {
   if (delta <= 0) throw new Error("CREDIT_MUST_BE_POSITIVE");
   return prisma.$transaction(async (tx) => {

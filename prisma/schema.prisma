@@ -93,6 +93,7 @@ model User {
   email                           String?                          @unique
   name                            String?
   role                            Role                             @default(USER)
+  isDisabled                      Boolean                          @default(false)
   coinBalance                     Int                              @default(0)
   referralCode                    String                           @unique
   referredById                    String?

@@ -14,7 +14,9 @@ The single Next.js 15 App Router app is in `src/app`; route handlers under `src/
 
 ## CMS and analytics
 
-`/admin`, `/admin/series`, and `/admin/analytics` are role-gated CMS surfaces. Admin APIs create/edit series, bulk-add and edit episodes, upload video through `StorageAdapter` and `VideoProcessor`, upload subtitles, manage banners and coupons, and write dry-run cliffhanger notification logs. Users redeem coupons through `/api/coupons/redeem`.
+`/admin`, `/admin/series`, `/admin/users`, `/admin/commerce`, and `/admin/analytics` are role-gated CMS surfaces. Existing catalogue and subscription screens remain the primary editors for series, episodes, localized plan prices, analytics, and lifecycle settings. The full-access additions provide user search/detail, ledger-backed coin adjustments, role and account enable/disable controls, bundle CRUD, banner/coupon/discount CRUD, plan and price creation/deletion, and protected bulk episode updates. Every mutation calls `adminSession()` on the server and validates its payload with Zod; client controls never grant authority.
+
+Coin changes use the `ADMIN_ADJUST` ledger type through `adjustCoins`, recording the admin actor in the reference and never writing `coinBalance` without a matching `CoinTransaction`. Subscription overrides continue through `cancelSubscription` and `adminExtendSubscription`, which append `SubscriptionEvent` rows with `actorType: ADMIN` and the admin id. Deletes that would remove paid history are blocked with a clear conflict response; unreferenced catalogue/commerce records can be deleted, while published content with history can instead be unpublished.
 
 `src/server/analytics.ts` computes the episode funnel from distinct `WatchProgress` viewers, ARPU,
 coins spent per paying user, seven-day coin velocity, top genres by unlock, and provider success

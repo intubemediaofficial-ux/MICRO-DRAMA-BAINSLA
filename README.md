@@ -17,6 +17,14 @@ npm run dev
 
 Open http://localhost:3000. Development credentials are `admin@microdrama.local` and `user@microdrama.local`; the OTP is the value of `OTP_DEV_CODE` (default `123456`).
 
+The admin dashboard is available at `/admin` and is server-role-gated. Existing catalogue,
+analytics, and subscription screens remain available, while `/admin/users` provides account
+search, detail, ledger-backed coin adjustments, role changes, subscription overrides, and
+disable/enable controls. `/admin/commerce` provides CRUD controls for coin bundles, banners,
+coupons, plans, localized integer-minor-unit prices, and discount codes. Destructive UI actions
+require confirmation; records with paid history are blocked from deletion to preserve financial
+and ledger history.
+
 Useful commands: `npm run format`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm test`, `npm run db:reset`, and `npm run db:seed`.
 
 The seed creates three 60-episode series, posters/thumbnails, subtitles, progress, likes,

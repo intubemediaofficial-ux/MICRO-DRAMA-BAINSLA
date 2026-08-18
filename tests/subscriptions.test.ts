@@ -533,6 +533,12 @@ describe("subscription lifecycle and entitlements", () => {
     expect(
       await prisma.subscriptionEvent.count({ where: { subscriptionId: subscription.id } }),
     ).toBe(before + 1);
+    const extensionEvent = await prisma.subscriptionEvent.findFirstOrThrow({
+      where: { subscriptionId: subscription.id },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(extensionEvent.actorType).toBe("ADMIN");
+    expect(extensionEvent.actorId).toBe(trialUserId);
     await prisma.subscription.update({
       where: { id: subscription.id },
       data: { currentPeriodEnd: new Date(Date.now() - 1_000) },

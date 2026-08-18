@@ -20,7 +20,18 @@ export default async function AdminSeriesPage() {
       include: {
         episodes: {
           orderBy: { number: "asc" },
-          select: { id: true, number: true, title: true, isFree: true, coinPrice: true },
+          select: {
+            id: true,
+            number: true,
+            title: true,
+            durationSec: true,
+            hlsPath: true,
+            thumbnailUrl: true,
+            publishedAt: true,
+            isFree: true,
+            coinPrice: true,
+            subtitles: { select: { lang: true } },
+          },
         },
       },
       orderBy: { createdAt: "desc" },

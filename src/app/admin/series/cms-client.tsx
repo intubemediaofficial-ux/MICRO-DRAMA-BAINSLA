@@ -2,7 +2,18 @@
 
 import { useState } from "react";
 
-type Episode = { id: string; number: number; title: string; isFree: boolean; coinPrice: number };
+type Episode = {
+  id: string;
+  number: number;
+  title: string;
+  durationSec: number;
+  hlsPath: string;
+  thumbnailUrl: string;
+  publishedAt: string | Date | null;
+  isFree: boolean;
+  coinPrice: number;
+  subtitles: { lang: string }[];
+};
 type Series = {
   id: string;
   slug: string;
@@ -89,23 +100,45 @@ export default function AdminCmsClient({
               void patch("/api/admin/series", {
                 id: current.id,
                 data: {
+                  slug: String(form.get("slug")),
                   title: String(form.get("title")),
                   synopsis: String(form.get("synopsis")),
+                  posterUrl: String(form.get("posterUrl")),
+                  teaserUrl: String(form.get("teaserUrl")),
                   genres: comma(String(form.get("genres"))),
                   tropeTags: comma(String(form.get("tropeTags"))),
                   castNames: comma(String(form.get("castNames"))),
                   freeEpisodeCount: Number(form.get("freeEpisodeCount")),
                   defaultCoinPrice: Number(form.get("defaultCoinPrice")),
                   isPublished: form.get("isPublished") === "on",
+                  status: String(form.get("status")),
                 },
               });
             }}
           >
             <input
+              name="slug"
+              defaultValue={current.slug}
+              className="rounded-xl bg-zinc-800 p-3"
+              placeholder="Slug"
+            />
+            <input
               name="title"
               defaultValue={current.title}
               className="rounded-xl bg-zinc-800 p-3"
               placeholder="Title"
+            />
+            <input
+              name="posterUrl"
+              defaultValue={current.posterUrl}
+              className="rounded-xl bg-zinc-800 p-3"
+              placeholder="Poster URL"
+            />
+            <input
+              name="teaserUrl"
+              defaultValue={current.teaserUrl}
+              className="rounded-xl bg-zinc-800 p-3"
+              placeholder="Teaser URL"
             />
             <input
               name="synopsis"
@@ -149,7 +182,35 @@ export default function AdminCmsClient({
               <input name="isPublished" type="checkbox" defaultChecked={current.isPublished} />{" "}
               Published
             </label>
+            <select
+              name="status"
+              defaultValue={current.status}
+              className="rounded-xl bg-zinc-800 p-3"
+            >
+              <option value="ONGOING">Ongoing</option>
+              <option value="COMPLETED">Completed</option>
+            </select>
             <button className="rounded-xl bg-rose-500 p-3 font-bold">Save series</button>
+            <button
+              type="button"
+              className="rounded-xl bg-zinc-800 p-3 font-bold text-rose-300"
+              onClick={() => {
+                if (!window.confirm("Delete this series? Paid history blocks deletion.")) return;
+                void fetch("/api/admin/series", {
+                  method: "DELETE",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ id: current.id }),
+                }).then((response) =>
+                  setMessage(
+                    response.ok
+                      ? "Series deleted."
+                      : "Series has paid history or could not be deleted.",
+                  ),
+                );
+              }}
+            >
+              Delete series
+            </button>
           </form>
         )}
       </section>
@@ -164,8 +225,8 @@ export default function AdminCmsClient({
               slug: String(form.get("slug")),
               title: String(form.get("title")),
               synopsis: String(form.get("synopsis")),
-              posterUrl: "/media/poster-0.jpg",
-              teaserUrl: "/media/sample.mp4",
+              posterUrl: String(form.get("posterUrl")),
+              teaserUrl: String(form.get("teaserUrl")),
               genres: comma(String(form.get("genres"))),
               tropeTags: comma(String(form.get("tropeTags"))),
               castNames: comma(String(form.get("castNames"))),
@@ -184,6 +245,20 @@ export default function AdminCmsClient({
               placeholder={name}
             />
           ))}
+          <input
+            name="posterUrl"
+            required
+            defaultValue="/media/poster-0.jpg"
+            className="rounded-xl bg-zinc-800 p-3"
+            placeholder="Poster URL"
+          />
+          <input
+            name="teaserUrl"
+            required
+            defaultValue="/media/sample.mp4"
+            className="rounded-xl bg-zinc-800 p-3"
+            placeholder="Teaser URL"
+          />
           <input
             name="freeEpisodeCount"
             type="number"
@@ -220,11 +295,51 @@ export default function AdminCmsClient({
               event.preventDefault();
               const form = new FormData(event.currentTarget);
               void patch(`/api/admin/episodes/${episodeId}`, {
+                title: String(form.get("title")),
+                number: Number(form.get("number")),
+                durationSec: Number(form.get("durationSec")),
+                hlsPath: String(form.get("hlsPath")),
+                thumbnailUrl: String(form.get("thumbnailUrl")),
+                publishedAt: form.get("publishedAt")
+                  ? new Date(String(form.get("publishedAt"))).toISOString()
+                  : null,
                 isFree: form.get("isFree") === "on",
                 coinPrice: Number(form.get("coinPrice")),
               });
             }}
           >
+            <input
+              name="title"
+              defaultValue={current.episodes.find((item) => item.id === episodeId)?.title}
+              className="rounded-xl bg-zinc-800 p-3"
+              placeholder="Title"
+            />
+            <input
+              name="number"
+              type="number"
+              defaultValue={current.episodes.find((item) => item.id === episodeId)?.number}
+              className="rounded-xl bg-zinc-800 p-3"
+              placeholder="Number"
+            />
+            <input
+              name="durationSec"
+              type="number"
+              defaultValue={current.episodes.find((item) => item.id === episodeId)?.durationSec}
+              className="rounded-xl bg-zinc-800 p-3"
+              placeholder="Duration seconds"
+            />
+            <input
+              name="hlsPath"
+              defaultValue={current.episodes.find((item) => item.id === episodeId)?.hlsPath}
+              className="rounded-xl bg-zinc-800 p-3"
+              placeholder="Video path"
+            />
+            <input
+              name="thumbnailUrl"
+              defaultValue={current.episodes.find((item) => item.id === episodeId)?.thumbnailUrl}
+              className="rounded-xl bg-zinc-800 p-3"
+              placeholder="Thumbnail URL"
+            />
             <input
               name="coinPrice"
               type="number"
@@ -242,7 +357,33 @@ export default function AdminCmsClient({
               />{" "}
               Free override
             </label>
+            <input
+              name="publishedAt"
+              type="datetime-local"
+              defaultValue={(() => {
+                const value = current.episodes.find((item) => item.id === episodeId)?.publishedAt;
+                return value ? new Date(value).toISOString().slice(0, 16) : "";
+              })()}
+              className="rounded-xl bg-zinc-800 p-3"
+            />
             <button className="rounded-xl bg-zinc-800 p-3 font-bold">Save episode</button>
+            <button
+              type="button"
+              className="rounded-xl bg-zinc-800 p-3 font-bold text-rose-300"
+              onClick={() => {
+                if (!window.confirm("Delete this episode? Paid history blocks deletion.")) return;
+                void fetch(`/api/admin/episodes/${episodeId}`, { method: "DELETE" }).then(
+                  (response) =>
+                    setMessage(
+                      response.ok
+                        ? "Episode deleted."
+                        : "Episode has paid history or could not be deleted.",
+                    ),
+                );
+              }}
+            >
+              Delete episode
+            </button>
           </form>
           <form
             className="mt-3 flex flex-wrap gap-3"
@@ -287,6 +428,29 @@ export default function AdminCmsClient({
             />
             <button className="rounded-xl bg-zinc-800 px-4 font-bold">Upload SRT</button>
           </form>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(current.episodes.find((item) => item.id === episodeId)?.subtitles ?? []).map(
+              (subtitle) => (
+                <button
+                  key={subtitle.lang}
+                  type="button"
+                  className="rounded bg-zinc-800 px-3 py-2 text-sm text-rose-300"
+                  onClick={() => {
+                    if (!window.confirm(`Delete ${subtitle.lang} subtitles?`)) return;
+                    void fetch(`/api/admin/episodes/${episodeId}/subtitles`, {
+                      method: "DELETE",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({ lang: subtitle.lang }),
+                    }).then((response) =>
+                      setMessage(response.ok ? "Subtitle deleted." : "Subtitle delete failed"),
+                    );
+                  }}
+                >
+                  Delete {subtitle.lang} subtitles
+                </button>
+              ),
+            )}
+          </div>
           <textarea
             className="mt-5 min-h-24 w-full rounded-xl bg-zinc-800 p-3"
             placeholder={"Bulk lines: number|title|price|free\n61|A new secret|12|false"}
@@ -316,6 +480,110 @@ export default function AdminCmsClient({
           >
             Bulk add
           </button>
+          <div className="mt-5 rounded-xl bg-zinc-800 p-3">
+            <p className="font-bold">Bulk update selected episodes</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {current.episodes.map((episode) => (
+                <label key={episode.id} className="flex items-center gap-2 text-sm">
+                  <input className="bulk-selected" type="checkbox" value={episode.id} />
+                  EP {episode.number} — {episode.title}
+                </label>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                className="rounded bg-rose-500 px-3 py-2 font-bold"
+                onClick={() => {
+                  const ids = [
+                    ...document.querySelectorAll<HTMLInputElement>(".bulk-selected:checked"),
+                  ].map((input) => input.value);
+                  const price = window.prompt("New coin price");
+                  if (ids.length && price)
+                    void patch("/api/admin/episodes/bulk", {
+                      episodeIds: ids,
+                      coinPrice: Number(price),
+                    });
+                }}
+              >
+                Set selected price
+              </button>
+              <button
+                className="rounded bg-zinc-950 px-3 py-2 font-bold"
+                onClick={() => {
+                  const ids = [
+                    ...document.querySelectorAll<HTMLInputElement>(".bulk-selected:checked"),
+                  ].map((input) => input.value);
+                  if (ids.length)
+                    void patch("/api/admin/episodes/bulk", { episodeIds: ids, isFree: true });
+                }}
+              >
+                Mark selected free
+              </button>
+              <button
+                className="rounded bg-zinc-950 px-3 py-2 font-bold"
+                onClick={() => {
+                  const ids = [
+                    ...document.querySelectorAll<HTMLInputElement>(".bulk-selected:checked"),
+                  ].map((input) => input.value);
+                  if (ids.length)
+                    void patch("/api/admin/episodes/bulk", { episodeIds: ids, isFree: false });
+                }}
+              >
+                Mark selected VIP
+              </button>
+              <button
+                className="rounded bg-zinc-950 px-3 py-2 font-bold"
+                onClick={() => {
+                  const ids = [
+                    ...document.querySelectorAll<HTMLInputElement>(".bulk-selected:checked"),
+                  ].map((input) => input.value);
+                  if (ids.length)
+                    void patch("/api/admin/episodes/bulk", {
+                      episodeIds: ids,
+                      publishedAt: new Date().toISOString(),
+                    });
+                }}
+              >
+                Publish selected
+              </button>
+              <button
+                className="rounded bg-zinc-950 px-3 py-2 font-bold"
+                onClick={() => {
+                  const ids = [
+                    ...document.querySelectorAll<HTMLInputElement>(".bulk-selected:checked"),
+                  ].map((input) => input.value);
+                  if (ids.length)
+                    void patch("/api/admin/episodes/bulk", { episodeIds: ids, publishedAt: null });
+                }}
+              >
+                Unpublish selected
+              </button>
+              <button
+                className="rounded bg-zinc-950 px-3 py-2 font-bold"
+                onClick={() => {
+                  const ids = [
+                    ...document.querySelectorAll<HTMLInputElement>(".bulk-selected:checked"),
+                  ].map((input) => input.value);
+                  const numbers = window.prompt("New episode numbers, comma-separated");
+                  if (!ids.length || !numbers) return;
+                  const values = numbers.split(",").map((value) => Number(value.trim()));
+                  if (
+                    values.length !== ids.length ||
+                    values.some((value) => !Number.isInteger(value) || value < 1)
+                  ) {
+                    setMessage("Provide one positive number per selected episode.");
+                    return;
+                  }
+                  void patch("/api/admin/episodes/bulk", {
+                    episodeIds: ids,
+                    numbers: ids.map((id, index) => ({ id, number: values[index] })),
+                  });
+                }}
+              >
+                Renumber selected
+              </button>
+            </div>
+          </div>
         </section>
       )}
       <section className="rounded-2xl bg-zinc-900 p-5">
