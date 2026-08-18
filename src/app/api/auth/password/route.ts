@@ -21,7 +21,11 @@ export async function PATCH(request: Request) {
       throw new Error("CURRENT_PASSWORD_INCORRECT");
     await prisma.user.update({
       where: { id: session.userId },
-      data: { passwordHash: await hashPassword(data.newPassword) },
+      data: {
+        passwordHash: await hashPassword(data.newPassword),
+        passwordFailedAttempts: 0,
+        passwordLockedUntil: null,
+      },
     });
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -95,6 +95,8 @@ model User {
   name                            String?
   role                            Role                             @default(USER)
   isDisabled                      Boolean                          @default(false)
+  passwordFailedAttempts          Int                              @default(0)
+  passwordLockedUntil             DateTime?
   coinBalance                     Int                              @default(0)
   referralCode                    String                           @unique
   referredById                    String?

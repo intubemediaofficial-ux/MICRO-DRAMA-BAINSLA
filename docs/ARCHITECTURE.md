@@ -10,7 +10,9 @@ are hashed with Node's built-in scrypt implementation and stored only as
 the account is unknown or has no password hash, and returns one generic error for wrong,
 unknown, disabled, or unset-password accounts. Users can change a password only after supplying
 the current password; admins can set or clear a password through the server-admin-authenticated
-user mutation route.
+user mutation route. Existing-account password failures are counted transactionally; five
+consecutive failures lock password login for 15 minutes, while successful login and admin
+password changes reset the counter. OTP login is not throttled by these password fields.
 
 ## Viewer flows
 

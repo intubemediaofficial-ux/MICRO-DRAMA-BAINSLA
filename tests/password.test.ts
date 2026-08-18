@@ -17,7 +17,11 @@ vi.mock("next/headers", () => ({
 
 import { issueSession } from "../src/server/auth";
 import { prisma } from "../src/server/db";
-import { hashPassword } from "../src/server/password";
+import {
+  hashPassword,
+  PASSWORD_FAILURE_THRESHOLD,
+  PASSWORD_LOCKOUT_MS,
+} from "../src/server/password";
 import { POST as loginPost } from "../src/app/api/auth/password/login/route";
 import { PATCH as changePasswordPatch } from "../src/app/api/auth/password/route";
 
@@ -25,6 +29,7 @@ const suffix = crypto.randomUUID();
 let userId = "";
 let disabledId = "";
 let noPasswordId = "";
+let throttleId = "";
 
 function login(email: string, password: string) {
   return loginPost(
@@ -59,12 +64,22 @@ describe("password authentication", () => {
         referralCode: `NP${suffix.slice(0, 8)}`,
       },
     });
+    const throttleUser = await prisma.user.create({
+      data: {
+        email: `throttle-${suffix}@test.local`,
+        passwordHash: await hashPassword("throttle password"),
+        referralCode: `TH${suffix.slice(0, 8)}`,
+      },
+    });
     userId = user.id;
     disabledId = disabled.id;
     noPasswordId = noPassword.id;
+    throttleId = throttleUser.id;
   });
   afterAll(async () => {
-    await prisma.user.deleteMany({ where: { id: { in: [userId, disabledId, noPasswordId] } } });
+    await prisma.user.deleteMany({
+      where: { id: { in: [userId, disabledId, noPasswordId, throttleId] } },
+    });
   });
 
   it("logs in with the correct password and issues a session", async () => {
@@ -116,5 +131,37 @@ describe("password authentication", () => {
     );
     expect(changed.status).toBe(200);
     expect((await login(`password-${suffix}@test.local`, "new password 123")).status).toBe(200);
+  });
+
+  it("locks repeated failures, keeps a generic locked response, and allows login after cooldown", async () => {
+    for (let attempt = 0; attempt < PASSWORD_FAILURE_THRESHOLD; attempt += 1) {
+      const response = await login(`throttle-${suffix}@test.local`, "wrong password");
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({
+        error: { message: "Invalid email or password" },
+      });
+    }
+    let throttled = await prisma.user.findUniqueOrThrow({ where: { id: throttleId } });
+    expect(throttled.passwordFailedAttempts).toBe(PASSWORD_FAILURE_THRESHOLD);
+    expect(throttled.passwordLockedUntil?.getTime()).toBeGreaterThan(Date.now());
+    expect(throttled.passwordLockedUntil?.getTime()).toBeLessThanOrEqual(
+      Date.now() + PASSWORD_LOCKOUT_MS,
+    );
+
+    const locked = await login(`throttle-${suffix}@test.local`, "throttle password");
+    expect(locked.status).toBe(401);
+    expect(await locked.json()).toEqual({
+      error: { message: "Invalid email or password" },
+    });
+
+    await prisma.user.update({
+      where: { id: throttleId },
+      data: { passwordLockedUntil: new Date(Date.now() - 1) },
+    });
+    const afterCooldown = await login(`throttle-${suffix}@test.local`, "throttle password");
+    expect(afterCooldown.status).toBe(200);
+    throttled = await prisma.user.findUniqueOrThrow({ where: { id: throttleId } });
+    expect(throttled.passwordFailedAttempts).toBe(0);
+    expect(throttled.passwordLockedUntil).toBeNull();
   });
 });

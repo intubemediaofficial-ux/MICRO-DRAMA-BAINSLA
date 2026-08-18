@@ -6,6 +6,8 @@ const SCRYPT_P = 1;
 const KEY_LENGTH = 64;
 const SALT_LENGTH = 16;
 const DUMMY_HASH = `scrypt$${SCRYPT_N}$${"00".repeat(SALT_LENGTH)}$${"00".repeat(KEY_LENGTH)}`;
+export const PASSWORD_FAILURE_THRESHOLD = 5;
+export const PASSWORD_LOCKOUT_MS = 15 * 60 * 1000;
 
 function derive(password: string, salt: Buffer, cost: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -39,6 +41,7 @@ export async function verifyPassword(password: string, encoded: string | null | 
     parts[0] === "scrypt" &&
     Number.isInteger(cost) &&
     cost >= 1_024 &&
+    cost <= 1_048_576 &&
     /^[0-9a-f]+$/i.test(saltHex) &&
     /^[0-9a-f]+$/i.test(expectedHex) &&
     saltHex.length === SALT_LENGTH * 2 &&

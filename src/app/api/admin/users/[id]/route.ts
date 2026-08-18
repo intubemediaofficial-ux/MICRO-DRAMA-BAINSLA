@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
 import { prisma } from "@/server/db";
+import { hashPassword } from "@/server/password";
 import { adminExtendSubscription, cancelSubscription } from "@/server/subscriptions";
 
 const input = z.discriminatedUnion("action", [
@@ -70,15 +71,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ ok: true });
     }
     if (data.action === "password") {
-      const { hashPassword } = await import("@/server/password");
       await prisma.user.update({
         where: { id },
-        data: { passwordHash: await hashPassword(data.password) },
+        data: {
+          passwordHash: await hashPassword(data.password),
+          passwordFailedAttempts: 0,
+          passwordLockedUntil: null,
+        },
       });
       return NextResponse.json({ ok: true });
     }
     if (data.action === "clearPassword") {
-      await prisma.user.update({ where: { id }, data: { passwordHash: null } });
+      await prisma.user.update({
+        where: { id },
+        data: { passwordHash: null, passwordFailedAttempts: 0, passwordLockedUntil: null },
+      });
       return NextResponse.json({ ok: true });
     }
     const user = await prisma.user.findUniqueOrThrow({ where: { id }, select: { id: true } });

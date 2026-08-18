@@ -30,7 +30,9 @@ hashes use Node scrypt in the format `scrypt$<N>$<saltHex>$<hashHex>`; no produc
 is seeded or committed. The production administrator can set the password for
 `admin@intubemedia.com` from the admin user controls without putting the credential in this
 repository. Signed-in users can change their password from `/account/subscription` after
-entering the current password.
+entering the current password. Password login allows five consecutive failures before a
+15-minute account cooldown; successful login and admin password changes reset the cooldown
+counter. OTP login remains independent.
 
 Useful commands: `npm run format`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm test`, `npm run db:reset`, and `npm run db:seed`.
 
