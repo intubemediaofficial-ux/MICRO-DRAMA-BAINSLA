@@ -148,6 +148,7 @@ model Series {
   isPublished      Boolean        @default(false)
   createdAt        DateTime       @default(now())
   episodes         Episode[]
+  seasons          Season[]
   banners          Banner[]
   campaigns        PushCampaign[]
   castMembers      CastMember[]
@@ -155,6 +156,21 @@ model Series {
 
   @@index([isPublished, createdAt])
   @@index([status])
+}
+
+model Season {
+  id        String    @id @default(cuid())
+  seriesId  String
+  series    Series    @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  number    Int
+  title     String?
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  episodes  Episode[]
+
+  @@unique([seriesId, number])
+  @@index([seriesId, sortOrder])
 }
 
 model CastMember {
@@ -185,11 +201,15 @@ model Episode {
   id           String          @id @default(cuid())
   seriesId     String
   series       Series          @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  seasonId     String?
+  season       Season?         @relation(fields: [seasonId], references: [id], onDelete: SetNull)
   number       Int
   title        String
   durationSec  Int
   hlsPath      String
   thumbnailUrl String
+  originalFilename String?
+  sku          String?         @unique
   thumbnailSource EpisodeThumbnailSource @default(LEGACY)
   processingStatus EpisodeProcessingStatus @default(READY)
   processingError String?

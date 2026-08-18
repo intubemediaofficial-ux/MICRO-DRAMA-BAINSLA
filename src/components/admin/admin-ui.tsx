@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 type ToastKind = "success" | "error" | "info";
 type Toast = { id: number; kind: ToastKind; message: string };
@@ -163,5 +163,92 @@ export function Confirm({
     >
       {children}
     </Button>
+  );
+}
+
+export function AdminModal({
+  open,
+  title,
+  description,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  description?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    restoreRef.current = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusable = dialogRef.current?.querySelector<HTMLElement>(
+      "button, input, select, textarea, [href], [tabindex]:not([tabindex='-1'])",
+    );
+    focusable?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          "button, input, select, textarea, [href], [tabindex]:not([tabindex='-1'])",
+        ) ?? [],
+      ).filter((item) => !item.hasAttribute("disabled"));
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      restoreRef.current?.focus();
+    };
+  }, [open]);
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-6"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="admin-modal-title"
+        className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-white/10 bg-zinc-900 p-5 shadow-2xl sm:max-w-2xl sm:rounded-3xl"
+      >
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <h2 id="admin-modal-title" className="text-xl font-bold">{title}</h2>
+            {description && <p className="mt-1 text-sm text-zinc-400">{description}</p>}
+          </div>
+          <Button type="button" variant="secondary" aria-label="Close dialog" onClick={onClose}>
+            ×
+          </Button>
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }
