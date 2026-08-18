@@ -14,6 +14,7 @@ import { probeVideoDuration } from "@/server/video-processor";
 const execFileAsync = promisify(execFile);
 const prisma = new PrismaClient();
 const font = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+const posterRoot = path.resolve("public/demo/posters");
 
 async function run(command: string, args: string[]) {
   try {
@@ -29,33 +30,51 @@ async function run(command: string, args: string[]) {
   }
 }
 
-async function ensureClip(slug: string, title: string) {
+function escapeFilterText(value: string) {
+  return value.replaceAll("\\", "\\\\").replaceAll(":", "\\:").replaceAll("'", "\\'");
+}
+
+async function findPoster(slug: string) {
+  const poster = path.join(posterRoot, `${slug}.jpg`);
+  try {
+    const stat = await fs.stat(poster);
+    return stat.isFile() ? poster : null;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureClip(slug: string, title: string, poster: string) {
   const key = `demo/${slug}.mp4`;
   const output = resolveMediaPath(key);
-  try {
-    await fs.access(output);
-    return key;
-  } catch {
-    await fs.mkdir(path.dirname(output), { recursive: true });
-  }
+  await fs.mkdir(path.dirname(output), { recursive: true });
+  const escapedTitle = escapeFilterText(title);
   await run("ffmpeg", [
     "-hide_banner",
     "-loglevel",
     "error",
-    "-f",
-    "lavfi",
+    "-loop",
+    "1",
     "-i",
-    "testsrc2=size=1080x1920:rate=30",
+    poster,
     "-t",
     "30",
     "-vf",
-    `drawtext=fontfile=${font}:text='DEMO':fontcolor=white:fontsize=96:x=(w-text_w)/2:y=180:box=1:boxcolor=black@0.65,drawtext=fontfile=${font}:text='${title}':fontcolor=white:fontsize=64:x=(w-text_w)/2:y=h-260:box=1:boxcolor=black@0.65`,
+    [
+      "scale=1080:1920",
+      "zoompan=z='min(zoom+0.0004,1.12)':x='(iw-iw/zoom)/2*(1+sin(on/180))':y='(ih-ih/zoom)/2*(1+cos(on/220))':d=1:s=1080x1920:fps=30",
+      "eq=brightness=-0.06:saturation=0.92",
+      "drawbox=x=0:y=0:w=iw:h=ih:color=black@0.18:t=fill",
+      "vignette=PI/5",
+      `drawtext=fontfile=${font}:text='${escapedTitle}':fontcolor=white:fontsize=68:x=(w-text_w)/2:y=h-340:box=1:boxcolor=black@0.45:boxborderw=24:enable='lt(t,4)'`,
+      `drawtext=fontfile=${font}:text='DEMO':fontcolor=white@0.72:fontsize=28:x=w-text_w-48:y=48:box=1:boxcolor=black@0.28:boxborderw=8`,
+    ].join(","),
     "-c:v",
     "libx264",
     "-preset",
-    "ultrafast",
+    "medium",
     "-crf",
-    "32",
+    "26",
     "-pix_fmt",
     "yuv420p",
     "-movflags",
@@ -70,12 +89,7 @@ async function ensureClip(slug: string, title: string) {
 async function ensureThumbnail(videoKey: string, slug: string) {
   const key = `demo/${slug}.jpg`;
   const output = resolveMediaPath(key);
-  try {
-    await fs.access(output);
-    return key;
-  } catch {
-    await fs.mkdir(path.dirname(output), { recursive: true });
-  }
+  await fs.mkdir(path.dirname(output), { recursive: true });
   await run("ffmpeg", [
     "-hide_banner",
     "-loglevel",
@@ -98,12 +112,8 @@ async function ensureHls(videoKey: string, slug: string) {
   const directory = resolveMediaPath(`demo/${slug}-hls`);
   const manifestKey = `demo/${slug}-hls/index.m3u8`;
   const manifest = resolveMediaPath(manifestKey);
-  try {
-    await fs.access(manifest);
-    return manifestKey;
-  } catch {
-    await fs.mkdir(directory, { recursive: true });
-  }
+  await fs.rm(directory, { recursive: true, force: true });
+  await fs.mkdir(directory, { recursive: true });
   await run("ffmpeg", [
     "-hide_banner",
     "-loglevel",
@@ -133,7 +143,12 @@ async function main() {
     { videoKey: string; thumbnailKey: string; hlsKey?: string; durationSec: number }
   >();
   for (const item of demoMedia) {
-    const videoKey = await ensureClip(item.slug, item.title);
+    const poster = await findPoster(item.slug);
+    if (!poster) {
+      console.log(`${item.slug}: skipped (poster not found)`);
+      continue;
+    }
+    const videoKey = await ensureClip(item.slug, item.title, poster);
     const thumbnailKey = await ensureThumbnail(videoKey, item.slug);
     const hlsKey = item.hls ? await ensureHls(videoKey, item.slug) : undefined;
     generated.set(item.slug, {
