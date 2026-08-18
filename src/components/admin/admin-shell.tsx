@@ -5,7 +5,18 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { ToastProvider } from "./admin-ui";
 
-const nav = [
+type AdminHref =
+  | "/admin"
+  | "/admin/series"
+  | "/admin/home"
+  | "/admin/users"
+  | "/admin/subscriptions"
+  | "/admin/commerce"
+  | "/admin/commerce#marketing"
+  | "/admin/analytics"
+  | "/admin/settings";
+
+const nav: readonly [label: string, href: AdminHref][] = [
   ["Dashboard", "/admin"],
   ["Series", "/admin/series"],
   ["Home curation", "/admin/home"],
@@ -60,16 +71,20 @@ export default function AdminShell({
             </button>
           </div>
           <nav className="space-y-1">
-                {nav.map(([label, href]) => {
+            {nav.map(([label, href]) => {
               const baseHref = href.split("#")[0];
-              const active = pathname === baseHref || (baseHref !== "/admin" && pathname.startsWith(baseHref));
+              const active =
+                pathname === baseHref ||
+                (baseHref !== "/admin" && pathname.startsWith(baseHref));
               return (
-                    <Link
-                      key={label}
-                  href={href as never}
+                <Link
+                  key={label}
+                  href={href}
                   onClick={() => setOpen(false)}
                   className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-                    active ? "bg-rose-500/15 text-rose-300" : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                    active
+                      ? "bg-rose-500/15 text-rose-300"
+                      : "text-zinc-400 hover:bg-white/5 hover:text-white"
                   }`}
                 >
                   <span>{label}</span>

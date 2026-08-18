@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button, Confirm, useToast } from "@/components/admin/admin-ui";
 
 type Metrics = {
   activeTrials: number;
@@ -46,7 +47,6 @@ export default function AdminSubscriptionsClient({
   plans: Plan[];
   settings: { enabled: boolean; reminderLeadHours: number; gracePeriodHours: number };
 }) {
-  const [message, setMessage] = useState("");
   const [currentMetrics, setCurrentMetrics] = useState(metrics);
   const [currentPlans, setCurrentPlans] = useState(plans);
   const [days, setDays] = useState(30);
@@ -54,20 +54,34 @@ export default function AdminSubscriptionsClient({
   const [enabled, setEnabled] = useState(settings.enabled);
   const [leadHours, setLeadHours] = useState(settings.reminderLeadHours);
   const [graceHours, setGraceHours] = useState(settings.gracePeriodHours);
-  async function save(body: unknown) {
-    const response = await fetch("/api/admin/subscriptions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    setMessage(response.ok ? "Saved." : "Request failed.");
+  const [pending, setPending] = useState<string | null>(null);
+  const toast = useToast();
+  async function save(body: unknown, success: string, key: string) {
+    setPending(key);
+    try {
+      const response = await fetch("/api/admin/subscriptions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        toast(error?.error?.message ?? "Request failed.", "error");
+        return;
+      }
+      toast(success);
+      await reloadMetrics();
+    } finally {
+      setPending(null);
+    }
   }
   async function reloadMetrics() {
     const query = new URLSearchParams({ days: String(days) });
     if (search.trim()) query.set("q", search.trim());
     const response = await fetch(`/api/admin/subscriptions?${query.toString()}`);
     if (!response.ok) {
-      setMessage("Could not load subscription metrics.");
+      const error = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      toast(error?.error?.message ?? "Could not load subscription metrics.", "error");
       return;
     }
     const data = (await response.json()) as {
@@ -76,21 +90,40 @@ export default function AdminSubscriptionsClient({
     };
     setCurrentMetrics(data.metrics);
     setCurrentPlans(data.plans);
-    setMessage("Metrics refreshed.");
+    toast("Subscription metrics refreshed.");
+  }
+  async function refreshMetrics() {
+    setPending("metrics");
+    try {
+      await reloadMetrics();
+    } finally {
+      setPending(null);
+    }
   }
   async function userAction(id: string, action: "extend" | "cancel") {
-    const response = await fetch(`/api/admin/subscriptions/${id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(action === "extend" ? { action, days: 7 } : { action }),
-    });
-    setMessage(response.ok ? "Subscription updated." : "Request failed.");
+    const key = `${action}-${id}`;
+    setPending(key);
+    try {
+      const response = await fetch(`/api/admin/subscriptions/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(action === "extend" ? { action, days: 7 } : { action }),
+      });
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        toast(error?.error?.message ?? "Subscription update failed.", "error");
+        return;
+      }
+      toast(action === "extend" ? "Trial extended by 7 days." : "Subscription cancelled at period end.");
+      await reloadMetrics();
+    } finally {
+      setPending(null);
+    }
   }
   const money = (minor: number, currency = "INR") =>
     new Intl.NumberFormat("en", { style: "currency", currency }).format(minor / 100);
   return (
     <div className="mt-6 space-y-6">
-      <p className="text-sm text-emerald-400">{message}</p>
       <section className="flex flex-wrap items-end gap-3 rounded-2xl bg-zinc-900 p-4">
         <label className="text-sm">
           Conversion window
@@ -115,12 +148,13 @@ export default function AdminSubscriptionsClient({
             className="ml-2 rounded bg-zinc-800 p-2"
           />
         </label>
-        <button
-          onClick={() => void reloadMetrics()}
+        <Button
+          onClick={() => void refreshMetrics()}
+          pending={pending === "metrics"}
           className="rounded bg-rose-500 px-4 py-2 font-bold"
         >
           Apply
-        </button>
+        </Button>
       </section>
       <section className="grid gap-3 sm:grid-cols-4">
         {[
@@ -176,19 +210,20 @@ export default function AdminSubscriptionsClient({
             className="w-24 rounded-xl bg-zinc-800 p-3"
           />
           <span className="text-sm text-zinc-400">dunning grace hours</span>
-          <button
+          <Button
             onClick={() =>
               void save({
                 kind: "settings",
                 enabled,
                 reminderLeadHours: leadHours,
                 gracePeriodHours: graceHours,
-              })
+              }, "Trial reminder settings saved.", "settings")
             }
+            pending={pending === "settings"}
             className="rounded-full bg-rose-500 px-4 py-2 font-bold"
           >
             Save
-          </button>
+          </Button>
         </div>
       </section>
       <section className="rounded-2xl bg-zinc-900 p-5">
@@ -206,7 +241,7 @@ export default function AdminSubscriptionsClient({
                   name: String(form.get("name")),
                   trialDays: Number(form.get("trialDays")),
                   isActive: form.get("isActive") === "on",
-                });
+                }, `${plan.code} plan saved — ${Number(form.get("trialDays"))} trial days.`, `plan-${plan.id}`);
               }}
             >
               <input name="name" defaultValue={plan.name} className="rounded bg-zinc-800 p-2" />
@@ -221,7 +256,7 @@ export default function AdminSubscriptionsClient({
                 <input name="isActive" type="checkbox" defaultChecked={plan.isActive} />
                 Active
               </label>
-              <button className="rounded bg-zinc-950 px-3 py-2 text-sm">Save plan</button>
+              <Button type="submit" variant="secondary" pending={pending === `plan-${plan.id}`}>Save plan</Button>
             </form>
             <div className="mt-2 grid gap-2 sm:grid-cols-3">
               {plan.prices.map((price) => (
@@ -241,7 +276,7 @@ export default function AdminSubscriptionsClient({
                         .map((country) => country.trim().toUpperCase())
                         .filter(Boolean),
                       isActive: true,
-                    });
+                    }, `${price.currency} price saved — ${money(Number(form.get("amountMinor")), price.currency)}.`, `price-${price.id}`);
                   }}
                 >
                   <p className="text-sm text-zinc-400">{price.currency}</p>
@@ -261,7 +296,7 @@ export default function AdminSubscriptionsClient({
                     placeholder="IN,US"
                     className="mt-2 w-full rounded bg-zinc-700 p-2"
                   />
-                  <button className="mt-2 rounded bg-zinc-950 px-3 py-2 text-sm">Save price</button>
+                  <Button type="submit" variant="secondary" pending={pending === `price-${price.id}`} className="mt-2">Save price</Button>
                 </form>
               ))}
             </div>
@@ -281,18 +316,21 @@ export default function AdminSubscriptionsClient({
                 <span>{user.email ?? user.phone ?? user.name ?? user.id}</span>
                 {subscription && (
                   <span className="flex gap-2 text-xs">
-                    <button
+                    <Button
+                      variant="secondary"
+                      pending={pending === `extend-${subscription.id}`}
                       onClick={() => void userAction(subscription.id, "extend")}
                       className="rounded bg-zinc-950 px-3 py-2"
                     >
                       Extend 7d
-                    </button>
-                    <button
-                      onClick={() => void userAction(subscription.id, "cancel")}
-                      className="rounded bg-rose-500 px-3 py-2"
+                    </Button>
+                    <Confirm
+                      pending={pending === `cancel-${subscription.id}`}
+                      message="Cancel this subscription at period end?"
+                      onConfirm={() => void userAction(subscription.id, "cancel")}
                     >
                       Cancel
-                    </button>
+                    </Confirm>
                   </span>
                 )}
               </div>
@@ -302,21 +340,23 @@ export default function AdminSubscriptionsClient({
       </section>
       <section className="rounded-2xl bg-zinc-900 p-5">
         <h2 className="text-xl font-bold">Festive discount code</h2>
-        <button
-          onClick={() =>
+        <Button
+          onClick={() => {
+            const code = `FESTIVE${Date.now()}`;
             void save({
               kind: "discount",
-              code: `FESTIVE${Date.now()}`,
+              code,
               type: "PERCENT",
               value: 20,
               maxRedemptions: 100,
               planIds: plans.map((plan) => plan.id),
-            })
-          }
+            }, `Discount ${code} created — 20%.`, "discount");
+          }}
+          pending={pending === "discount"}
           className="mt-3 rounded-full bg-zinc-800 px-4 py-2"
         >
           Create 20% discount
-        </button>
+        </Button>
       </section>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button, Confirm, useToast } from "@/components/admin/admin-ui";
 
 type User = {
   id: string;
@@ -46,46 +47,73 @@ export default function AdminUsersClient({ initialUsers }: { initialUsers: User[
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<UserDetail | null>(null);
   const [passwordInput, setPasswordInput] = useState("");
-  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
+  const toast = useToast();
   async function reload() {
     const response = await fetch(`/api/admin/users?q=${encodeURIComponent(query)}`);
-    if (response.ok) setUsers((await response.json()) as User[]);
-    else setMessage("Could not load users.");
+    if (response.ok) {
+      setUsers((await response.json()) as User[]);
+    } else {
+      const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      toast(body?.error?.message ?? "Could not load users.", "error");
+    }
   }
-  async function action(user: User, body: unknown) {
-    const response = await fetch(`/api/admin/users/${user.id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    setMessage(
-      response.ok ? "User updated." : ((await response.json()).error?.message ?? "Update failed"),
-    );
-    if (response.ok) void reload();
+  async function action(user: User, body: unknown, success: string, key: string) {
+    setPending(key);
+    try {
+      const response = await fetch(`/api/admin/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        toast(error?.error?.message ?? "Update failed.", "error");
+        return;
+      }
+      toast(success);
+      await reload();
+      if (selected?.id === user.id) await view(user);
+    } finally {
+      setPending(null);
+    }
   }
   async function adjust(user: User) {
     const value = Number(window.prompt("Coin delta (+ grant, - deduct)"));
     const reason = window.prompt("Reason");
     if (!Number.isInteger(value) || value === 0 || !reason) return;
-    const response = await fetch("/api/admin/users", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ userId: user.id, delta: value, reason }),
-    });
-    setMessage(
-      response.ok
-        ? "Ledger adjustment saved."
-        : ((await response.json()).error?.message ?? "Adjustment failed"),
-    );
-    if (response.ok) void reload();
+    const key = `adjust-${user.id}`;
+    setPending(key);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: user.id, delta: value, reason }),
+      });
+      if (!response.ok) {
+        const error = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        toast(error?.error?.message ?? "Adjustment failed.", "error");
+        return;
+      }
+      const identity = user.email ?? user.name ?? user.phone ?? "user";
+      toast(`${Math.abs(value)} coins ${value > 0 ? "added to" : "deducted from"} ${identity}'s wallet`);
+      await reload();
+      if (selected?.id === user.id) await view(user);
+    } finally {
+      setPending(null);
+    }
   }
   async function view(user: User) {
     const response = await fetch(`/api/admin/users/${user.id}`);
-    if (response.ok) setSelected((await response.json()) as UserDetail);
+    if (response.ok) {
+      setSelected((await response.json()) as UserDetail);
+    } else {
+      const error = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      toast(error?.error?.message ?? "Could not load user details.", "error");
+    }
   }
   return (
     <div className="mt-6 space-y-5">
-      <p className="text-sm text-emerald-400">{message}</p>
       <form
         className="flex gap-2"
         onSubmit={(event) => {
@@ -99,7 +127,7 @@ export default function AdminUsersClient({ initialUsers }: { initialUsers: User[
           placeholder="email, phone or name"
           className="flex-1 rounded-xl bg-zinc-900 p-3"
         />
-        <button className="rounded-xl bg-rose-500 px-4 font-bold">Search</button>
+        <Button type="submit" pending={pending === "search"}>Search</Button>
       </form>
       <div className="space-y-2">
         {users.map((user) => {
@@ -117,29 +145,36 @@ export default function AdminUsersClient({ initialUsers }: { initialUsers: User[
                 </span>
               </button>
               <div className="flex flex-wrap gap-2 text-xs">
-                <button onClick={() => void adjust(user)} className="rounded bg-zinc-800 px-3 py-2">
+                <Button variant="secondary" pending={pending === `adjust-${user.id}`} onClick={() => void adjust(user)}>
                   Adjust coins
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="secondary"
+                  pending={pending === `role-${user.id}`}
                   onClick={() =>
                     void action(user, {
                       action: "role",
                       role: user.role === "ADMIN" ? "USER" : "ADMIN",
-                    })
+                    }, `${user.email ?? "User"} ${user.role === "ADMIN" ? "demoted to user" : "promoted to admin"}`, `role-${user.id}`)
                   }
                   className="rounded bg-zinc-800 px-3 py-2"
                 >
                   {user.role === "ADMIN" ? "Remove admin" : "Make admin"}
-                </button>
-                <button
-                  onClick={() => {
-                    if (window.confirm(`${user.isDisabled ? "Enable" : "Disable"} this account?`))
-                      void action(user, { action: "disable", disabled: !user.isDisabled });
-                  }}
-                  className="rounded bg-rose-500 px-3 py-2"
+                </Button>
+                <Confirm
+                  pending={pending === `disable-${user.id}`}
+                  message={`${user.isDisabled ? "Enable" : "Disable"} this account?`}
+                  onConfirm={() =>
+                    void action(
+                      user,
+                      { action: "disable", disabled: !user.isDisabled },
+                      `${user.email ?? "User"} ${user.isDisabled ? "enabled" : "disabled"}`,
+                      `disable-${user.id}`,
+                    )
+                  }
                 >
                   {user.isDisabled ? "Enable" : "Disable"}
-                </button>
+                </Confirm>
               </div>
             </div>
           );
@@ -164,29 +199,27 @@ export default function AdminUsersClient({ initialUsers }: { initialUsers: User[
               placeholder="New password (8+ characters)"
               className="rounded bg-zinc-800 px-3 py-2 text-sm"
             />
-            <button
+            <Button
+              variant="secondary"
+              pending={pending === `password-${selected.id}`}
               className="rounded bg-zinc-800 px-3 py-2 text-sm"
               onClick={() => {
                 if (passwordInput.length >= 8) {
-                  void action(selected, { action: "password", password: passwordInput });
+                  void action(selected, { action: "password", password: passwordInput }, `Password set for ${selected.email ?? "user"}`, `password-${selected.id}`);
                   setPasswordInput("");
                 }
               }}
             >
               {selected.hasPassword ? "Reset password" : "Set password"}
-            </button>
+            </Button>
             {selected.hasPassword && (
-              <button
-                className="rounded bg-rose-950 px-3 py-2 text-sm text-rose-200"
-                onClick={() => {
-                  if (window.confirm("Clear this user's password?")) {
-                    void action(selected, { action: "clearPassword" });
-                    setSelected({ ...selected, hasPassword: false });
-                  }
-                }}
+              <Confirm
+                pending={pending === `clear-password-${selected.id}`}
+                message="Clear this user's password?"
+                onConfirm={() => void action(selected, { action: "clearPassword" }, `Password cleared for ${selected.email ?? "user"}`, `clear-password-${selected.id}`)}
               >
                 Clear password
-              </button>
+              </Confirm>
             )}
           </div>
           <h3 className="mt-5 font-bold">Subscriptions and invoices</h3>
@@ -198,7 +231,9 @@ export default function AdminUsersClient({ initialUsers }: { initialUsers: User[
                 {new Date(subscription.currentPeriodEnd).toLocaleString()}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
-                <button
+                <Button
+                  variant="secondary"
+                  pending={pending === `extend-${subscription.id}`}
                   onClick={() => {
                     const days = Number(window.prompt("Extend by how many days?", "30"));
                     if (Number.isInteger(days) && days > 0)
@@ -206,21 +241,19 @@ export default function AdminUsersClient({ initialUsers }: { initialUsers: User[
                         action: "extend",
                         subscriptionId: subscription.id,
                         days,
-                      });
+                      }, `Subscription extended by ${days} days`, `extend-${subscription.id}`);
                   }}
                   className="rounded bg-zinc-800 px-3 py-2"
                 >
                   Extend
-                </button>
-                <button
-                  onClick={() => {
-                    if (window.confirm("Cancel this subscription at period end?"))
-                      void action(selected, { action: "cancel", subscriptionId: subscription.id });
-                  }}
-                  className="rounded bg-rose-950 px-3 py-2 text-rose-200"
+                </Button>
+                <Confirm
+                  pending={pending === `cancel-${subscription.id}`}
+                  message="Cancel this subscription at period end?"
+                  onConfirm={() => void action(selected, { action: "cancel", subscriptionId: subscription.id }, "Subscription cancelled at period end", `cancel-${subscription.id}`)}
                 >
                   Cancel
-                </button>
+                </Confirm>
               </div>
               <ul className="mt-2 space-y-1 text-xs text-zinc-400">
                 {subscription.invoices.map((invoice) => (

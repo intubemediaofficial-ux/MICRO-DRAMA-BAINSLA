@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useState } from "react";
 
 type ToastKind = "success" | "error" | "info";
 type Toast = { id: number; kind: ToastKind; message: string };
@@ -16,26 +16,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((current) => [...current, { id, kind, message }]);
     window.setTimeout(() => setToasts((current) => current.filter((item) => item.id !== id)), 5000);
   }, []);
-  useEffect(() => {
-    const originalFetch = window.fetch;
-    window.fetch = async (...args) => {
-      const request = args[0] instanceof Request ? args[0] : new Request(args[0], args[1]);
-      const response = await originalFetch(...args);
-      if (
-        request.url.includes("/api/admin/") &&
-        request.method !== "GET" &&
-        !window.location.pathname.startsWith("/admin/series")
-      ) {
-        if (response.ok) toast("Changes saved.");
-        else {
-          const body = (await response.clone().json().catch(() => null)) as { error?: { message?: string } } | null;
-          toast(body?.error?.message ?? "Request failed.", "error");
-        }
-      }
-      return response;
-    };
-    return () => { window.fetch = originalFetch; };
-  }, [toast]);
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
@@ -165,15 +145,18 @@ export function Confirm({
   children,
   message,
   onConfirm,
+  pending = false,
 }: {
   children: React.ReactNode;
   message: string;
   onConfirm: () => void;
+  pending?: boolean;
 }) {
   return (
     <Button
       type="button"
       variant="destructive"
+      pending={pending}
       onClick={() => {
         if (window.confirm(message)) onConfirm();
       }}

@@ -22,7 +22,7 @@ type Episode = {
   publishedAt: string | Date | null;
   isFree: boolean;
   coinPrice: number;
-  subtitles: { id: string; lang: string; srtPath: string }[];
+  subtitles?: { id: string; lang: string; srtPath: string }[];
 };
 type Cast = { id?: string; name: string; role: string | null; photo: string | null; sortOrder: number };
 type SeriesData = {
@@ -129,13 +129,17 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   const [price, setPrice] = useState(10);
   const [saving, setSaving] = useState(false);
   const [episodeId, setEpisodeId] = useState(initial?.episodes[0]?.id ?? "");
-  const [episodeDraft, setEpisodeDraft] = useState<Episode | null>(initial?.episodes[0] ?? null);
+  const [episodeDraft, setEpisodeDraft] = useState<Episode | null>(
+    initial?.episodes[0]
+      ? { ...initial.episodes[0], subtitles: initial.episodes[0].subtitles ?? [] }
+      : null,
+  );
   const [bulkText, setBulkText] = useState("");
   const [subtitleLang, setSubtitleLang] = useState("hi");
   const [subtitlePending, setSubtitlePending] = useState(false);
   const [episodeUploadProgress, setEpisodeUploadProgress] = useState(0);
   const [subtitleProgress, setSubtitleProgress] = useState(0);
-  const currentEpisode = episodes.find((item) => item.id === episodeId) ?? null;
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const parsedBulk = useMemo(() => bulkText.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
     const [number, episodeTitle, episodePrice, free] = line.split("|").map((item) => item?.trim());
     return { number: Number(number), title: episodeTitle ?? "", coinPrice: Number(episodePrice), isFree: free?.toLowerCase() === "true", valid: Boolean(Number(number) && episodeTitle && Number(episodePrice) > 0) };
@@ -157,17 +161,49 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
     } catch (error) { toast(error instanceof Error ? error.message : "Could not save series.", "error"); }
     finally { setSaving(false); }
   }
-  function selectEpisode(item: Episode) { setEpisodeId(item.id); setEpisodeDraft({ ...item }); }
-  async function episodeAction(url: string, method: string, body: unknown, message: string) {
-    const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    if (!response.ok) { toast(await readError(response), "error"); return null; }
-    toast(message); return (await response.json()) as { episode?: Episode; episodes?: Episode[] };
+  function selectEpisode(item: Episode) {
+    setEpisodeId(item.id);
+    setEpisodeDraft({ ...item, subtitles: item.subtitles ?? [] });
+  }
+  async function episodeAction(
+    url: string,
+    method: string,
+    body: unknown,
+    message: string,
+    actionKey = "episode",
+  ) {
+    setPendingAction(actionKey);
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        toast(await readError(response), "error");
+        return null;
+      }
+      toast(message);
+      return (await response.json()) as { episode?: Episode; episodes?: Episode[] };
+    } finally {
+      setPendingAction(null);
+    }
   }
   async function bulk(body: Record<string, unknown>, message: string) {
     if (!selected.length) return toast("Select at least one episode.", "info");
-    const result = await episodeAction("/api/admin/episodes/bulk", "PATCH", { ...body, episodeIds: selected }, message);
-    if (result?.episodes) setEpisodes((current) => current.map((item) => result.episodes?.find((next) => next.id === item.id) ?? item));
-    setSelected([]);
+    const result = await episodeAction(
+      "/api/admin/episodes/bulk",
+      "PATCH",
+      { ...body, episodeIds: selected },
+      message,
+      "bulk",
+    );
+    if (result?.episodes) {
+      setEpisodes((current) =>
+        current.map((item) => result.episodes?.find((next) => next.id === item.id) ?? item),
+      );
+      setSelected([]);
+    }
   }
   async function renumberSelected() {
     if (!selected.length) return toast("Select episodes to renumber.", "error");
@@ -178,15 +214,31 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
       "PATCH",
       { episodeIds: selected, numbers: chosen.map((item, index) => ({ id: item.id, number: start + index })) },
       `${chosen.length} episodes renumbered.`,
+      "bulk",
     );
-    if (result?.episodes) setEpisodes((current) => current.map((item) => result.episodes?.find((next) => next.id === item.id) ?? item).sort((a, b) => a.number - b.number));
-    setSelected([]);
+    if (result?.episodes) {
+      setEpisodes((current) =>
+        current
+          .map((item) => result.episodes?.find((next) => next.id === item.id) ?? item)
+          .sort((a, b) => a.number - b.number),
+      );
+      setSelected([]);
+    }
   }
   async function deleteEpisode(item: Episode) {
-    if (!window.confirm(`Delete episode ${item.number}? Paid history blocks deletion.`)) return;
-    const response = await fetch(`/api/admin/episodes/${item.id}`, { method: "DELETE" });
-    if (!response.ok) return toast(await readError(response), "error");
-    setEpisodes((current) => current.filter((episode) => episode.id !== item.id)); toast(`Episode ${item.number} deleted.`);
+    const key = `delete-${item.id}`;
+    setPendingAction(key);
+    try {
+      const response = await fetch(`/api/admin/episodes/${item.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        toast(await readError(response), "error");
+        return;
+      }
+      setEpisodes((current) => current.filter((episode) => episode.id !== item.id));
+      toast(`Episode ${item.number} deleted.`);
+    } finally {
+      setPendingAction(null);
+    }
   }
   async function saveEpisode() {
     if (!episodeDraft) return;
@@ -214,7 +266,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
     if (!episodeDraft) return;
     setSubtitlePending(true); setSubtitleProgress(1); const form = new FormData(); form.append("file", file); form.append("lang", subtitleLang);
     try {
-      const data = await new Promise<{ subtitle: Episode["subtitles"][number] }>((resolve, reject) => {
+      const data = await new Promise<{ subtitle: NonNullable<Episode["subtitles"]>[number] }>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", `/api/admin/episodes/${episodeDraft.id}/subtitles`);
         xhr.upload.onprogress = (event) => { if (event.lengthComputable) setSubtitleProgress(Math.round((event.loaded / event.total) * 100)); };
@@ -222,20 +274,41 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
         xhr.onerror = () => reject(new Error("Subtitle upload failed"));
         xhr.send(form);
       });
-      setEpisodeDraft((current) => current ? { ...current, subtitles: [...current.subtitles.filter((item) => item.lang !== data.subtitle.lang), data.subtitle] } : current); toast(`${subtitleLang} subtitles uploaded.`);
+      setEpisodeDraft((current) => current ? { ...current, subtitles: [...(current.subtitles ?? []).filter((item) => item.lang !== data.subtitle.lang), data.subtitle] } : current); toast(`${subtitleLang} subtitles uploaded.`);
     } catch (error) { toast(error instanceof Error ? error.message : "Subtitle upload failed", "error"); }
     finally { setSubtitlePending(false); setSubtitleProgress(0); }
   }
-  async function deleteSubtitle(subtitle: Episode["subtitles"][number]) {
-    const response = await fetch(`/api/admin/episodes/${episodeDraft?.id}/subtitles`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ lang: subtitle.lang }) });
-    if (!response.ok) return toast(await readError(response), "error");
-    setEpisodeDraft((current) => current ? { ...current, subtitles: current.subtitles.filter((item) => item.id !== subtitle.id) } : current); toast(`${subtitle.lang} subtitles deleted.`);
+  async function deleteSubtitle(subtitle: NonNullable<Episode["subtitles"]>[number]) {
+    const key = `subtitle-delete-${subtitle.id}`;
+    setPendingAction(key);
+    try {
+      const response = await fetch(`/api/admin/episodes/${episodeDraft?.id}/subtitles`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ lang: subtitle.lang }) });
+      if (!response.ok) {
+        toast(await readError(response), "error");
+        return;
+      }
+      setEpisodeDraft((current) => current ? { ...current, subtitles: (current.subtitles ?? []).filter((item) => item.id !== subtitle.id) } : current);
+      toast(`${subtitle.lang} subtitles deleted.`);
+    } finally {
+      setPendingAction(null);
+    }
   }
   async function addBulk() {
     if (!id || parsedBulk.some((item) => !item.valid)) return toast("Fix the bulk episode preview before adding.", "error");
-    const response = await fetch("/api/admin/episodes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ seriesId: id, episodes: parsedBulk.map(({ valid: _valid, ...item }) => item) }) });
-    if (!response.ok) return toast(await readError(response), "error");
-    const data = (await response.json()) as { episodes: Episode[] }; setEpisodes((current) => [...current, ...data.episodes].sort((a, b) => a.number - b.number)); setBulkText(""); toast(`${data.episodes.length} episodes added.`);
+    setPendingAction("bulk-add");
+    try {
+      const response = await fetch("/api/admin/episodes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ seriesId: id, episodes: parsedBulk.map(({ valid: _valid, ...item }) => item) }) });
+      if (!response.ok) {
+        toast(await readError(response), "error");
+        return;
+      }
+      const data = (await response.json()) as { episodes: Episode[] };
+      setEpisodes((current) => [...current, ...data.episodes].sort((a, b) => a.number - b.number));
+      setBulkText("");
+      toast(`${data.episodes.length} episodes added.`);
+    } finally {
+      setPendingAction(null);
+    }
   }
   return (
     <div className="mt-6 space-y-6">
@@ -263,32 +336,14 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
         {id && <div className="mt-4 flex justify-end"><Button variant="secondary" onClick={() => void saveSeries()}>Save cast and details</Button></div>}
       </Section>
       {id && <Section title="Episodes" description="The chips make access and publishing state visible immediately.">
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-zinc-950 p-3"><b className="mr-2 text-sm">{selected.length} selected</b><input type="number" min="1" value={price} onChange={(event) => setPrice(Number(event.target.value))} aria-label="Bulk price" className={`${inputClass} w-28`} /><Button variant="secondary" onClick={() => void bulk({ coinPrice: price }, `${selected.length} episodes priced at ${price} coins.`)}>Set price</Button><Button variant="secondary" onClick={() => void bulk({ isFree: true }, `${selected.length} episodes marked free.`)}>Mark free</Button><Button variant="secondary" onClick={() => void bulk({ isFree: false }, `${selected.length} episodes marked VIP.`)}>Mark VIP</Button><Button variant="secondary" onClick={() => void bulk({ publishedAt: new Date().toISOString() }, `${selected.length} episodes published.`)}>Publish</Button><Button variant="secondary" onClick={() => void bulk({ publishedAt: null }, `${selected.length} episodes unpublished.`)}>Unpublish</Button></div>
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-zinc-950 p-3"><b className="mr-2 text-sm">{selected.length} selected</b><input type="number" min="1" value={price} onChange={(event) => setPrice(Number(event.target.value))} aria-label="Bulk price" className={`${inputClass} w-28`} /><Button variant="secondary" pending={pendingAction === "bulk"} onClick={() => void bulk({ coinPrice: price }, `${selected.length} episodes priced at ${price} coins.`)}>Set price</Button><Button variant="secondary" pending={pendingAction === "bulk"} onClick={() => void bulk({ isFree: true }, `${selected.length} episodes marked free.`)}>Mark free</Button><Button variant="secondary" pending={pendingAction === "bulk"} onClick={() => void bulk({ isFree: false }, `${selected.length} episodes marked VIP.`)}>Mark VIP</Button><Button variant="secondary" pending={pendingAction === "bulk"} onClick={() => void bulk({ publishedAt: new Date().toISOString() }, `${selected.length} episodes published.`)}>Publish</Button><Button variant="secondary" pending={pendingAction === "bulk"} onClick={() => void bulk({ publishedAt: null }, `${selected.length} episodes unpublished.`)}>Unpublish</Button><Button variant="secondary" pending={pendingAction === "bulk"} onClick={() => void renumberSelected()}>Renumber {selected.length}</Button></div>
         <div className="overflow-x-auto rounded-xl border border-white/10"><table className="w-full min-w-[850px] text-left text-sm"><thead className="bg-zinc-950 text-xs uppercase tracking-wide text-zinc-500"><tr><th className="p-3"><input type="checkbox" aria-label="Select all episodes" checked={Boolean(episodes.length && selected.length === episodes.length)} onChange={(event) => setSelected(event.target.checked ? episodes.map((item) => item.id) : [])} /></th><th className="p-3">No.</th><th className="p-3">Episode</th><th className="p-3">Duration</th><th className="p-3">Price</th><th className="p-3">Access</th><th className="p-3">Publishing</th><th className="p-3">Actions</th></tr></thead><tbody>{episodes.map((item) => <tr key={item.id} className="border-t border-white/10"><td className="p-3"><input type="checkbox" checked={selected.includes(item.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.id] : current.filter((idValue) => idValue !== item.id))} /></td><td className="p-3 font-bold">{item.number}</td><td className="p-3"><button type="button" onClick={() => selectEpisode(item)} className="text-left font-semibold hover:text-rose-300">{item.title}</button></td><td className="p-3 text-zinc-400">{Math.floor(item.durationSec / 60)}m {item.durationSec % 60}s</td><td className="p-3">🪙 {item.coinPrice}</td><td className="p-3"><StatusChip tone={item.isFree ? "success" : "warning"}>{item.isFree ? "Free" : "VIP"}</StatusChip></td><td className="p-3"><StatusChip tone={item.publishedAt ? "success" : "neutral"}>{item.publishedAt ? "Published" : "Draft"}</StatusChip></td><td className="p-3"><div className="flex gap-2"><Button variant="secondary" onClick={() => selectEpisode(item)}>Edit</Button><Confirm message="Delete this episode? Paid history blocks deletion." onConfirm={() => void deleteEpisode(item)}>Delete</Confirm></div></td></tr>)}</tbody></table></div>
         <div className="mt-5 rounded-xl border border-dashed border-white/15 p-4"><h3 className="font-bold">Bulk add episodes</h3><p className="mt-1 text-xs text-zinc-500">One per line: number|title|price|free — example: 61|A new secret|12|false</p><textarea value={bulkText} onChange={(event) => setBulkText(event.target.value)} rows={4} placeholder="61|A new secret|12|false" className={`${inputClass} mt-3 font-mono`} />{parsedBulk.length > 0 && <div className="mt-3 space-y-1 text-xs">{parsedBulk.map((item, index) => <p key={`${item.number}-${index}`} className={item.valid ? "text-emerald-300" : "text-rose-300"}>{item.valid ? "✓" : "!"} {item.number} · {item.title} · 🪙 {item.coinPrice} · {item.isFree ? "Free" : "VIP"}</p>)}</div>}<div className="mt-3 flex justify-end"><Button onClick={() => void addBulk()}>Add previewed episodes</Button></div></div>
-        {episodeDraft && <div className="mt-5 grid gap-5 rounded-xl border border-white/10 bg-zinc-950 p-4 lg:grid-cols-2"><div className="space-y-4"><h3 className="font-bold">Edit episode {episodeDraft.number}</h3><Field label="Title" helper="The title shown in the episode list."><input value={episodeDraft.title} onChange={(event) => setEpisodeDraft({ ...episodeDraft, title: event.target.value })} className={inputClass} /></Field><div className="grid grid-cols-3 gap-3"><Field label="Number"><input type="number" value={episodeDraft.number} onChange={(event) => setEpisodeDraft({ ...episodeDraft, number: Number(event.target.value) })} className={inputClass} /></Field><Field label="Duration (sec)"><input type="number" min="1" value={episodeDraft.durationSec} onChange={(event) => setEpisodeDraft({ ...episodeDraft, durationSec: Number(event.target.value) })} className={inputClass} /></Field><Field label="Coin price"><input type="number" min="1" value={episodeDraft.coinPrice} onChange={(event) => setEpisodeDraft({ ...episodeDraft, coinPrice: Number(event.target.value) })} className={inputClass} /></Field></div><div className="flex flex-wrap gap-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={episodeDraft.isFree} onChange={(event) => setEpisodeDraft({ ...episodeDraft, isFree: event.target.checked })} /> Free episode</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(episodeDraft.publishedAt)} onChange={(event) => setEpisodeDraft({ ...episodeDraft, publishedAt: event.target.checked ? new Date().toISOString() : null })} /> Published</label></div><Button onClick={() => void saveEpisode()}>Save episode</Button></div><div className="space-y-4"><Field label="Video upload" helper="Upload-first workflow; the raw path is kept below for advanced cases."><input type="file" accept="video/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadEpisode(file); }} className={`${inputClass} file:mr-3 file:rounded-lg file:border-0 file:bg-rose-500 file:px-3 file:py-2 file:text-white`} />{episodeDraft.hlsPath !== "pending" && <video controls src={mediaUrl(episodeDraft.hlsPath)} className="mt-3 max-h-52 w-full rounded-xl bg-black" />}</Field><details><summary className="cursor-pointer text-sm text-zinc-400">Advanced media paths</summary><div className="mt-3 space-y-3"><Field label="Video path" helper="Only use this when an external processor has already created the path."><input value={episodeDraft.hlsPath} onChange={(event) => setEpisodeDraft({ ...episodeDraft, hlsPath: event.target.value })} className={inputClass} /></Field><Field label="Thumbnail URL"><input value={episodeDraft.thumbnailUrl} onChange={(event) => setEpisodeDraft({ ...episodeDraft, thumbnailUrl: event.target.value })} className={inputClass} /></Field></div></details><Field label="Subtitles" helper="Upload one SRT track per language."><div className="flex gap-2"><input value={subtitleLang} onChange={(event) => setSubtitleLang(event.target.value)} placeholder="Language code" className={`${inputClass} w-32`} /><input type="file" accept=".srt,text/plain" disabled={subtitlePending} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadSubtitle(file); }} className={inputClass} /></div><ul className="mt-3 space-y-2">{episodeDraft.subtitles.map((subtitle) => <li key={subtitle.id} className="flex items-center justify-between rounded-lg bg-zinc-900 px-3 py-2 text-sm"><span>{subtitle.lang}</span><Button variant="destructive" onClick={() => void deleteSubtitle(subtitle)}>Delete</Button></li>)}</ul></Field></div></div>}
+        {episodeDraft && <div className="mt-5 grid gap-5 rounded-xl border border-white/10 bg-zinc-950 p-4 lg:grid-cols-2"><div className="space-y-4"><h3 className="font-bold">Edit episode {episodeDraft.number}</h3><Field label="Title" helper="The title shown in the episode list."><input value={episodeDraft.title} onChange={(event) => setEpisodeDraft({ ...episodeDraft, title: event.target.value })} className={inputClass} /></Field><div className="grid grid-cols-3 gap-3"><Field label="Number"><input type="number" value={episodeDraft.number} onChange={(event) => setEpisodeDraft({ ...episodeDraft, number: Number(event.target.value) })} className={inputClass} /></Field><Field label="Duration (sec)"><input type="number" min="1" value={episodeDraft.durationSec} onChange={(event) => setEpisodeDraft({ ...episodeDraft, durationSec: Number(event.target.value) })} className={inputClass} /></Field><Field label="Coin price"><input type="number" min="1" value={episodeDraft.coinPrice} onChange={(event) => setEpisodeDraft({ ...episodeDraft, coinPrice: Number(event.target.value) })} className={inputClass} /></Field></div><div className="flex flex-wrap gap-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={episodeDraft.isFree} onChange={(event) => setEpisodeDraft({ ...episodeDraft, isFree: event.target.checked })} /> Free episode</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(episodeDraft.publishedAt)} onChange={(event) => setEpisodeDraft({ ...episodeDraft, publishedAt: event.target.checked ? new Date().toISOString() : null })} /> Published</label></div><Button onClick={() => void saveEpisode()}>Save episode</Button></div><div className="space-y-4"><Field label="Video upload" helper="Upload-first workflow; the raw path is kept below for advanced cases."><input type="file" accept="video/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadEpisode(file); }} className={`${inputClass} file:mr-3 file:rounded-lg file:border-0 file:bg-rose-500 file:px-3 file:py-2 file:text-white`} />{episodeDraft.hlsPath !== "pending" && <video controls src={mediaUrl(episodeDraft.hlsPath)} className="mt-3 max-h-52 w-full rounded-xl bg-black" />}</Field><details><summary className="cursor-pointer text-sm text-zinc-400">Advanced media paths</summary><div className="mt-3 space-y-3"><Field label="Video path" helper="Only use this when an external processor has already created the path."><input value={episodeDraft.hlsPath} onChange={(event) => setEpisodeDraft({ ...episodeDraft, hlsPath: event.target.value })} className={inputClass} /></Field><Field label="Thumbnail URL"><input value={episodeDraft.thumbnailUrl} onChange={(event) => setEpisodeDraft({ ...episodeDraft, thumbnailUrl: event.target.value })} className={inputClass} /></Field></div></details><Field label="Subtitles" helper="Upload one SRT track per language."><div className="flex gap-2"><input value={subtitleLang} onChange={(event) => setSubtitleLang(event.target.value)} placeholder="Language code" className={`${inputClass} w-32`} /><input type="file" accept=".srt,text/plain" disabled={subtitlePending} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadSubtitle(file); }} className={inputClass} /></div><ul className="mt-3 space-y-2">{(episodeDraft.subtitles ?? []).map((subtitle) => <li key={subtitle.id} className="flex items-center justify-between rounded-lg bg-zinc-900 px-3 py-2 text-sm"><span>{subtitle.lang}</span><Confirm pending={pendingAction === `subtitle-delete-${subtitle.id}`} message={`Delete ${subtitle.lang} subtitles?`} onConfirm={() => void deleteSubtitle(subtitle)}>Delete</Confirm></li>)}</ul></Field></div></div>}
       </Section>}
       {(episodeUploadProgress > 0 || subtitleProgress > 0) && (
         <div className="fixed bottom-5 left-5 z-50 rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 text-sm shadow-2xl">
           {episodeUploadProgress > 0 ? `Uploading episode video… ${episodeUploadProgress}%` : `Uploading subtitles… ${subtitleProgress}%`}
-        </div>
-      )}
-      {selected.length > 0 && (
-        <div className="fixed bottom-5 right-5 z-50 rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 shadow-2xl">
-          <Button variant="secondary" onClick={() => void renumberSelected()}>Renumber {selected.length} selected</Button>
-        </div>
-      )}
-      {episodes.length > 0 && (
-        <div className="rounded-2xl border border-white/10 bg-zinc-900 p-4">
-          <h3 className="font-bold">Episode thumbnails</h3>
-          <div className="mt-3 grid grid-cols-4 gap-3 sm:grid-cols-8">
-            {episodes.slice(0, 16).map((item) => (
-              <div key={item.id} className="overflow-hidden rounded-lg border border-white/10 bg-zinc-950">
-                <img src={mediaUrl(item.thumbnailUrl)} alt="" className="aspect-video w-full object-cover" />
-                <p className="truncate px-2 py-1 text-xs text-zinc-400">Ep. {item.number}</p>
-              </div>
-            ))}
-          </div>
         </div>
       )}
     </div>

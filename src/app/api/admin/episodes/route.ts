@@ -19,6 +19,12 @@ export async function POST(request: Request) {
   try {
     await adminSession();
     const data = input.parse(await request.json());
+    const series = await prisma.series.findUnique({
+      where: { id: data.seriesId },
+      select: { posterUrl: true },
+    });
+    if (!series) throw new Error("Series not found");
+    const thumbnailUrl = series.posterUrl;
     const episodes = await prisma.$transaction(
       data.episodes.map((episode) =>
         prisma.episode.create({
@@ -27,7 +33,7 @@ export async function POST(request: Request) {
             seriesId: data.seriesId,
             durationSec: 90,
             hlsPath: "sample.mp4",
-            thumbnailUrl: "/media/thumb-0.jpg",
+            thumbnailUrl,
           },
         }),
       ),
