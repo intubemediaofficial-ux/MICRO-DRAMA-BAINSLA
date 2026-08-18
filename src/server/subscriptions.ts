@@ -40,7 +40,6 @@ async function activeForUser(userId: string) {
     where: {
       userId,
       status: { in: ["TRIALING", "ACTIVE", "PAST_DUE"] },
-      invoices: { some: { kind: "TRIAL", status: "PAID" } },
     },
     orderBy: { currentPeriodEnd: "desc" },
   });
@@ -89,16 +88,29 @@ export async function getSubscriptionOffer(planCode: string, currency: string) {
   return price ? { plan, price } : null;
 }
 
-export async function startTrial(
+export async function hasUsedTrial(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  if (!user?.email) return false;
+  return Boolean(
+    await prisma.trialClaim.findUnique({
+      where: { email: user.email.trim().toLowerCase() },
+      select: { id: true },
+    }),
+  );
+}
+
+type PurchaseMode = "TRIAL" | "ANNUAL";
+
+async function startSubscription(
   userId: string,
   planCode: string,
   currency: string,
-  country = "IN",
-  discountCode?: string,
-  now = new Date(),
+  country: string,
+  mode: PurchaseMode,
+  discountCode: string | undefined,
+  deviceFingerprint: string | undefined,
+  now: Date,
 ) {
-  const existing = await activeForUser(userId);
-  if (existing) return existing;
   const plan = await prisma.plan.findUnique({
     where: { code: planCode },
     include: { prices: { where: { isActive: true } } },
@@ -107,22 +119,59 @@ export async function startTrial(
   const price = choosePlanPrice(plan, currency);
   if (!price) throw new Error("PRICE_NOT_FOUND");
   const selected = await priceWithDiscount(plan.id, price.id, discountCode, now);
-  const trialEndsAt = addDays(now, plan.trialDays);
+  const trialEndsAt = mode === "TRIAL" ? addDays(now, plan.trialDays) : now;
+  const currentPeriodEnd = mode === "TRIAL" ? trialEndsAt : addAnnual(now);
+  const status = mode === "TRIAL" ? "TRIALING" : "ACTIVE";
+  const invoiceKind = mode === "TRIAL" ? "TRIAL" : "RENEWAL";
+  const periodKey =
+    mode === "TRIAL" ? `trial-${trialEndsAt.toISOString()}` : `annual-${now.toISOString()}`;
   const subscriptionId = crypto.randomUUID();
   const provider = subscriptionProvider();
-  const trialAmountMinor = selected.discount?.trialAmountMinor ?? price.trialAmountMinor;
+  const amountMinor =
+    mode === "TRIAL"
+      ? (selected.discount?.trialAmountMinor ?? price.trialAmountMinor)
+      : (selected.discount?.amountMinor ?? price.amountMinor);
+  const emailUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true },
+  });
+  if (!emailUser?.email) throw new Error("TRIAL_EMAIL_REQUIRED");
+  const email = emailUser.email.trim().toLowerCase();
+  const normalizedDeviceFingerprint = deviceFingerprint?.trim() || undefined;
+
+  let claimed:
+    | { existing: NonNullable<Awaited<ReturnType<typeof activeForUser>>> }
+    | { subscription: { id: string } };
   try {
-    await prisma.$transaction(async (tx) => {
+    claimed = await prisma.$transaction(async (tx) => {
+      if (mode === "TRIAL") {
+        const priorClaim = await tx.trialClaim.findFirst({
+          where: {
+            OR: [
+              { email },
+              ...(normalizedDeviceFingerprint
+                ? [{ deviceFingerprint: normalizedDeviceFingerprint }]
+                : []),
+            ],
+          },
+        });
+        if (priorClaim) throw new Error("TRIAL_ALREADY_USED");
+      }
+      const existing = await tx.subscription.findFirst({
+        where: { userId, status: { in: ["TRIALING", "ACTIVE", "PAST_DUE"] } },
+        orderBy: { currentPeriodEnd: "desc" },
+      });
+      if (existing) return { existing };
       const subscription = await tx.subscription.create({
         data: {
           id: subscriptionId,
           userId,
           planId: plan.id,
           priceId: price.id,
-          status: "TRIALING",
+          status,
           trialEndsAt,
           currentPeriodStart: now,
-          currentPeriodEnd: trialEndsAt,
+          currentPeriodEnd,
           provider: provider.name,
           providerRef: null,
           currency: price.currency,
@@ -132,43 +181,68 @@ export async function startTrial(
       await tx.subscriptionInvoice.create({
         data: {
           subscriptionId,
-          amountMinor: trialAmountMinor,
+          amountMinor,
           currency: price.currency,
-          kind: "TRIAL",
+          kind: invoiceKind,
           status: "PENDING",
-          periodKey: `trial-${trialEndsAt.toISOString()}`,
+          periodKey,
         },
       });
-      await statusEvent(tx, subscriptionId, null, "TRIALING", "Trial started", "SYSTEM");
-      return subscription;
+      if (mode === "TRIAL")
+        await tx.trialClaim.create({
+          data: { userId, email, deviceFingerprint: normalizedDeviceFingerprint },
+        });
+      await statusEvent(
+        tx,
+        subscriptionId,
+        null,
+        status,
+        mode === "TRIAL" ? "Trial started" : "Annual subscription started",
+        "SYSTEM",
+      );
+      return { subscription };
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return prisma.subscription.findFirstOrThrow({
-        where: { userId, status: { in: ["TRIALING", "ACTIVE", "PAST_DUE"] } },
-        orderBy: { currentPeriodEnd: "desc" },
-      });
+      if (mode === "TRIAL") throw new Error("TRIAL_ALREADY_USED");
+      const existing = await activeForUser(userId);
+      if (existing) return existing;
     }
     throw error;
   }
+  if ("existing" in claimed) {
+    if (mode === "TRIAL") throw new Error("TRIAL_ALREADY_USED");
+    return claimed.existing;
+  }
+
   let charge;
   try {
-    charge = await provider.createTrialCheckout({
-      userId,
-      subscriptionId,
-      amountMinor: trialAmountMinor,
-      currency: price.currency,
-      trial: true,
-      periodKey: `trial-${trialEndsAt.toISOString()}`,
-    });
+    charge =
+      mode === "TRIAL"
+        ? await provider.createTrialCheckout({
+            userId,
+            subscriptionId,
+            amountMinor,
+            currency: price.currency,
+            trial: true,
+            periodKey,
+          })
+        : await provider.chargeRenewal({
+            userId,
+            subscriptionId,
+            amountMinor,
+            currency: price.currency,
+            trial: false,
+            periodKey,
+          });
   } catch (error) {
     await prisma.$transaction(async (tx) => {
       await tx.subscriptionInvoice.update({
         where: {
           subscriptionId_kind_periodKey: {
             subscriptionId,
-            kind: "TRIAL",
-            periodKey: `trial-${trialEndsAt.toISOString()}`,
+            kind: invoiceKind,
+            periodKey,
           },
         },
         data: { status: "FAILED" },
@@ -177,7 +251,14 @@ export async function startTrial(
         where: { id: subscriptionId },
         data: { status: "EXPIRED", renewalStartedAt: null },
       });
-      await statusEvent(tx, subscriptionId, "TRIALING", "EXPIRED", "Trial charge failed", "SYSTEM");
+      await statusEvent(
+        tx,
+        subscriptionId,
+        status,
+        "EXPIRED",
+        mode === "TRIAL" ? "Trial charge failed" : "Annual charge failed",
+        "SYSTEM",
+      );
     });
     throw error;
   }
@@ -185,19 +266,26 @@ export async function startTrial(
     return await prisma.$transaction(async (tx) => {
       const subscription = await tx.subscription.update({
         where: { id: subscriptionId },
-        data: { providerRef: charge.providerRef },
+        data: { providerRef: charge.providerRef, status },
       });
       await tx.subscriptionInvoice.update({
         where: {
           subscriptionId_kind_periodKey: {
             subscriptionId,
-            kind: "TRIAL",
-            periodKey: `trial-${trialEndsAt.toISOString()}`,
+            kind: invoiceKind,
+            periodKey,
           },
         },
         data: { status: "PAID", providerRef: charge.providerRef, paidAt: now },
       });
-      await statusEvent(tx, subscriptionId, "TRIALING", "TRIALING", "Trial charge paid", "SYSTEM");
+      await statusEvent(
+        tx,
+        subscriptionId,
+        status,
+        status,
+        mode === "TRIAL" ? "Trial charge paid" : "Annual subscription paid",
+        "SYSTEM",
+      );
       if (selected.discount) {
         await tx.discountCode.update({
           where: { id: selected.discount.id },
@@ -224,8 +312,8 @@ export async function startTrial(
           where: {
             subscriptionId_kind_periodKey: {
               subscriptionId,
-              kind: "TRIAL",
-              periodKey: `trial-${trialEndsAt.toISOString()}`,
+              kind: invoiceKind,
+              periodKey,
             },
           },
           data: { status: "PAID", providerRef: charge.providerRef, paidAt: now },
@@ -233,17 +321,60 @@ export async function startTrial(
         await statusEvent(
           tx,
           subscriptionId,
-          "TRIALING",
-          "TRIALING",
-          "Trial charge paid; reconciliation required",
+          status,
+          status,
+          mode === "TRIAL"
+            ? "Trial charge paid; reconciliation required"
+            : "Annual charge paid; reconciliation required",
           "SYSTEM",
         );
       });
     } catch {
-      throw new Error("TRIAL_CHARGE_RECONCILIATION_FAILED");
+      throw new Error(`${mode}_CHARGE_RECONCILIATION_FAILED`);
     }
     throw error;
   }
+}
+
+export async function startTrial(
+  userId: string,
+  planCode: string,
+  currency: string,
+  country = "IN",
+  discountCode?: string,
+  now = new Date(),
+  deviceFingerprint?: string,
+) {
+  return startSubscription(
+    userId,
+    planCode,
+    currency,
+    country,
+    "TRIAL",
+    discountCode,
+    deviceFingerprint,
+    now,
+  );
+}
+
+export async function purchaseAnnual(
+  userId: string,
+  planCode: string,
+  currency: string,
+  country = "IN",
+  discountCode?: string,
+  now = new Date(),
+) {
+  return startSubscription(
+    userId,
+    planCode,
+    currency,
+    country,
+    "ANNUAL",
+    discountCode,
+    undefined,
+    now,
+  );
 }
 
 async function sendTrialReminder(subscriptionId: string, now: Date, leadHours: number) {

@@ -15,13 +15,20 @@ Development purchases immediately complete through `/api/purchases`. Implement A
 ## Subscriptions
 
 The subscription API exposes a fixed-price annual VIP plan with a three-day trial, localized by
-country headers and fixed `PlanPrice` rows for INR, USD, EUR, and AED. A successful trial creates
-an invoice immediately; the cron endpoint sends a dry-run 24-hour reminder, converts expired
+country headers and fixed `PlanPrice` rows for INR ₹999 / ₹9 trial, USD $99.99 / $0.99 trial, EUR
+€89.99 / €0.99 trial, and AED 479 / AED 9 trial. The API supports both trial checkout and direct
+full-price annual purchase. Both claim the subscription and pending invoice before charging, then
+reconcile the provider result. The cron endpoint sends a dry-run 24-hour reminder, converts expired
 trials, retries failed renewals during the configured dunning grace window, charges annual
 renewals on the prior period boundary, and expires canceled or past-due periods after their
 applicable window. Cron and webhook payment success share an invoice period key, preventing
 double settlement. Run it locally with
 `curl -X POST http://localhost:3000/api/cron/subscriptions -H "x-cron-secret: $CRON_SECRET"`.
+
+Trial claims are fraud-resistant across account recreation: the server normalizes the user's
+known email and combines it with an optional client device fingerprint. A unique `TrialClaim`
+row enforces one claim per email and per non-null device fingerprint; a missing fingerprint is
+not treated as a match. Repeat attempts return `TRIAL_ALREADY_USED` and do not call a provider.
 
 `DevSubscriptionProvider` is the local immediate-success adapter. `StripeSubscriptionProvider`
 uses Stripe's HTTP API and signed webhook verification when `STRIPE_SECRET_KEY` and

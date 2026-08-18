@@ -6,7 +6,7 @@ The single Next.js 15 App Router app is in `src/app`; route handlers under `src/
 
 ## Viewer flows
 
-`/` is a snap-scrolling discovery feed and database-ranked rows for trending, releases, genres, and tropes. `/series/[slug]` renders poster/thumbnail metadata and a free/coin episode grid. `/watch/[episodeId]` uses an HTML5 9:16 player with hls.js manifest support, MP4 fallback, swipe and keyboard navigation, double-tap likes, long-press speed changes, subtitles, autoplay, watermark, progress, and an unlock sheet. `/wallet`, `/login`, and database-backed `/search` cover account flows.
+`/` is a snap-scrolling discovery feed and database-ranked rows for For You, trending, releases, genres, and tropes. For You scores genre/trope affinity from the viewer's WatchProgress and EpisodeUnlock rows in SQL and falls back deterministically to trending for cold-start users. `/series/[slug]` renders poster/thumbnail metadata and a free/coin/VIP episode grid with a Watched badge derived from existing WatchProgress. `/watch/[episodeId]` uses an HTML5 9:16 player with hls.js manifest support, MP4 fallback, swipe and keyboard navigation, double-tap likes, long-press speed changes with feature-detected picture-in-picture, subtitles, cancellable three-second autoplay, watermark, progress, and a bottom-sheet unlock flow. `/wallet`, `/login`, and database-backed `/search` cover account flows; search suggestions are debounced DB queries over titles and tags.
 
 ## Coin economy
 
@@ -24,12 +24,16 @@ rates. Each definition is immediately above its query, and the metrics are avail
 ## Subscriptions and entitlement
 
 `Plan` and `PlanPrice` store integer minor-unit prices per currency; no exchange-rate arithmetic is
-used. Currency resolution checks `cf-ipcountry` / `x-vercel-ip-country`, then `Accept-Language`,
-then falls back to INR. `/api/subscriptions` starts the ₹9 three-day trial (or its fixed localized
-row), records a paid trial invoice and audit event, and supports cancellation-at-period-end and
-resume. `src/server/entitlements.ts` is the single resolver used by playback, stream delivery,
-the series grid, and the watch paywall. Free episodes, coin unlocks, and active/trialing
-subscriptions remain compatible.
+used. The seeded annual prices are INR ₹999 / ₹9 trial, USD $99.99 / $0.99 trial, EUR €89.99 /
+€0.99 trial, and AED 479 / AED 9 trial. Currency resolution checks `cf-ipcountry` /
+`x-vercel-ip-country`, then `Accept-Language`, then falls back to INR. `/api/subscriptions`
+supports both the ₹9 three-day trial and a direct full-price annual purchase. Both paths claim the
+subscription and pending invoice before charging, then reconcile a paid invoice or record a failed
+invoice and terminal state. `TrialClaim` stores normalized server-known email plus an optional
+device fingerprint with unique constraints; claims survive account deletion and a repeat claim
+returns `TRIAL_ALREADY_USED` without charging. `src/server/entitlements.ts` is the single resolver
+used by playback, stream delivery, the series grid, and the watch paywall. Free episodes, coin
+unlocks, and active/trialing subscriptions remain compatible.
 
 `POST /api/cron/subscriptions` is protected by `CRON_SECRET`. It structurally deduplicates
 24-hour reminders through the unique subscription notification kind and renewals through the
