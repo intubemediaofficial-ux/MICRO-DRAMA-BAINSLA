@@ -121,6 +121,9 @@ async function main() {
         status: item.status,
       },
     });
+    const season = await prisma.season.create({
+      data: { seriesId: series.id, number: 1, title: "Season 1", sortOrder: 0 },
+    });
     await prisma.castMember.createMany({
       data: item.cast.map((member, castIndex) => ({
         seriesId: series.id,
@@ -141,6 +144,7 @@ async function main() {
       const episode = await prisma.episode.create({
         data: {
           seriesId: series.id,
+          seasonId: season.id,
           number,
           title: number === item.episodeCount ? "The Finale" : `${item.title} · Chapter ${number}`,
           durationSec: 60 + ((number * 17 + index * 11) % 121),

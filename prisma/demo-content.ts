@@ -138,6 +138,18 @@ export async function syncDemoContent(
         seriesAction = metadataChanged ? "updated" : "unchanged";
       }
       seriesIds.set(item.slug, series.id);
+      const season =
+        (await tx.season.findFirst({
+          where: { seriesId: series.id },
+          orderBy: [{ sortOrder: "asc" }, { number: "asc" }],
+        })) ??
+        (await tx.season.create({
+          data: { seriesId: series.id, number: 1, title: "Season 1", sortOrder: 0 },
+        }));
+      await tx.episode.updateMany({
+        where: { seriesId: series.id, seasonId: null },
+        data: { seasonId: season.id },
+      });
 
       const castMatches = sameCast(existing?.castMembers ?? [], expectedCast);
       let castAction: SeriesSyncReport["cast"];
@@ -160,6 +172,7 @@ export async function syncDemoContent(
         await tx.episode.create({
           data: {
             seriesId: series.id,
+            seasonId: season.id,
             number,
             title:
               number === item.episodeCount ? "The Finale" : `${item.title} · Chapter ${number}`,

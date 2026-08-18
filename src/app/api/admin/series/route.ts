@@ -21,10 +21,15 @@ const seriesInput = z.object({
 export async function POST(request: Request) {
   try {
     await adminSession();
-    return NextResponse.json(
-      await prisma.series.create({ data: seriesInput.parse(await request.json()) }),
-      { status: 201 },
-    );
+    const data = seriesInput.parse(await request.json());
+    const series = await prisma.$transaction(async (tx) => {
+      const created = await tx.series.create({ data });
+      await tx.season.create({
+        data: { seriesId: created.id, number: 1, title: "Season 1", sortOrder: 0 },
+      });
+      return created;
+    });
+    return NextResponse.json(series, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid series";
     return NextResponse.json(

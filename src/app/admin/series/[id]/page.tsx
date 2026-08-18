@@ -13,7 +13,14 @@ export default async function EditSeriesPage({ params }: { params: Promise<{ id:
     where: { id },
     include: {
       castMembers: { orderBy: { sortOrder: "asc" } },
-      episodes: { orderBy: { number: "asc" }, include: { subtitles: { select: { id: true, lang: true, srtPath: true } } } },
+      seasons: {
+        orderBy: [{ sortOrder: "asc" }, { number: "asc" }],
+        include: { _count: { select: { episodes: true } } },
+      },
+      episodes: {
+        orderBy: { number: "asc" },
+        include: { subtitles: { select: { id: true, lang: true, srtPath: true } } },
+      },
     },
   });
   if (!series) notFound();
