@@ -180,7 +180,7 @@ model CoinTransaction {
   refType      String?
   refId        String?
   createdAt    DateTime   @default(now())
-
+  @@index([createdAt])
   @@index([userId, createdAt])
   @@index([type, createdAt])
 }
