@@ -28,7 +28,12 @@ export async function getSession(): Promise<Session | null> {
     const { payload } = await jwtVerify(token, key());
     if (typeof payload.userId !== "string" || (payload.role !== "USER" && payload.role !== "ADMIN"))
       return null;
-    return { userId: payload.userId, role: payload.role };
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { role: true, isDisabled: true },
+    });
+    if (!user || user.isDisabled) return null;
+    return { userId: payload.userId, role: user.role };
   } catch {
     return null;
   }
@@ -49,6 +54,7 @@ export async function findOrCreateUser(identifier: string, referralCode?: string
     where: isEmail ? { email: identifier } : { phone: identifier },
   });
   if (existing) {
+    if (existing.isDisabled) throw new Error("ACCOUNT_DISABLED");
     if (referralCode) throw new Error("REFERRAL_ALREADY_CLAIMED");
     return existing;
   }

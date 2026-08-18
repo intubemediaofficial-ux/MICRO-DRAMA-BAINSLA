@@ -4,9 +4,19 @@
 
 The single Next.js 15 App Router app is in `src/app`; route handlers under `src/app/api` are the JSON API. Prisma models and indexes live in `prisma/schema.prisma`, and `src/server/db.ts` owns the server-only client. Zod validates every API payload.
 
+Cookie JWT sessions support both the development OTP flow and email/password login. Passwords
+are hashed with Node's built-in scrypt implementation and stored only as
+`scrypt$<N>$<saltHex>$<hashHex>` strings. Password login performs a dummy hash comparison when
+the account is unknown or has no password hash, and returns one generic error for wrong,
+unknown, disabled, or unset-password accounts. Users can change a password only after supplying
+the current password; admins can set or clear a password through the server-admin-authenticated
+user mutation route. Existing-account password failures are counted transactionally; five
+consecutive failures lock password login for 15 minutes, while successful login and admin
+password changes reset the counter. OTP login is not throttled by these password fields.
+
 ## Viewer flows
 
-`/` is a snap-scrolling discovery feed and database-ranked rows for trending, releases, genres, and tropes. `/series/[slug]` renders poster/thumbnail metadata and a free/coin episode grid. `/watch/[episodeId]` uses an HTML5 9:16 player with hls.js manifest support, MP4 fallback, swipe and keyboard navigation, double-tap likes, long-press speed changes, subtitles, autoplay, watermark, progress, and an unlock sheet. `/wallet`, `/login`, and database-backed `/search` cover account flows.
+`/` is a snap-scrolling discovery feed and database-ranked rows for For You, trending, releases, genres, and tropes. For You scores genre/trope affinity from the viewer's WatchProgress and EpisodeUnlock rows in SQL and falls back deterministically to trending for cold-start users. `/series/[slug]` renders poster/thumbnail metadata and a free/coin/VIP episode grid with a Watched badge derived from existing WatchProgress. `/watch/[episodeId]` uses an HTML5 9:16 player with hls.js manifest support, MP4 fallback, swipe and keyboard navigation, double-tap likes, long-press speed changes with feature-detected picture-in-picture, subtitles, cancellable three-second autoplay, watermark, progress, and a bottom-sheet unlock flow. `/wallet`, `/login`, and database-backed `/search` cover account flows; search suggestions are debounced DB queries over titles and tags.
 
 ## Coin economy
 
@@ -14,7 +24,9 @@ The single Next.js 15 App Router app is in `src/app`; route handlers under `src/
 
 ## CMS and analytics
 
-`/admin`, `/admin/series`, and `/admin/analytics` are role-gated CMS surfaces. Admin APIs create/edit series, bulk-add and edit episodes, upload video through `StorageAdapter` and `VideoProcessor`, upload subtitles, manage banners and coupons, and write dry-run cliffhanger notification logs. Users redeem coupons through `/api/coupons/redeem`.
+`/admin`, `/admin/series`, `/admin/users`, `/admin/commerce`, and `/admin/analytics` are role-gated CMS surfaces. Existing catalogue and subscription screens remain the primary editors for series, episodes, localized plan prices, analytics, and lifecycle settings. The full-access additions provide user search/detail, ledger-backed coin adjustments, role and account enable/disable controls, bundle CRUD, banner/coupon/discount CRUD, plan and price creation/deletion, and protected bulk episode updates. Every mutation calls `adminSession()` on the server and validates its payload with Zod; client controls never grant authority.
+
+Coin changes use the `ADMIN_ADJUST` ledger type through `adjustCoins`, recording the admin actor in the reference and never writing `coinBalance` without a matching `CoinTransaction`. Subscription overrides continue through `cancelSubscription` and `adminExtendSubscription`, which append `SubscriptionEvent` rows with `actorType: ADMIN` and the admin id. Deletes that would remove paid history are blocked with a clear conflict response; unreferenced catalogue/commerce records can be deleted, while published content with history can instead be unpublished.
 
 `src/server/analytics.ts` computes the episode funnel from distinct `WatchProgress` viewers, ARPU,
 coins spent per paying user, seven-day coin velocity, top genres by unlock, and provider success
@@ -24,12 +36,16 @@ rates. Each definition is immediately above its query, and the metrics are avail
 ## Subscriptions and entitlement
 
 `Plan` and `PlanPrice` store integer minor-unit prices per currency; no exchange-rate arithmetic is
-used. Currency resolution checks `cf-ipcountry` / `x-vercel-ip-country`, then `Accept-Language`,
-then falls back to INR. `/api/subscriptions` starts the ₹9 three-day trial (or its fixed localized
-row), records a paid trial invoice and audit event, and supports cancellation-at-period-end and
-resume. `src/server/entitlements.ts` is the single resolver used by playback, stream delivery,
-the series grid, and the watch paywall. Free episodes, coin unlocks, and active/trialing
-subscriptions remain compatible.
+used. The seeded annual prices are INR ₹999 / ₹9 trial, USD $99.99 / $0.99 trial, EUR €89.99 /
+€0.99 trial, and AED 479 / AED 9 trial. Currency resolution checks `cf-ipcountry` /
+`x-vercel-ip-country`, then `Accept-Language`, then falls back to INR. `/api/subscriptions`
+supports both the ₹9 three-day trial and a direct full-price annual purchase. Both paths claim the
+subscription and pending invoice before charging, then reconcile a paid invoice or record a failed
+invoice and terminal state. `TrialClaim` stores normalized server-known email plus an optional
+device fingerprint with unique constraints; claims survive account deletion and a repeat claim
+returns `TRIAL_ALREADY_USED` without charging. `src/server/entitlements.ts` is the single resolver
+used by playback, stream delivery, the series grid, and the watch paywall. Free episodes, coin
+unlocks, and active/trialing subscriptions remain compatible.
 
 `POST /api/cron/subscriptions` is protected by `CRON_SECRET`. It structurally deduplicates
 24-hour reminders through the unique subscription notification kind and renewals through the

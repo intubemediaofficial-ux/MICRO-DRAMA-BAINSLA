@@ -44,3 +44,18 @@ export async function PATCH(request: Request) {
     );
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    await adminSession();
+    const { id } = z.object({ id: z.string() }).parse(await request.json());
+    await prisma.banner.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Banner deletion failed";
+    return NextResponse.json(
+      { error: { message } },
+      { status: message === "FORBIDDEN" ? 403 : 400 },
+    );
+  }
+}

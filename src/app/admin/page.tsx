@@ -53,6 +53,18 @@ export default async function AdminPage() {
             Trials, conversion, localized prices and reminder automation.
           </p>
         </Link>
+        <Link href="/admin/users" className="rounded-2xl bg-zinc-900 p-5">
+          <h2 className="font-bold">Users →</h2>
+          <p className="mt-2 text-sm text-zinc-400">
+            Search, inspect, adjust balances and manage account access.
+          </p>
+        </Link>
+        <Link href="/admin/commerce" className="rounded-2xl bg-zinc-900 p-5">
+          <h2 className="font-bold">Commerce →</h2>
+          <p className="mt-2 text-sm text-zinc-400">
+            Bundles, banners, coupons, plans and discount codes.
+          </p>
+        </Link>
       </div>
     </div>
   );

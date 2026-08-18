@@ -29,3 +29,49 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export async function GET() {
+  try {
+    await adminSession();
+    return NextResponse.json(await prisma.coupon.findMany({ orderBy: { code: "asc" } }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Coupon lookup failed";
+    return NextResponse.json(
+      { error: { message } },
+      { status: message === "FORBIDDEN" ? 403 : 401 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    await adminSession();
+    const data = z.object({ id: z.string(), data: input.partial() }).parse(await request.json());
+    return NextResponse.json(
+      await prisma.coupon.update({ where: { id: data.id }, data: data.data }),
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Coupon update failed";
+    return NextResponse.json(
+      { error: { message } },
+      { status: message === "FORBIDDEN" ? 403 : 400 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    await adminSession();
+    const { id } = z.object({ id: z.string() }).parse(await request.json());
+    if (await prisma.couponRedemption.count({ where: { couponId: id } }))
+      throw new Error("COUPON_HAS_REDEMPTIONS");
+    await prisma.coupon.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Coupon deletion failed";
+    return NextResponse.json(
+      { error: { message } },
+      { status: message === "FORBIDDEN" ? 403 : message === "COUPON_HAS_REDEMPTIONS" ? 409 : 400 },
+    );
+  }
+}

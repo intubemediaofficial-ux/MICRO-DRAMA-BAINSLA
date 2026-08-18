@@ -4,6 +4,7 @@ import { getSession } from "@/server/auth";
 import { resolveCurrency } from "@/server/currency";
 import { getSubscriptionOffer, getUserSubscription } from "@/server/subscriptions";
 import SubscriptionActions from "./actions";
+import PasswordChange from "./password-change";
 
 export default async function SubscriptionPage() {
   const session = await getSession();
@@ -22,6 +23,16 @@ export default async function SubscriptionPage() {
   const offer = await getSubscriptionOffer("VIP_ANNUAL", currency);
   const money = (minor: number, code: string) =>
     new Intl.NumberFormat("en", { style: "currency", currency: code }).format(minor / 100);
+  const trialRemaining =
+    subscription?.status === "TRIALING"
+      ? Math.max(0, subscription.trialEndsAt.getTime() - Date.now())
+      : 0;
+  const trialRemainingLabel =
+    trialRemaining > 0
+      ? trialRemaining < 86_400_000
+        ? `${Math.max(1, Math.ceil(trialRemaining / 3_600_000))} hours left in your trial`
+        : `${Math.ceil(trialRemaining / 86_400_000)} day${Math.ceil(trialRemaining / 86_400_000) === 1 ? "" : "s"} left in your trial`
+      : null;
   return (
     <div className="p-5 pb-24">
       <Link href="/" className="text-zinc-400">
@@ -58,9 +69,19 @@ export default async function SubscriptionPage() {
                   {subscription.status} ·{" "}
                   {money(subscription.price.amountMinor, subscription.currency)} annually
                 </p>
+                {trialRemainingLabel && (
+                  <p className="mt-2 font-semibold text-amber-300">{trialRemainingLabel}</p>
+                )}
                 <p className="mt-2 text-sm text-zinc-400">
-                  {subscription.cancelAtPeriodEnd ? "Access ends" : "Renews"}{" "}
-                  {subscription.currentPeriodEnd.toLocaleDateString()}
+                  {subscription.status === "TRIALING"
+                    ? "Next billing"
+                    : subscription.cancelAtPeriodEnd
+                      ? "Access ends"
+                      : "Renews"}{" "}
+                  {(subscription.status === "TRIALING"
+                    ? subscription.trialEndsAt
+                    : subscription.currentPeriodEnd
+                  ).toLocaleDateString()}
                 </p>
               </div>
               <span className="rounded-full bg-amber-400 px-3 py-1 text-sm font-bold text-zinc-950">
@@ -90,6 +111,7 @@ export default async function SubscriptionPage() {
           </section>
         </>
       )}
+      <PasswordChange />
     </div>
   );
 }

@@ -30,3 +30,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     );
   }
 }
+
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    await adminSession();
+    const { id } = await params;
+    const { lang } = z.object({ lang: z.string().min(2) }).parse(await request.json());
+    await prisma.subtitle.delete({ where: { episodeId_lang: { episodeId: id, lang } } });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Subtitle deletion failed";
+    return NextResponse.json(
+      { error: { message } },
+      { status: message === "FORBIDDEN" ? 403 : 400 },
+    );
+  }
+}

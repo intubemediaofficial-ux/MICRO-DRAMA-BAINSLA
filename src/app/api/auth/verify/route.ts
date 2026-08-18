@@ -19,7 +19,12 @@ export async function POST(request: Request) {
     const message =
       error instanceof Error && error.message === "INVALID_REFERRAL"
         ? "Invalid referral"
-        : "Invalid input";
-    return NextResponse.json({ error: { message } }, { status: 400 });
+        : error instanceof Error && error.message === "ACCOUNT_DISABLED"
+          ? "Account disabled"
+          : "Invalid input";
+    return NextResponse.json(
+      { error: { message } },
+      { status: message === "Account disabled" ? 403 : 400 },
+    );
   }
 }

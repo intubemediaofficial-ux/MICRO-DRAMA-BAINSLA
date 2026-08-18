@@ -17,6 +17,23 @@ npm run dev
 
 Open http://localhost:3000. Development credentials are `admin@microdrama.local` and `user@microdrama.local`; the OTP is the value of `OTP_DEV_CODE` (default `123456`).
 
+The admin dashboard is available at `/admin` and is server-role-gated. Existing catalogue,
+analytics, and subscription screens remain available, while `/admin/users` provides account
+search, detail, ledger-backed coin adjustments, role changes, subscription overrides, and
+disable/enable controls. `/admin/commerce` provides CRUD controls for coin bundles, banners,
+coupons, plans, localized integer-minor-unit prices, and discount codes. Destructive UI actions
+require confirmation; records with paid history are blocked from deletion to preserve financial
+and ledger history.
+
+Login supports both the existing development OTP flow and email/password accounts. Password
+hashes use Node scrypt in the format `scrypt$<N>$<saltHex>$<hashHex>`; no production password
+is seeded or committed. The production administrator can set the password for
+`admin@intubemedia.com` from the admin user controls without putting the credential in this
+repository. Signed-in users can change their password from `/account/subscription` after
+entering the current password. Password login allows five consecutive failures before a
+15-minute account cooldown; successful login and admin password changes reset the cooldown
+counter. OTP login remains independent.
+
 Useful commands: `npm run format`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm test`, `npm run db:reset`, and `npm run db:seed`.
 
 The seed creates three 60-episode series, posters/thumbnails, subtitles, progress, likes,
@@ -31,6 +48,11 @@ curl -X POST http://localhost:3000/api/cron/subscriptions \
 The subscription offer resolves a fixed `PlanPrice` row from `cf-ipcountry` or
 `x-vercel-ip-country`, then the country in `Accept-Language`, and finally INR. It never
 calculates prices with live FX.
+
+Seeded annual prices are ₹999 / ₹9 trial (INR), $99.99 / $0.99 trial (USD), €89.99 / €0.99
+trial (EUR), and AED 479 / AED 9 trial. Users can start the three-day trial or buy the localized
+annual pass directly. Trial claims are one-time per server-known email and optional device
+fingerprint, including after account recreation.
 
 ## Environment
 

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { prisma } from "@/server/db";
+import SearchControls from "./search-controls";
 
 export default async function SearchPage({
   searchParams,
@@ -33,35 +34,7 @@ export default async function SearchPage({
         ← Discover
       </Link>
       <h1 className="mt-7 text-3xl font-black">Find your next story</h1>
-      <form className="mt-5 grid gap-2 sm:grid-cols-4">
-        <input
-          name="q"
-          defaultValue={q}
-          placeholder="Search title, synopsis…"
-          className="min-w-0 rounded-xl bg-zinc-900 p-4 sm:col-span-2"
-        />
-        <input
-          name="genre"
-          defaultValue={params.genre}
-          placeholder="Genre"
-          className="rounded-xl bg-zinc-900 p-4"
-        />
-        <input
-          name="trope"
-          defaultValue={params.trope}
-          placeholder="Trope"
-          className="rounded-xl bg-zinc-900 p-4"
-        />
-        <input
-          name="cast"
-          defaultValue={params.cast}
-          placeholder="Cast"
-          className="rounded-xl bg-zinc-900 p-4"
-        />
-        <button className="rounded-xl bg-rose-500 px-5 font-bold sm:col-span-4">
-          Search catalogue
-        </button>
-      </form>
+      <SearchControls q={q} genre={params.genre} trope={params.trope} cast={params.cast} />
       <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">
         {items.map((item) => (
           <Link key={item.id} href={`/series/${item.slug}`} className="rounded-2xl bg-zinc-900 p-4">

@@ -1,10 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
+import { getSession } from "@/server/auth";
 import { getDiscovery } from "@/server/discovery";
 
 export default async function HomePage() {
-  const discovery = await getDiscovery();
+  const session = await getSession();
+  const discovery = await getDiscovery(session?.userId);
   const groups = [
+    { title: "For You", items: discovery.forYou },
     { title: "Trending Today", items: discovery.trending },
     { title: "New Releases", items: discovery.newReleases },
     ...discovery.genreRows.map((row) => ({ title: `Genre: ${row.title}`, items: row.items })),
