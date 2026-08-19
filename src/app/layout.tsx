@@ -19,6 +19,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <Link href="/">Discover</Link>
           <Link href="/search">Search</Link>
           <Link href="/wallet">Wallet</Link>
+          <Link href="/account/watch-history">History</Link>
           <Link href="/account/subscription">Subscription{subscription ? " · VIP" : ""}</Link>
           <Link href="/admin">Admin</Link>
         </nav>

@@ -5,6 +5,7 @@ import { resolveCurrency } from "@/server/currency";
 import { getSubscriptionOffer, getUserSubscription } from "@/server/subscriptions";
 import SubscriptionActions from "./actions";
 import PasswordChange from "./password-change";
+import AccountNav from "../account-nav";
 
 export default async function SubscriptionPage() {
   const session = await getSession();
@@ -39,6 +40,7 @@ export default async function SubscriptionPage() {
         ← Discover
       </Link>
       <h1 className="mt-7 text-3xl font-black">My Subscription</h1>
+      <AccountNav />
       {!subscription ? (
         <section className="mt-6 rounded-3xl bg-amber-400 p-6 text-zinc-950">
           <p className="text-sm font-bold uppercase">VIP access</p>
