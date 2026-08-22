@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-export default function LoginForm() {
+export default function LoginForm({ redirectTo = "/" }: { redirectTo?: string }) {
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
   const [requested, setRequested] = useState(false);
@@ -16,7 +16,7 @@ export default function LoginForm() {
         body: JSON.stringify({ email: identifier, password }),
       });
       const data = await response.json();
-      if (response.ok) location.href = "/";
+      if (response.ok) location.href = redirectTo;
       else setMessage(data.error?.message ?? "Invalid email or password");
       return;
     }
@@ -30,7 +30,7 @@ export default function LoginForm() {
     if (response.ok && !requested) {
       setRequested(true);
       setMessage("OTP sent. In dev, use 123456.");
-    } else if (response.ok) location.href = "/";
+    } else if (response.ok) location.href = redirectTo;
     else setMessage(data.error?.message ?? "Something went wrong");
   }
   return (

@@ -72,6 +72,7 @@ export default function SeasonEpisodes({
                     WATCHED
                   </span>
                 )}
+                {ep.access === "LOCKED" && <span aria-label="Locked episode">🔒</span>}
                 <span>
                   {ep.isFree || ep.number <= freeEpisodeCount
                     ? "FREE"
