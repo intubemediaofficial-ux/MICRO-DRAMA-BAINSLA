@@ -27,7 +27,7 @@ export default function SubscribeActions({
 }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
-  const [pending, setPending] = useState<"trial" | "annual" | "coin" | null>(null);
+  const [pending, setPending] = useState<"trial" | "annual" | "coin" | "ad" | null>(null);
 
   function getDeviceFingerprint() {
     const key = "microdrama_device_fingerprint";
@@ -78,10 +78,45 @@ export default function SubscribeActions({
       router.replace(`/watch/${episodeId}`);
       return;
     }
-    setMessage(
-      ((await response.json()) as { error?: { message?: string } }).error?.message ??
-        "Unlock failed",
+    setMessage(await getErrorMessage(response, "Unlock failed"));
+    setPending(null);
+  }
+
+  async function getErrorMessage(response: Response, fallback: string) {
+    return (
+      ((await response.json()) as { error?: { message?: string } }).error?.message ?? fallback
     );
+  }
+
+  async function unlockWithAd() {
+    setPending("ad");
+    setMessage("");
+    const tokenResponse = await fetch("/api/ads/reward-token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ episodeId }),
+    });
+    if (!tokenResponse.ok) {
+      setMessage(await getErrorMessage(tokenResponse, "Could not start the rewarded ad."));
+      setPending(null);
+      return;
+    }
+    const { token } = (await tokenResponse.json()) as { token?: string };
+    if (!token) {
+      setMessage("Could not start the rewarded ad.");
+      setPending(null);
+      return;
+    }
+    const response = await fetch("/api/unlocks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ episodeId, source: "ad", adToken: token }),
+    });
+    if (response.ok) {
+      router.replace(`/watch/${episodeId}`);
+      return;
+    }
+    setMessage(await getErrorMessage(response, "Unlock failed"));
     setPending(null);
   }
 
@@ -107,13 +142,23 @@ export default function SubscribeActions({
           Full Annual Pass: {annualLabel}
         </button>
       )}
+      {coinPrice > 0 && (
+        <button
+          type="button"
+          disabled={pending !== null}
+          onClick={() => void unlockWithCoins()}
+          className="w-full rounded-2xl border border-rose-400/60 px-5 py-4 text-left font-semibold text-rose-100 disabled:opacity-60"
+        >
+          Unlock this episode for {coinPrice} coins
+        </button>
+      )}
       <button
         type="button"
         disabled={pending !== null}
-        onClick={() => void unlockWithCoins()}
-        className="w-full rounded-2xl border border-rose-400/60 px-5 py-4 text-left font-semibold text-rose-100 disabled:opacity-60"
+        onClick={() => void unlockWithAd()}
+        className="w-full rounded-2xl border border-zinc-600 px-5 py-4 text-left font-semibold text-zinc-200 disabled:opacity-60"
       >
-        Unlock this episode for {coinPrice} coins
+        Watch a short ad to unlock this episode
       </button>
       {message && <p className="rounded-xl bg-rose-950/60 p-3 text-sm text-rose-200">{message}</p>}
     </div>

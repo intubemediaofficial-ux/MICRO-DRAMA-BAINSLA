@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
-import { resolveEpisodeEntitlement } from "@/server/entitlements";
+import { resolveSeriesEpisodeEntitlements } from "@/server/entitlements";
 import { getWatchedEpisodeIds } from "@/server/discovery";
 import WatchClient from "./watch-client";
 
@@ -28,15 +28,14 @@ export default async function WatchPage({ params }: { params: Promise<{ episodeI
   const seriesEpisodes = episode.series.episodes;
   const episodeIndex = seriesEpisodes.findIndex((item) => item.id === episode.id);
   const episodeIds = seriesEpisodes.map((item) => item.id);
-  const [entitlements, watchedIds] = await Promise.all([
-    Promise.all(
-      seriesEpisodes.map((item) => resolveEpisodeEntitlement(session?.userId ?? null, item.id)),
+  const [entitlementById, watchedIds] = await Promise.all([
+    resolveSeriesEpisodeEntitlements(
+      session?.userId ?? null,
+      seriesEpisodes,
+      episode.series.freeEpisodeCount,
     ),
     session ? getWatchedEpisodeIds(session.userId, episodeIds) : Promise.resolve(new Set<string>()),
   ]);
-  const entitlementById = new Map(
-    seriesEpisodes.map((item, index) => [item.id, entitlements[index]]),
-  );
   const seasonByEpisodeId = new Map<string, number>();
   for (const season of episode.series.seasons) {
     for (const item of season.episodes) seasonByEpisodeId.set(item.id, season.number);
@@ -47,7 +46,6 @@ export default async function WatchPage({ params }: { params: Promise<{ episodeI
     number: item.number,
     seasonNumber: seasonByEpisodeId.get(item.id) ?? earliestSeasonNumber,
     title: item.title,
-    thumbnailUrl: item.thumbnailUrl || episode.series.posterUrl,
     entitled: entitlementById.get(item.id)?.entitled ?? false,
     watched: watchedIds.has(item.id),
   }));

@@ -2,6 +2,7 @@
 
 import Hls from "hls.js";
 import { useEffect, useRef, useState } from "react";
+import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { paywallRedirectDecision } from "@/lib/episode-gating";
 import type { EpisodeRailSource } from "@/lib/episode-rail";
@@ -173,7 +174,7 @@ export default function WatchClient({
         } else if (response.status === 401 || response.status === 403) {
           const access = response.status === 401 ? "anonymous" : "locked";
           const decision = paywallRedirectDecision(episodeId, access);
-          if (decision.destination === "paywall") router.replace(decision.href as never);
+          if (decision.destination === "paywall") router.replace(decision.href as Route);
         } else {
           setLoading(false);
           setPlaybackError("Sign in to watch this episode.");
@@ -216,7 +217,7 @@ export default function WatchClient({
   function navigate(id: string | null, locked = false) {
     if (!id) return;
     if (locked) {
-      router.push(paywallRedirectDecision(id, "locked").href as never);
+      router.push(paywallRedirectDecision(id, "locked").href as Route);
       return;
     }
     router.push(`/watch/${id}`);

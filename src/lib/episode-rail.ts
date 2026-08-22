@@ -3,7 +3,6 @@ export type EpisodeRailSource = {
   number: number;
   seasonNumber: number;
   title: string;
-  thumbnailUrl: string;
   entitled: boolean;
   watched: boolean;
 };
