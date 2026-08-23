@@ -1,18 +1,54 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { resolveSeriesEpisodeEntitlements } from "@/server/entitlements";
+import { getWatchedEpisodeIds } from "@/server/discovery";
 import WatchClient from "./watch-client";
 
 export default async function WatchPage({ params }: { params: Promise<{ episodeId: string }> }) {
   const { episodeId } = await params;
+  const session = await getSession();
   const episode = await prisma.episode.findUnique({
     where: { id: episodeId },
     include: {
-      series: { include: { episodes: { orderBy: { number: "asc" } } } },
+      series: {
+        include: {
+          episodes: { orderBy: { number: "asc" } },
+          seasons: {
+            orderBy: [{ sortOrder: "asc" }, { number: "asc" }],
+            include: { episodes: { select: { id: true } } },
+          },
+        },
+      },
       subtitles: { select: { lang: true } },
     },
   });
   if (!episode) notFound();
+  const seriesEpisodes = episode.series.episodes;
+  const episodeIndex = seriesEpisodes.findIndex((item) => item.id === episode.id);
+  const episodeIds = seriesEpisodes.map((item) => item.id);
+  const [entitlementById, watchedIds] = await Promise.all([
+    resolveSeriesEpisodeEntitlements(
+      session?.userId ?? null,
+      seriesEpisodes,
+      episode.series.freeEpisodeCount,
+    ),
+    session ? getWatchedEpisodeIds(session.userId, episodeIds) : Promise.resolve(new Set<string>()),
+  ]);
+  const seasonByEpisodeId = new Map<string, number>();
+  for (const season of episode.series.seasons) {
+    for (const item of season.episodes) seasonByEpisodeId.set(item.id, season.number);
+  }
+  const earliestSeasonNumber = episode.series.seasons[0]?.number ?? 1;
+  const railEpisodes = seriesEpisodes.map((item) => ({
+    id: item.id,
+    number: item.number,
+    seasonNumber: seasonByEpisodeId.get(item.id) ?? earliestSeasonNumber,
+    title: item.title,
+    entitled: entitlementById.get(item.id)?.entitled ?? false,
+    watched: watchedIds.has(item.id),
+  }));
   return (
     <div className="min-h-screen bg-black pb-16">
       <Link
@@ -24,12 +60,14 @@ export default async function WatchPage({ params }: { params: Promise<{ episodeI
       <WatchClient
         episodeId={episode.id}
         title={episode.title}
-        nextId={
-          episode.series.episodes.find((item) => item.number === episode.number + 1)?.id ?? null
+        nextId={seriesEpisodes[episodeIndex + 1]?.id ?? null}
+        nextLocked={
+          seriesEpisodes[episodeIndex + 1]
+            ? !entitlementById.get(seriesEpisodes[episodeIndex + 1].id)?.entitled
+            : false
         }
-        previousId={
-          episode.series.episodes.find((item) => item.number === episode.number - 1)?.id ?? null
-        }
+        previousId={seriesEpisodes[episodeIndex - 1]?.id ?? null}
+        episodes={railEpisodes}
         subtitles={episode.subtitles.map((subtitle) => ({
           lang: subtitle.lang,
           url: `/api/episodes/${episode.id}/subtitles/${subtitle.lang}`,

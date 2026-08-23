@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
-import { resolveEpisodeEntitlement } from "@/server/entitlements";
+import { resolveSeriesEpisodeEntitlements } from "@/server/entitlements";
 import { getWatchedEpisodeIds } from "@/server/discovery";
 import TeaserPlayer from "./teaser-player";
 import SeasonEpisodes from "./season-episodes";
@@ -23,20 +23,15 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
     },
   });
   if (!series) notFound();
-  const entitlements = session
-    ? await Promise.all(
-        series.episodes.map((episode) => resolveEpisodeEntitlement(session.userId, episode.id)),
-      )
-    : series.episodes.map(() => ({ entitled: false, reason: "LOCKED" as const }));
-  const watchedIds = session
-    ? await getWatchedEpisodeIds(
-        session.userId,
-        series.episodes.map((episode) => episode.id),
-      )
-    : new Set<string>();
-  const entitlementByEpisodeId = new Map(
-    series.episodes.map((episode, index) => [episode.id, entitlements[index]]),
-  );
+  const [entitlementByEpisodeId, watchedIds] = await Promise.all([
+    resolveSeriesEpisodeEntitlements(session?.userId ?? null, series.episodes, series.freeEpisodeCount),
+    session
+      ? getWatchedEpisodeIds(
+          session.userId,
+          series.episodes.map((episode) => episode.id),
+        )
+      : Promise.resolve(new Set<string>()),
+  ]);
   const toEpisodeView = (episode: (typeof series.episodes)[number]) => ({
     id: episode.id,
     number: episode.number,
