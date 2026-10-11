@@ -78,12 +78,22 @@ async function priceWithDiscount(
   };
 }
 
-export async function getSubscriptionOffer(planCode: string, currency: string) {
-  const plan = await prisma.plan.findUnique({
-    where: { code: planCode },
-    include: { prices: { where: { isActive: true } } },
+export const DEFAULT_PLAN_CODE = "VIP_ANNUAL";
+
+async function findPlan(planCode: string) {
+  const include = { prices: { where: { isActive: true } } } as const;
+  const plan = await prisma.plan.findUnique({ where: { code: planCode }, include });
+  if (plan?.isActive || planCode !== DEFAULT_PLAN_CODE) return plan?.isActive ? plan : null;
+  return prisma.plan.findFirst({
+    where: { isActive: true },
+    orderBy: { createdAt: "asc" },
+    include,
   });
-  if (!plan || !plan.isActive) return null;
+}
+
+export async function getSubscriptionOffer(planCode: string, currency: string) {
+  const plan = await findPlan(planCode);
+  if (!plan) return null;
   const price = choosePlanPrice(plan, currency);
   return price ? { plan, price } : null;
 }
@@ -111,11 +121,8 @@ async function startSubscription(
   deviceFingerprint: string | undefined,
   now: Date,
 ) {
-  const plan = await prisma.plan.findUnique({
-    where: { code: planCode },
-    include: { prices: { where: { isActive: true } } },
-  });
-  if (!plan || !plan.isActive) throw new Error("PLAN_NOT_FOUND");
+  const plan = await findPlan(planCode);
+  if (!plan) throw new Error("PLAN_NOT_FOUND");
   const price = choosePlanPrice(plan, currency);
   if (!price) throw new Error("PRICE_NOT_FOUND");
   const selected = await priceWithDiscount(plan.id, price.id, discountCode, now);
