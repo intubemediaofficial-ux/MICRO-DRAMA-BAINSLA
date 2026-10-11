@@ -29,7 +29,9 @@ export default function LoginForm({ redirectTo = "/" }: { redirectTo?: string })
     const data = await response.json();
     if (response.ok && !requested) {
       setRequested(true);
-      setMessage("OTP sent. In dev, use 123456.");
+      setMessage(
+        process.env.NODE_ENV === "production" ? "OTP sent." : "OTP sent. In dev, use 123456.",
+      );
     } else if (response.ok) location.href = redirectTo;
     else setMessage(data.error?.message ?? "Something went wrong");
   }
