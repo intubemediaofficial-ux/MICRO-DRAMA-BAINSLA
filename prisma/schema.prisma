@@ -565,3 +565,15 @@ model TrialClaim {
 
   @@index([userId])
 }
+
+model OtpChallenge {
+  id         String    @id @default(cuid())
+  identifier String
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([identifier, createdAt])
+}

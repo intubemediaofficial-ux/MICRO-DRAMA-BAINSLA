@@ -1,5 +1,6 @@
 "use client";
 
+import { toMinor } from "@/lib/money";
 import { useState } from "react";
 import { Button, Confirm, useToast } from "@/components/admin/admin-ui";
 
@@ -269,25 +270,35 @@ export default function AdminSubscriptionsClient({
                     void save({
                       kind: "price",
                       id: price.id,
-                      amountMinor: Number(form.get("amountMinor")),
-                      trialAmountMinor: Number(form.get("trialAmountMinor")),
+                      amountMinor: toMinor(form.get("amountMinor")),
+                      trialAmountMinor: toMinor(form.get("trialAmountMinor")),
                       countryCodes: String(form.get("countryCodes"))
                         .split(",")
                         .map((country) => country.trim().toUpperCase())
                         .filter(Boolean),
                       isActive: true,
-                    }, `${price.currency} price saved — ${money(Number(form.get("amountMinor")), price.currency)}.`, `price-${price.id}`);
+                    }, `${price.currency} price saved — ${money(toMinor(form.get("amountMinor")), price.currency)}.`, `price-${price.id}`);
                   }}
                 >
                   <p className="text-sm text-zinc-400">{price.currency}</p>
                   <input
                     name="amountMinor"
-                    defaultValue={price.amountMinor}
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    title="Price (e.g. 999 = ₹999)"
+                    placeholder="Price"
+                    defaultValue={price.amountMinor / 100}
                     className="mt-2 w-full rounded bg-zinc-700 p-2"
                   />
                   <input
                     name="trialAmountMinor"
-                    defaultValue={price.trialAmountMinor}
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    title="Trial price (e.g. 9 = ₹9)"
+                    placeholder="Trial price"
+                    defaultValue={price.trialAmountMinor / 100}
                     className="mt-2 w-full rounded bg-zinc-700 p-2"
                   />
                   <input

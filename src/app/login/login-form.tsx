@@ -30,7 +30,9 @@ export default function LoginForm({ redirectTo = "/" }: { redirectTo?: string })
     if (response.ok && !requested) {
       setRequested(true);
       setMessage(
-        process.env.NODE_ENV === "production" ? "OTP sent." : "OTP sent. In dev, use 123456.",
+        data.dev
+          ? "OTP sent. In dev, use 123456."
+          : "OTP sent to your email. It expires in 10 minutes.",
       );
     } else if (response.ok) location.href = redirectTo;
     else setMessage(data.error?.message ?? "Something went wrong");
@@ -57,7 +59,8 @@ export default function LoginForm({ redirectTo = "/" }: { redirectTo?: string })
         required
         value={identifier}
         onChange={(e) => setIdentifier(e.target.value)}
-        placeholder={mode === "password" ? "Email" : "Phone or email"}
+        type="email"
+        placeholder="Email"
         className="w-full rounded-xl bg-zinc-800 p-4 outline-none ring-rose-500 focus:ring-2"
       />
       {mode === "password" ? (
