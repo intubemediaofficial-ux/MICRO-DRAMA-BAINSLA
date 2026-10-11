@@ -1,18 +1,21 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { env } from "@/server/config";
 import { findOrCreateUser, issueSession } from "@/server/auth";
+import { normalizeIdentifier, verifyOtp } from "@/server/otp";
+import { rateLimit } from "@/server/rate-limit";
 const input = z.object({
   identifier: z.string().min(3).max(120),
   code: z.string().length(6),
   referralCode: z.string().optional(),
 });
 export async function POST(request: Request) {
+  if (!rateLimit("verify:" + request.headers.get("x-forwarded-for"), 20))
+    return NextResponse.json({ error: { message: "Too many requests" } }, { status: 429 });
   try {
     const data = input.parse(await request.json());
-    if (data.code !== env.OTP_DEV_CODE)
-      return NextResponse.json({ error: { message: "Invalid OTP" } }, { status: 401 });
-    const user = await findOrCreateUser(data.identifier, data.referralCode);
+    if (!(await verifyOtp(data.identifier, data.code)))
+      return NextResponse.json({ error: { message: "Invalid or expired OTP" } }, { status: 401 });
+    const user = await findOrCreateUser(normalizeIdentifier(data.identifier), data.referralCode);
     await issueSession({ userId: user.id, role: user.role });
     return NextResponse.json({ ok: true });
   } catch (error) {

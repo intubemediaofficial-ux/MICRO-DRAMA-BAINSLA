@@ -1,5 +1,6 @@
 "use client";
 
+import { toMinor } from "@/lib/money";
 import { useState } from "react";
 import { Button, Confirm, useToast } from "@/components/admin/admin-ui";
 
@@ -130,7 +131,7 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                 data: {
                   coins: Number(form.get("coins")),
                   bonusCoins: Number(form.get("bonusCoins")),
-                  priceMinor: Number(form.get("priceMinor")),
+                  priceMinor: toMinor(form.get("priceMinor")),
                   currency: String(form.get("currency")),
                   isActive: form.get("isActive") === "on",
                   sortOrder: Number(form.get("sortOrder")),
@@ -152,7 +153,9 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
             />
             <input
               name="priceMinor"
-              defaultValue={bundle.priceMinor}
+              step="0.01"
+              title="Price (e.g. 49 = ₹49)"
+              defaultValue={bundle.priceMinor / 100}
               type="number"
               className="rounded bg-zinc-800 p-2"
             />
@@ -346,8 +349,8 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                     id: price.id,
                     data: {
                       currency: String(form.get("currency")),
-                      amountMinor: Number(form.get("amountMinor")),
-                      trialAmountMinor: Number(form.get("trialAmountMinor")),
+                      amountMinor: toMinor(form.get("amountMinor")),
+                      trialAmountMinor: toMinor(form.get("trialAmountMinor")),
                       countryCodes: String(form.get("countryCodes"))
                         .split(",")
                         .map((country) => country.trim().toUpperCase())
@@ -365,14 +368,18 @@ export default function AdminCommerceClient({ initial }: { initial: Data }) {
                 />
                 <input
                   name="amountMinor"
-                  defaultValue={price.amountMinor}
+                  step="0.01"
+                  title="Price (e.g. 999 = ₹999)"
+                  defaultValue={price.amountMinor / 100}
                   type="number"
                   min={0}
                   className="rounded bg-zinc-800 p-2"
                 />
                 <input
                   name="trialAmountMinor"
-                  defaultValue={price.trialAmountMinor}
+                  step="0.01"
+                  title="Trial price (e.g. 9 = ₹9)"
+                  defaultValue={price.trialAmountMinor / 100}
                   type="number"
                   min={0}
                   className="rounded bg-zinc-800 p-2"
