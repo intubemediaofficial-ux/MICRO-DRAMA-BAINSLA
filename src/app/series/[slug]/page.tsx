@@ -9,7 +9,7 @@ import TeaserPlayer from "./teaser-player";
 import SeasonEpisodes from "./season-episodes";
 
 export default async function SeriesPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+  const slug = decodeURIComponent((await params).slug);
   const session = await getSession();
   const series = await prisma.series.findUnique({
     where: { slug },

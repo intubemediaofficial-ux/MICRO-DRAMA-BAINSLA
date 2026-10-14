@@ -68,6 +68,7 @@ export default async function WatchPage({ params }: { params: Promise<{ episodeI
         }
         previousId={seriesEpisodes[episodeIndex - 1]?.id ?? null}
         episodes={railEpisodes}
+        signedIn={Boolean(session)}
         subtitles={episode.subtitles.map((subtitle) => ({
           lang: subtitle.lang,
           url: `/api/episodes/${episode.id}/subtitles/${subtitle.lang}`,
