@@ -3,6 +3,7 @@ import { env } from "./config";
 const encode = (value: string) => Buffer.from(value).toString("base64url");
 const sign = (body: string) =>
   createHmac("sha256", env.STREAM_TOKEN_SECRET).update(body).digest("base64url");
+export const GUEST_USER_ID = "guest";
 export function createStreamToken(userId: string, episodeId: string, ttlSeconds = 300) {
   const body = `${userId}.${episodeId}.${Math.floor(Date.now() / 1000) + ttlSeconds}`;
   return `${encode(body)}.${sign(body)}`;

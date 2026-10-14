@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  experimental: { typedRoutes: true },
+  typedRoutes: true,
   images: { unoptimized: true },
   async rewrites() {
     return [{ source: "/media/:path*", destination: "/api/media/:path*" }];

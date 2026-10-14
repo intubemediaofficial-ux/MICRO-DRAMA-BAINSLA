@@ -19,6 +19,7 @@ export default function WatchClient({
   previousId,
   episodes,
   subtitles,
+  signedIn,
 }: {
   episodeId: string;
   title: string;
@@ -27,6 +28,7 @@ export default function WatchClient({
   previousId: string | null;
   episodes: EpisodeRailSource[];
   subtitles: Subtitle[];
+  signedIn: boolean;
 }) {
   const router = useRouter();
   const video = useRef<HTMLVideoElement>(null);
@@ -232,15 +234,30 @@ export default function WatchClient({
     if (Math.abs(distance) < 50) return;
     navigate(distance < 0 ? nextId : previousId);
   }
+  function saveProgress(body: { episodeId: string; positionSec: number; completed?: boolean }) {
+    if (!signedIn) return;
+    void fetch("/api/progress", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+  function toggleLike(value?: boolean) {
+    if (!signedIn) {
+      router.push(`/login?returnTo=${encodeURIComponent(`/watch/${episodeId}`)}` as Route);
+      return;
+    }
+    setLiked((current) => value ?? !current);
+    void fetch("/api/likes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ episodeId }),
+    });
+  }
   function onVideoClick() {
     const now = Date.now();
     if (now - lastTap.current < 300) {
-      setLiked(true);
-      void fetch("/api/likes", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ episodeId }),
-      });
+      if (!liked) toggleLike(true);
     }
     lastTap.current = now;
   }
@@ -288,14 +305,10 @@ export default function WatchClient({
           onPointerUp={stopLongPress}
           onPointerLeave={stopLongPress}
           onEnded={(event) => {
-            void fetch("/api/progress", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                episodeId,
-                positionSec: Math.floor(event.currentTarget.duration || duration),
-                completed: true,
-              }),
+            saveProgress({
+              episodeId,
+              positionSec: Math.floor(event.currentTarget.duration || duration),
+              completed: true,
             });
             if (autoNext && nextId) setNextCountdown(3);
           }}
@@ -322,11 +335,7 @@ export default function WatchClient({
               positionSec !== lastProgress.current
             ) {
               lastProgress.current = positionSec;
-              void fetch("/api/progress", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ episodeId, positionSec }),
-              });
+              saveProgress({ episodeId, positionSec });
             }
           }}
         >
@@ -455,14 +464,7 @@ export default function WatchClient({
               {autoNext ? "Auto" : "Manual"}
             </button>
             <button
-              onClick={() => {
-                setLiked((value) => !value);
-                void fetch("/api/likes", {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ episodeId }),
-                });
-              }}
+              onClick={() => toggleLike()}
               className="rounded-full bg-black/60 px-3 py-2"
             >
               {liked ? "❤️" : "🤍"}

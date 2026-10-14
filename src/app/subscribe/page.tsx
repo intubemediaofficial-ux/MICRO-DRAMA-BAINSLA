@@ -16,7 +16,7 @@ export default async function SubscribePage({
 }) {
   const { episode: episodeQuery } = await searchParams;
   const parsedEpisode = z.string().min(1).safeParse(episodeQuery);
-  if (!parsedEpisode.success) notFound();
+  if (!parsedEpisode.success) redirect("/account/subscription");
   const episodeId = parsedEpisode.data;
   const episode = await prisma.episode.findUnique({
     where: { id: episodeId },
