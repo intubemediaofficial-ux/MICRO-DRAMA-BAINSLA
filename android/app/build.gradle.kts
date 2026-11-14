@@ -22,6 +22,8 @@ android {
         versionCode = 2
         versionName = "1.1.0"
         buildConfigField("String", "BASE_URL", "\"https://intubedrama.com\"")
+        manifestPlaceholders["ADMOB_APP_ID"] =
+            providers.gradleProperty("ADMOB_APP_ID").orElse("ca-app-pub-3940256099942544~3347511713").get()
     }
 
     signingConfigs {
@@ -71,6 +73,7 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.android.gms:play-services-ads:23.6.0")
 
     val media3 = "1.5.1"
     implementation("androidx.media3:media3-exoplayer:$media3")

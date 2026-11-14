@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import kotlinx.coroutines.launch
+import com.google.android.gms.ads.MobileAds
 
 class ReelsApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
@@ -16,6 +17,7 @@ class ReelsApp : Application(), ImageLoaderFactory {
         AppScope.launch {
             val config = Api.config(refresh = true)
             config.firebase?.let { PushNotifications.configure(this@ReelsApp, it) }
+            if (config.adsEnabled) MobileAds.initialize(this@ReelsApp)
         }
     }
 

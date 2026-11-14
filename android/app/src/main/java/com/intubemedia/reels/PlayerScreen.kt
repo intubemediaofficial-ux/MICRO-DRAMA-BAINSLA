@@ -6,6 +6,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.view.ViewGroup
+import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -65,7 +66,17 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.FullScreenContentCallback
+import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.OnUserEarnedRewardListener
+import com.google.android.gms.ads.rewarded.RewardedAd
+import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
+import com.google.android.gms.ads.rewarded.ServerSideVerificationOptions
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.launch
 
 /** Full-screen vertical feed of a series; neighbouring episodes are prepared so a swipe starts instantly. */
@@ -323,9 +334,12 @@ private fun LockedView(
     openWeb: (String) -> Unit,
     onUnlocked: () -> Unit,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var adsAvailable by remember { mutableStateOf(MobileConfigState.current.adsEnabled) }
+    val adsEnabled = MobileConfigState.current.adsEnabled && adsAvailable && !state.needsLogin
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.Center,
@@ -352,6 +366,70 @@ private fun LockedView(
             ) { Text("Unlock for ${state.coinPrice} coins") }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = { openWeb("/subscribe?episode=${episode.id}") }) { Text("Get VIP – watch everything", color = Color.White) }
+            if (adsEnabled) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    enabled = !busy,
+                    onClick = {
+                        busy = true
+                        message = null
+                        scope.launch {
+                            try {
+                                val (token, unitId) = Api.requestRewardToken(episode.id)
+                                val activity = context as? Activity ?: error("Ad unavailable")
+                                val ad = loadRewardedAd(context, unitId)
+                                ad.setServerSideVerificationOptions(
+                                    ServerSideVerificationOptions.Builder().setCustomData(token).build(),
+                                )
+                                ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+                                    override fun onAdDismissedFullScreenContent() {
+                                        busy = false
+                                    }
+                                    override fun onAdFailedToShowFullScreenContent(error: com.google.android.gms.ads.AdError) {
+                                        message = "Ad failed to load"
+                                        busy = false
+                                    }
+                                }
+                                ad.show(activity, OnUserEarnedRewardListener {
+                                    scope.launch {
+                                        try {
+                                            val deadline = System.currentTimeMillis() + 12_000
+                                            while (true) {
+                                                try {
+                                                    Api.unlockWithAd(episode.id, token)
+                                                    onUnlocked()
+                                                    break
+                                                } catch (error: ApiException) {
+                                                    if (error.status == 403 && error.message?.contains("Ad not verified yet") == true &&
+                                                        System.currentTimeMillis() < deadline
+                                                    ) {
+                                                        delay(1_500)
+                                                    } else {
+                                                        throw error
+                                                    }
+                                                }
+                                            }
+                                        } catch (error: Exception) {
+                                            message = error.message ?: "Ad unlock failed"
+                                        } finally {
+                                            busy = false
+                                        }
+                                    }
+                                })
+                            } catch (error: Exception) {
+                                if (error is ApiException && error.status == 429) {
+                                    message = "Daily ad unlock limit reached"
+                                } else if (error is ApiException && error.status != 503 && error.status != 404) {
+                                    message = error.message ?: "Ad unavailable"
+                                }
+                                adsAvailable = error is ApiException && error.status != 503 && error.status != 404 && error.status != 429
+                                if (error !is ApiException) message = "Ad failed to load"
+                                busy = false
+                            }
+                        }
+                    },
+                ) { Text("Watch ad to unlock", color = Color.White) }
+            }
         }
         message?.let {
             Spacer(Modifier.height(12.dp))
@@ -360,3 +438,21 @@ private fun LockedView(
         Row {}
     }
 }
+
+private suspend fun loadRewardedAd(context: android.content.Context, unitId: String): RewardedAd =
+    suspendCancellableCoroutine { continuation ->
+        RewardedAd.load(
+            context,
+            unitId,
+            AdRequest.Builder().build(),
+            object : RewardedAdLoadCallback() {
+                override fun onAdLoaded(ad: RewardedAd) {
+                    if (continuation.isActive) continuation.resume(ad)
+                }
+
+                override fun onAdFailedToLoad(error: LoadAdError) {
+                    if (continuation.isActive) continuation.resumeWithException(IllegalStateException(error.message))
+                }
+            },
+        )
+    }

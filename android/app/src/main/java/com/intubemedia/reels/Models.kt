@@ -253,6 +253,18 @@ object Api {
         runCatching { Net.post("/api/mobile/push-token", JSONObject().put("token", token)) }
     }
 
+    suspend fun requestRewardToken(episodeId: String): Pair<String, String> {
+        val json = Net.post("/api/ads/reward-token", JSONObject().put("episodeId", episodeId))
+        return json.getString("token") to json.getString("adUnitId")
+    }
+
+    suspend fun unlockWithAd(episodeId: String, token: String) {
+        Net.post(
+            "/api/unlocks",
+            JSONObject().put("episodeId", episodeId).put("source", "ad").put("adToken", token),
+        )
+    }
+
     /** Null when the user is logged out. */
     suspend fun profile(): Profile? = try {
         val json = Net.get("/api/mobile/me")
