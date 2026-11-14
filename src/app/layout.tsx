@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import BottomNav from "@/components/bottom-nav";
 import { getSession } from "@/server/auth";
 import { hasActiveSubscription } from "@/server/entitlements";
+import SiteFooter from "@/components/site-footer";
 
 export const metadata: Metadata = {
   title: "MicroDrama",
@@ -14,7 +15,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="en">
       <body>
-        <main className="mx-auto min-h-screen max-w-6xl">{children}</main>
+        <main className="mx-auto min-h-screen max-w-6xl">
+          {children}
+          <SiteFooter />
+        </main>
         <BottomNav isAdmin={session?.role === "ADMIN"} isVip={Boolean(subscription)} />
       </body>
     </html>
