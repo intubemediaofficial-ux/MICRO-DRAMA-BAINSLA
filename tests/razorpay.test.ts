@@ -203,4 +203,57 @@ describe("razorpay subscriptions", () => {
       body: { cancel_at_cycle_end: 1 },
     });
   });
+  it("replaces unpaid checkouts, keeps access after cancel and recovers late payments", async () => {
+    const user = await createUser("recover");
+    const first = await createRazorpayCheckout(user.id, planCode, "PAID");
+    const second = await createRazorpayCheckout(user.id, planCode, "PAID");
+    expect(calls).toContainEqual({
+      path: `/subscriptions/${first.razorpaySubscriptionId}/cancel`,
+      body: { cancel_at_cycle_end: 0 },
+    });
+    expect(
+      (await prisma.subscription.findUniqueOrThrow({ where: { id: first.subscriptionId } })).status,
+    ).toBe("EXPIRED");
+    await confirmRazorpayCheckout(user.id, {
+      razorpayPaymentId: "pay_recover_1",
+      razorpaySubscriptionId: second.razorpaySubscriptionId,
+      razorpaySignature: sign("pay_recover_1", second.razorpaySubscriptionId),
+    });
+    await cancelSubscription(user.id, second.subscriptionId);
+    await processRazorpayWebhook(`evt_cancelled_${suffix}`, {
+      event: "subscription.cancelled",
+      payload: { subscription: { entity: { id: second.razorpaySubscriptionId } } },
+    });
+    const cancelled = await prisma.subscription.findUniqueOrThrow({
+      where: { id: second.subscriptionId },
+    });
+    expect(cancelled.status).toBe("ACTIVE");
+    expect(cancelled.cancelAtPeriodEnd).toBe(true);
+
+    await prisma.subscription.update({
+      where: { id: second.subscriptionId },
+      data: { status: "EXPIRED" },
+    });
+    const late = {
+      event: "subscription.charged",
+      payload: {
+        subscription: { entity: { id: second.razorpaySubscriptionId } },
+        payment: { entity: { id: "pay_recover_2", amount: 8_900 } },
+      },
+    };
+    const originalTransaction = prisma.$transaction;
+    prisma.$transaction = (() => Promise.reject(new Error("DB_DOWN"))) as never;
+    try {
+      await expect(processRazorpayWebhook(`evt_late_${suffix}`, late)).rejects.toThrow("DB_DOWN");
+    } finally {
+      prisma.$transaction = originalTransaction;
+    }
+    expect(await processRazorpayWebhook(`evt_late_${suffix}`, late)).toMatchObject({
+      handled: true,
+    });
+    expect(
+      (await prisma.subscription.findUniqueOrThrow({ where: { id: second.subscriptionId } }))
+        .status,
+    ).toBe("ACTIVE");
+  });
 });
