@@ -361,6 +361,8 @@ fun AccountScreen(
     var loaded by remember { mutableStateOf(false) }
     var deleteDialogStep by remember { mutableStateOf(0) }
     var deletingAccount by remember { mutableStateOf(false) }
+    var cancelAutoRenewDialog by remember { mutableStateOf(false) }
+    var cancellingAutoRenew by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(AppState.authVersion) {
         loaded = false
@@ -374,6 +376,47 @@ fun AccountScreen(
     }
     if (!loaded) return Loading()
     val user = profile ?: return LoginForm { AppState.authVersion++ }
+    val renewableSubscription =
+        user.subscriptionId != null &&
+            user.subscriptionStatus?.let { it in listOf("TRIALING", "ACTIVE", "PAST_DUE") } == true
+    if (cancelAutoRenewDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!cancellingAutoRenew) cancelAutoRenewDialog = false },
+            title = { Text("Cancel auto-renew?") },
+            text = { Text("Your VIP access will remain until ${user.accessEndsAt.orEmpty()}.") },
+            confirmButton = {
+                TextButton(
+                    enabled = !cancellingAutoRenew,
+                    onClick = {
+                        val subscriptionId = user.subscriptionId ?: return@TextButton
+                        cancellingAutoRenew = true
+                        scope.launch {
+                            runCatching { Api.cancelSubscription(subscriptionId) }
+                                .onSuccess {
+                                    cancelAutoRenewDialog = false
+                                    AppState.authVersion++
+                                    Toast.makeText(context, "Auto-renew turned off", Toast.LENGTH_SHORT).show()
+                                }
+                                .onFailure { error ->
+                                    Toast.makeText(
+                                        context,
+                                        error.message ?: "Could not cancel auto-renew",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
+                            cancellingAutoRenew = false
+                        }
+                    },
+                ) { Text(if (cancellingAutoRenew) "Cancelling…" else "Confirm") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !cancellingAutoRenew,
+                    onClick = { cancelAutoRenewDialog = false },
+                ) { Text("Keep VIP") }
+            },
+        )
+    }
     if (deleteDialogStep == 1) {
         AlertDialog(
             onDismissRequest = { deleteDialogStep = 0 },
@@ -456,6 +499,19 @@ fun AccountScreen(
                 if (user.vipActive) "VIP active – ${user.planName.orEmpty()}" else "No active VIP plan",
                 color = if (user.vipActive) Color(0xFFFFC107) else Muted,
             )
+            if (renewableSubscription && user.cancelAtPeriodEnd) {
+                Text(
+                    "Auto-renew off – VIP until ${user.accessEndsAt.orEmpty()}",
+                    color = Muted,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            if (renewableSubscription && !user.cancelAtPeriodEnd) {
+                OutlinedButton(
+                    onClick = { cancelAutoRenewDialog = true },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                ) { Text("Cancel auto-renew") }
+            }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val checkoutEpisode = history.firstOrNull()?.episodeId

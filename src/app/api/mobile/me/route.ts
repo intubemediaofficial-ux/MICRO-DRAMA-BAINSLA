@@ -47,6 +47,7 @@ export async function GET(request: Request) {
     vipActive,
     subscription: subscription
       ? {
+          id: subscription.id,
           status: subscription.status,
           planName: subscription.plan.name,
           interval: subscription.plan.interval,

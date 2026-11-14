@@ -29,6 +29,8 @@ import { POST as logoutPost } from "../src/app/api/auth/logout/route";
 const suffix = crypto.randomUUID().slice(0, 8);
 const slug = `mobile-${suffix}`;
 let userId = "";
+let planId = "";
+let subscriptionId = "";
 
 describe("mobile api", () => {
   beforeAll(async () => {
@@ -64,6 +66,9 @@ describe("mobile api", () => {
     });
   });
   afterAll(async () => {
+    if (subscriptionId)
+      await prisma.subscription.deleteMany({ where: { id: subscriptionId } });
+    if (planId) await prisma.plan.deleteMany({ where: { id: planId } });
     await prisma.episode.deleteMany({ where: { series: { slug } } });
     await prisma.series.deleteMany({ where: { slug } });
     await prisma.user.deleteMany({ where: { id: userId } });
@@ -103,5 +108,50 @@ describe("mobile api", () => {
     await prisma.watchProgress.deleteMany({ where: { userId, episodeId: { in: episodesForResume.map((item) => item.id) } } });
     await logoutPost(new Request("http://localhost", { method: "POST" }));
     expect(cookieState.token).toBe("");
+  });
+
+  it("includes subscription cancellation details in the mobile profile", async () => {
+    const plan = await prisma.plan.create({
+      data: {
+        code: `MOBILE_ME_${suffix}`,
+        name: "Mobile profile test",
+        interval: "MONTHLY",
+        trialDays: 7,
+        prices: {
+          create: {
+            currency: "INR",
+            amountMinor: 1_000,
+            trialAmountMinor: 100,
+            countryCodes: [],
+          },
+        },
+      },
+      include: { prices: true },
+    });
+    planId = plan.id;
+    const now = new Date();
+    const subscription = await prisma.subscription.create({
+      data: {
+        userId,
+        planId,
+        priceId: plan.prices[0].id,
+        status: "ACTIVE",
+        trialEndsAt: now,
+        currentPeriodStart: now,
+        currentPeriodEnd: new Date(now.getTime() + 30 * 86_400_000),
+        provider: "DEV",
+        currency: "INR",
+      },
+    });
+    subscriptionId = subscription.id;
+    await issueSession({ userId, role: "USER" });
+
+    const me = await (await meGet(new Request("http://x"))).json();
+
+    expect(me.subscription).toMatchObject({
+      id: subscriptionId,
+      status: "ACTIVE",
+      cancelAtPeriodEnd: false,
+    });
   });
 });

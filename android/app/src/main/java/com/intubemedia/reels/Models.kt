@@ -98,6 +98,9 @@ data class Profile(
     val vipActive: Boolean,
     val planName: String?,
     val accessEndsAt: String?,
+    val subscriptionId: String? = null,
+    val subscriptionStatus: String? = null,
+    val cancelAtPeriodEnd: Boolean = false,
     val referralCode: String? = null,
     val referralLink: String? = null,
     val referralBonusCoins: Int? = null,
@@ -289,6 +292,9 @@ object Api {
             vipActive = json.optBoolean("vipActive"),
             planName = subscription?.str("planName"),
             accessEndsAt = subscription?.str("accessEndsAt"),
+            subscriptionId = subscription?.str("id"),
+            subscriptionStatus = subscription?.str("status"),
+            cancelAtPeriodEnd = subscription?.optBoolean("cancelAtPeriodEnd") ?: false,
             referralCode = user.str("referralCode") ?: json.str("referralCode"),
             referralLink = json.str("referralLink"),
             referralBonusCoins = if (json.has("referralBonusCoins")) json.optInt("referralBonusCoins") else null,
@@ -394,5 +400,12 @@ object Api {
     suspend fun deleteAccount() {
         Net.post("/api/account/delete", JSONObject().put("confirm", "DELETE"))
         Net.clearSession()
+    }
+
+    suspend fun cancelSubscription(subscriptionId: String) {
+        Net.post(
+            "/api/subscriptions/cancel",
+            JSONObject().put("subscriptionId", subscriptionId).put("immediate", false),
+        )
     }
 }
