@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -185,10 +186,11 @@ private fun VideoView(episode: EpisodeItem, ready: Playback.Ready, active: Boole
         }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val isActive by rememberUpdatedState(active)
     DisposableEffect(lifecycle, player) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) player.pause()
-            if (event == Lifecycle.Event.ON_START && active && !paused) player.play()
+            if (event == Lifecycle.Event.ON_START && isActive && !paused) player.play()
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
