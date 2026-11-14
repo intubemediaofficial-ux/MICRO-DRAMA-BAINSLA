@@ -66,6 +66,14 @@ export default async function AnalyticsPage({
           value={analytics.revenue.coinConsumptionVelocityPerActiveUserPerDay.toFixed(2)}
         />
       </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <Metric label="DAU today" value={analytics.engagement.dau} />
+        <Metric label="7-day active" value={analytics.engagement.active7d} />
+        <Metric
+          label={`D1 / D7 retention · ${analytics.engagement.cohortUsers} signups`}
+          value={`${(analytics.engagement.d1Retention * 100).toFixed(1)}% / ${(analytics.engagement.d7Retention * 100).toFixed(1)}%`}
+        />
+      </div>
       <section className="mt-8 rounded-2xl bg-zinc-900 p-5">
         <h2 className="text-xl font-bold">Episode funnel</h2>
         <p className="mt-1 text-xs text-zinc-500">
@@ -74,7 +82,7 @@ export default async function AnalyticsPage({
         <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
           <b>Episode</b>
           <b>Viewers</b>
-          <b>Drop</b>
+          <b>vs EP1</b>
           {analytics.funnel.map((row) => (
             <Fragment key={row.episodeNumber}>
               <span key={`n${row.episodeNumber}`}>{row.episodeNumber}</span>

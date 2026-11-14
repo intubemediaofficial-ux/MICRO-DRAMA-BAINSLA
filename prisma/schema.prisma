@@ -130,6 +130,7 @@ model User {
   couponRedemptions               CouponRedemption[]
   notifications                   NotificationLog[]
   deviceTokens                   DeviceToken[]
+  analyticsEvents                AnalyticsEvent[]
   subscriptions                   Subscription[]
   subscriptionEvents              SubscriptionEvent[]
   subscriptionDiscountRedemptions SubscriptionDiscountRedemption[]
@@ -156,6 +157,7 @@ model Series {
   createdAt        DateTime       @default(now())
   episodes         Episode[]
   seasons          Season[]
+  analyticsEvents  AnalyticsEvent[]
   banners          Banner[]
   campaigns        PushCampaign[]
   castMembers      CastMember[]
@@ -227,6 +229,7 @@ model Episode {
   subtitles    Subtitle[]
   unlocks      EpisodeUnlock[]
   progress     WatchProgress[]
+  analyticsEvents AnalyticsEvent[]
   likes        EpisodeLike[]
 
   @@unique([seriesId, number])
@@ -425,6 +428,24 @@ model DeviceToken {
 
   @@index([userId])
   @@index([lastSeenAt])
+}
+
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  name        String
+  userId      String?
+  deviceId    String?
+  seriesId    String?
+  episodeId   String?
+  positionSec Int?
+  props       Json?
+  createdAt   DateTime @default(now())
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  series      Series?  @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  episode     Episode? @relation(fields: [episodeId], references: [id], onDelete: SetNull)
+
+  @@index([name, createdAt])
+  @@index([episodeId])
 }
 
 model AdRewardNonce {

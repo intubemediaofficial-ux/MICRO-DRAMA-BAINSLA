@@ -4,7 +4,6 @@ import { prisma } from "./db";
 const since = (days: number) => new Date(Date.now() - days * 86_400_000);
 
 export async function getSeriesFunnel(seriesId: string) {
-  // Funnel viewers are distinct WatchProgress users reaching each episode number; drop is versus the prior number.
   const rows = await prisma.$queryRaw<{ number: number; viewers: bigint }[]>(
     Prisma.sql`
       SELECT e."number", COUNT(DISTINCT wp."userId") AS viewers
@@ -15,14 +14,52 @@ export async function getSeriesFunnel(seriesId: string) {
       ORDER BY e."number"
     `,
   );
-  let previous = 0;
+  const episodeOneViewers = Number(rows[0]?.viewers ?? 0);
   return rows.map((row) => {
     const viewers = Number(row.viewers);
-    // Keep drop rates non-negative if late or corrected progress makes a later count rise.
-    const dropPercent = previous === 0 ? 0 : Math.max(0, (previous - viewers) / previous);
-    previous = viewers;
+    const dropPercent =
+      episodeOneViewers === 0
+        ? 0
+        : Math.max(0, (episodeOneViewers - viewers) / episodeOneViewers);
     return { episodeNumber: row.number, viewers, dropPercent };
   });
+}
+
+export async function getEngagementMetrics() {
+  const [row] = await prisma.$queryRaw<
+    { dau: bigint; active7d: bigint; cohortUsers: bigint; d1Users: bigint; d7Users: bigint }[]
+  >(Prisma.sql`
+    WITH activity AS (
+      SELECT "userId", "createdAt"::date AS day FROM "AnalyticsEvent" WHERE "userId" IS NOT NULL
+      UNION
+      SELECT "userId", "updatedAt"::date AS day FROM "WatchProgress"
+    ), cohorts AS (
+      SELECT id, "createdAt"::date AS day
+      FROM "User"
+      WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+    )
+    SELECT
+      (SELECT COUNT(DISTINCT "userId") FROM activity WHERE day = CURRENT_DATE) AS dau,
+      (SELECT COUNT(DISTINCT "userId") FROM activity WHERE day >= CURRENT_DATE - 6) AS "active7d",
+      COUNT(*) AS "cohortUsers",
+      COUNT(*) FILTER (WHERE EXISTS (
+        SELECT 1 FROM activity a WHERE a."userId" = cohorts.id AND a.day = cohorts.day + 1
+      )) AS "d1Users",
+      COUNT(*) FILTER (WHERE EXISTS (
+        SELECT 1 FROM activity a WHERE a."userId" = cohorts.id AND a.day = cohorts.day + 7
+      )) AS "d7Users"
+    FROM cohorts
+  `);
+  const cohortUsers = Number(row?.cohortUsers ?? 0);
+  const d1Users = Number(row?.d1Users ?? 0);
+  const d7Users = Number(row?.d7Users ?? 0);
+  return {
+    dau: Number(row?.dau ?? 0),
+    active7d: Number(row?.active7d ?? 0),
+    cohortUsers,
+    d1Retention: cohortUsers ? d1Users / cohortUsers : 0,
+    d7Retention: cohortUsers ? d7Users / cohortUsers : 0,
+  };
 }
 
 export async function getRevenueMetrics() {
@@ -113,11 +150,19 @@ export async function getAnalytics(seriesId?: string) {
     seriesId ??
     (await prisma.series.findFirst({ where: { isPublished: true }, orderBy: { createdAt: "asc" } }))
       ?.id;
-  const [series, revenue, topGenres, providerSuccess] = await Promise.all([
+  const [series, revenue, topGenres, providerSuccess, engagement] = await Promise.all([
     selectedSeries ? getSeriesFunnel(selectedSeries) : Promise.resolve([]),
     getRevenueMetrics(),
     getTopGenres(),
     getProviderSuccessRates(),
+    getEngagementMetrics(),
   ]);
-  return { seriesId: selectedSeries ?? null, funnel: series, revenue, topGenres, providerSuccess };
+  return {
+    seriesId: selectedSeries ?? null,
+    funnel: series,
+    revenue,
+    topGenres,
+    providerSuccess,
+    engagement,
+  };
 }
