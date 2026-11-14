@@ -23,6 +23,7 @@ import { POST as unlockPost } from "../src/app/api/unlocks/route";
 import { GET as playbackGet } from "../src/app/api/episodes/[id]/playback/route";
 import { POST as adTokenPost } from "../src/app/api/ads/reward-token/route";
 import { POST as pushTokenPost } from "../src/app/api/mobile/push-token/route";
+import { POST as progressPost } from "../src/app/api/progress/route";
 import { invalidateSettingsCache, setSettings } from "../src/server/settings";
 
 const suffix = crypto.randomUUID();
@@ -225,6 +226,25 @@ describe("protected playback and reward flows", () => {
     expect(anonymous.status).toBe(200);
     expect((await prisma.deviceToken.findUniqueOrThrow({ where: { token } })).userId).toBeNull();
     await prisma.deviceToken.delete({ where: { token } });
+  });
+
+  it("does not downgrade completed progress on a later partial save", async () => {
+    await prisma.watchProgress.upsert({
+      where: { userId_episodeId: { userId, episodeId } },
+      create: { userId, episodeId, positionSec: 10, completed: true },
+      update: { positionSec: 10, completed: true },
+    });
+    const response = await progressPost(
+      new Request("http://localhost", {
+        method: "POST",
+        body: JSON.stringify({ episodeId, positionSec: 3, completed: false }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect((await prisma.watchProgress.findUniqueOrThrow({
+      where: { userId_episodeId: { userId, episodeId } },
+    })).completed).toBe(true);
   });
 });
 

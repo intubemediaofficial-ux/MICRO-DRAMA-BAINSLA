@@ -234,6 +234,7 @@ private fun VideoView(
         }
     }
     DisposableEffect(player) {
+        var completedPlayback = false
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying) {
@@ -248,6 +249,7 @@ private fun VideoView(
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
                 if (state == Player.STATE_ENDED) {
+                    completedPlayback = true
                     val durationSec = (player.duration / 1000).toInt()
                     Analytics.track("play_complete", episodeId = episode.id, positionSec = durationSec)
                     AppScope.launch { Api.saveProgress(episode.id, durationSec, true) }
@@ -268,7 +270,7 @@ private fun VideoView(
         }
         player.addListener(listener)
         onDispose {
-            if (player.currentPosition > 0) {
+            if (player.currentPosition > 0 && !completedPlayback) {
                 val position = (player.currentPosition / 1000).toInt()
                 AppScope.launch { Api.saveProgress(episode.id, position, false) }
             }

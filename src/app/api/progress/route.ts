@@ -17,7 +17,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
     const progress = await prisma.watchProgress.upsert({
       where: { userId_episodeId: { userId: session.userId, episodeId: data.episodeId } },
-      update: { positionSec: data.positionSec, completed: data.completed ?? false },
+      update: {
+        positionSec: data.positionSec,
+        ...(data.completed ? { completed: true } : {}),
+      },
       create: {
         userId: session.userId,
         episodeId: data.episodeId,
