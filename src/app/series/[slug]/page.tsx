@@ -2,70 +2,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSession } from "@/server/auth";
-import { prisma } from "@/server/db";
-import { resolveSeriesEpisodeEntitlements } from "@/server/entitlements";
-import { getWatchedEpisodeIds } from "@/server/discovery";
+import { getSeriesDetail } from "@/server/series-detail";
 import TeaserPlayer from "./teaser-player";
 import SeasonEpisodes from "./season-episodes";
 
 export default async function SeriesPage({ params }: { params: Promise<{ slug: string }> }) {
   const slug = decodeURIComponent((await params).slug);
   const session = await getSession();
-  const series = await prisma.series.findUnique({
-    where: { slug },
-    include: {
-      episodes: { orderBy: { number: "asc" } },
-      seasons: {
-        orderBy: [{ sortOrder: "asc" }, { number: "asc" }],
-        include: { episodes: { orderBy: { number: "asc" } } },
-      },
-      castMembers: { orderBy: { sortOrder: "asc" } },
-    },
-  });
-  if (!series) notFound();
-  const [entitlementByEpisodeId, watchedIds] = await Promise.all([
-    resolveSeriesEpisodeEntitlements(session?.userId ?? null, series.episodes, series.freeEpisodeCount),
-    session
-      ? getWatchedEpisodeIds(
-          session.userId,
-          series.episodes.map((episode) => episode.id),
-        )
-      : Promise.resolve(new Set<string>()),
-  ]);
-  const toEpisodeView = (episode: (typeof series.episodes)[number]) => ({
-    id: episode.id,
-    number: episode.number,
-    title: episode.title,
-    durationSec: episode.durationSec,
-    thumbnailUrl: episode.thumbnailUrl,
-    isFree: episode.isFree,
-    coinPrice: episode.coinPrice,
-    watched: watchedIds.has(episode.id),
-    access: entitlementByEpisodeId.get(episode.id)?.reason ?? "LOCKED",
-  });
-  const assignedEpisodeIds = new Set(
-    series.seasons.flatMap((season) => season.episodes.map((episode) => episode.id)),
-  );
-  const seasonGroups = series.seasons.length
-    ? series.seasons.map((season, index) => {
-        const episodes = season.episodes.map(toEpisodeView);
-        if (index !== 0) return { ...season, episodes };
-        const unassignedEpisodes = series.episodes
-          .filter((episode) => !assignedEpisodeIds.has(episode.id))
-          .map(toEpisodeView);
-        return {
-          ...season,
-          episodes: [...episodes, ...unassignedEpisodes].sort((a, b) => a.number - b.number),
-        };
-      })
-    : [
-        {
-          id: "legacy",
-          number: 1,
-          title: "Season 1",
-          episodes: series.episodes.map(toEpisodeView),
-        },
-      ];
+  const detail = await getSeriesDetail(slug, session?.userId ?? null);
+  if (!detail) notFound();
+  const { series, seasonGroups } = detail;
   return (
     <div className="pb-24">
       <Link href="/" className="fixed left-4 top-4 z-10 rounded-full bg-black/50 px-4 py-2">
@@ -122,10 +68,7 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
           <span className="self-center">· {series.episodes.length} episodes</span>
         </div>
         <h2 className="mt-8 mb-3 text-xl font-bold">Episodes</h2>
-        <SeasonEpisodes
-          freeEpisodeCount={series.freeEpisodeCount}
-          seasons={seasonGroups}
-        />
+        <SeasonEpisodes freeEpisodeCount={series.freeEpisodeCount} seasons={seasonGroups} />
       </section>
     </div>
   );
