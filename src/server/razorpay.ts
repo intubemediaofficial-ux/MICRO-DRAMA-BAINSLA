@@ -312,7 +312,6 @@ export async function processRazorpayWebhook(eventId: string, event: RazorpayEve
       await activate(remote.id, payment.id);
       return { duplicate: false, handled: true };
     }
-    if (local.status === "EXPIRED") return { duplicate: false, handled: false };
     await prisma.$transaction(async (tx) => {
       const seen = await tx.subscriptionInvoice.findFirst({
         where: { subscriptionId: local.id, providerRef: payment.id },
