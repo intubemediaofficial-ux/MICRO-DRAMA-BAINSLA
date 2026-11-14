@@ -87,6 +87,20 @@ describe("mobile api", () => {
     await issueSession({ userId, role: "USER" });
     const me = await (await meGet(new Request("http://x"))).json();
     expect(me).toMatchObject({ user: { id: userId }, vipActive: false, subscription: null });
+    const episodesForResume = await prisma.episode.findMany({
+      where: { series: { slug } },
+      orderBy: { number: "asc" },
+    });
+    await prisma.watchProgress.createMany({
+      data: [
+        { userId, episodeId: episodesForResume[0].id, positionSec: 30, completed: true },
+        { userId, episodeId: episodesForResume[1].id, positionSec: 17, completed: false },
+      ],
+    });
+    const resumed = await (await seriesGet(new Request("http://x"), params)).json();
+    expect(resumed.seasons[0].episodes[0]).toMatchObject({ completed: true, positionSec: 30 });
+    expect(resumed.seasons[0].episodes[1]).toMatchObject({ completed: false, positionSec: 17 });
+    await prisma.watchProgress.deleteMany({ where: { userId, episodeId: { in: episodesForResume.map((item) => item.id) } } });
     await logoutPost();
     expect(cookieState.token).toBe("");
   });

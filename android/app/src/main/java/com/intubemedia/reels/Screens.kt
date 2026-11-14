@@ -247,9 +247,13 @@ fun SeriesScreen(slug: String, play: (String, String, Int) -> Unit, onBack: () -
                             Text(series.genres.joinToString(" · "), color = Muted, fontSize = 12.sp)
                             Text("${series.episodes.size} episodes", color = Muted, fontSize = 12.sp)
                             Spacer(Modifier.height(10.dp))
-                            val next = series.episodes.firstOrNull { !it.watched } ?: series.episodes.firstOrNull()
+                            val next = series.episodes
+                                .filter { !it.completed && it.positionSec > 0 }
+                                .maxByOrNull { it.progressUpdatedAt.orEmpty() }
+                                ?: series.episodes.firstOrNull { !it.completed }
+                                ?: series.episodes.firstOrNull()
                             next?.let {
-                                Button(onClick = { play(series.slug, it.id, 0) }) {
+                                Button(onClick = { play(series.slug, it.id, it.positionSec) }) {
                                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
                                     Text(if (it.number == 1) "Play EP 1" else "Continue EP ${it.number}")
                                 }

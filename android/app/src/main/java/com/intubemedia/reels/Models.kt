@@ -65,6 +65,9 @@ data class EpisodeItem(
     val coinPrice: Int,
     val watched: Boolean,
     val access: String,
+    val completed: Boolean = false,
+    val positionSec: Int = 0,
+    val progressUpdatedAt: String? = null,
 ) {
     val locked get() = access == "LOCKED"
 }
@@ -214,6 +217,9 @@ object Api {
                         coinPrice = episode.optInt("coinPrice"),
                         watched = episode.optBoolean("watched"),
                         access = episode.optString("access", "LOCKED"),
+                        completed = episode.optBoolean("completed"),
+                        positionSec = episode.optInt("positionSec"),
+                        progressUpdatedAt = episode.str("progressUpdatedAt"),
                     )
                 }
             },
