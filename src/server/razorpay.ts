@@ -4,6 +4,7 @@ import { prisma } from "./db";
 import { completeRazorpayCoinPurchase } from "./coin-purchases";
 import { getSettings, type AppSettings } from "./settings";
 import { addInterval, findPlan, statusEvent } from "./subscriptions";
+import { priorTrialClaimWhere } from "./trial-claim-privacy";
 
 const API = "https://api.razorpay.com/v1";
 
@@ -149,7 +150,7 @@ export async function createRazorpayCheckout(
     if (!email) throw new Error("TRIAL_EMAIL_REQUIRED");
     const fingerprint = deviceFingerprint?.trim() || undefined;
     const prior = await prisma.trialClaim.findFirst({
-      where: { OR: [{ email }, ...(fingerprint ? [{ deviceFingerprint: fingerprint }] : [])] },
+      where: priorTrialClaimWhere(email, fingerprint),
     });
     if (prior) throw new Error("TRIAL_ALREADY_USED");
   }

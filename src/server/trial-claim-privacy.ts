@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { createHmac } from "node:crypto";
 import { env } from "./config";
 
@@ -13,4 +14,29 @@ export function anonymizedTrialClaimEmail(email: string) {
 
 export function anonymizedTrialClaimDeviceFingerprint(fingerprint: string) {
   return hashTrialIdentifier("device", fingerprint);
+}
+
+export function priorTrialClaimWhere(
+  email: string,
+  fingerprint?: string,
+): Prisma.TrialClaimWhereInput {
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedFingerprint = fingerprint?.trim() || undefined;
+  return {
+    OR: [
+      { email: { in: [normalizedEmail, anonymizedTrialClaimEmail(normalizedEmail)] } },
+      ...(normalizedFingerprint
+        ? [
+            {
+              deviceFingerprint: {
+                in: [
+                  normalizedFingerprint,
+                  anonymizedTrialClaimDeviceFingerprint(normalizedFingerprint),
+                ],
+              },
+            },
+          ]
+        : []),
+    ],
+  };
 }
