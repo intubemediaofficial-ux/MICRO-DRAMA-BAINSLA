@@ -190,7 +190,18 @@ async function activate(
       include: { invoices: true, plan: true, user: { select: { email: true } } },
     });
     if (!current || current.provider !== "RAZORPAY") throw new Error("SUBSCRIPTION_NOT_FOUND");
-    if (current.status !== "INCOMPLETE") return current;
+    const fingerprint = deviceFingerprint?.trim() || undefined;
+    if (current.status !== "INCOMPLETE") {
+      if (
+        fingerprint &&
+        !(await tx.trialClaim.findFirst({ where: { deviceFingerprint: fingerprint } }))
+      )
+        await tx.trialClaim.updateMany({
+          where: { userId: current.userId, deviceFingerprint: null },
+          data: { deviceFingerprint: fingerprint },
+        });
+      return current;
+    }
     const invoice = current.invoices.find((item) => item.status === "PENDING");
     const trial = invoice?.kind === "TRIAL";
     const now = new Date();
@@ -212,7 +223,6 @@ async function activate(
     });
     if (trial && current.user.email) {
       const email = current.user.email.trim().toLowerCase();
-      const fingerprint = deviceFingerprint?.trim() || undefined;
       const claimed = await tx.trialClaim.findFirst({
         where: { OR: [{ email }, ...(fingerprint ? [{ deviceFingerprint: fingerprint }] : [])] },
       });
