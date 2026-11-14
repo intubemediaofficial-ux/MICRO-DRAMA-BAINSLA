@@ -121,8 +121,12 @@ export async function sendFcmNotifications(
             body: JSON.stringify({
               message: {
                 token,
-                notification: { title: payload.title, body: payload.body },
-                ...(payload.data ? { data: payload.data } : {}),
+                data: {
+                  ...payload.data,
+                  title: payload.title,
+                  body: payload.body,
+                },
+                android: { priority: "HIGH" },
               },
             }),
           },

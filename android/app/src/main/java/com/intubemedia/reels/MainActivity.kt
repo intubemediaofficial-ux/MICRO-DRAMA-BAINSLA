@@ -58,14 +58,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        inboundLink = intent?.data
+        inboundLink = notificationLink(intent)
         setContent { MaterialTheme(colorScheme = colors) { ReelsNav(::openWeb, inboundLink) } }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        inboundLink = intent.data
+        inboundLink = notificationLink(intent)
     }
 
     override fun onStop() {
@@ -75,6 +75,20 @@ class MainActivity : ComponentActivity() {
 
     private fun openWeb(path: String) {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.BASE_URL + path)))
+    }
+
+    private fun notificationLink(intent: Intent?): Uri? {
+        intent?.data?.let { return it }
+        val seriesSlug = intent?.getStringExtra("seriesSlug")?.takeIf { it.isNotBlank() }
+        val episodeId = intent?.getStringExtra("episodeId")?.takeIf { it.isNotBlank() }
+        return when {
+            episodeId != null -> Uri.parse("${BuildConfig.BASE_URL}/watch/${Uri.encode(episodeId)}")
+                .buildUpon()
+                .apply { seriesSlug?.let { appendQueryParameter("seriesSlug", it) } }
+                .build()
+            seriesSlug != null -> Uri.parse("${BuildConfig.BASE_URL}/series/${Uri.encode(seriesSlug)}")
+            else -> null
+        }
     }
 }
 
