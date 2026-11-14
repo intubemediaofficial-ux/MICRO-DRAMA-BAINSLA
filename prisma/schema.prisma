@@ -53,6 +53,7 @@ enum SubscriptionInterval {
 }
 
 enum SubscriptionStatus {
+  INCOMPLETE
   TRIALING
   ACTIVE
   PAST_DUE
@@ -63,6 +64,7 @@ enum SubscriptionStatus {
 enum SubscriptionProvider {
   DEV
   STRIPE
+  RAZORPAY
   APPLE_IAP
   GOOGLE_PLAY
 }
@@ -537,6 +539,16 @@ model SubscriptionDiscountRedemption {
 
   @@unique([userId, discountCodeId])
   @@index([subscriptionId])
+}
+
+model ProviderPlan {
+  id        String               @id @default(cuid())
+  provider  SubscriptionProvider
+  key       String
+  ref       String
+  createdAt DateTime             @default(now())
+
+  @@unique([provider, key])
 }
 
 model SubscriptionWebhookEvent {

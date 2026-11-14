@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/server/auth";
 import { detectCountry, resolveCurrency } from "@/server/currency";
+import { createRazorpayCheckout, razorpayConfigured } from "@/server/razorpay";
 import { getUserSubscription, purchasePlan, startTrial } from "@/server/subscriptions";
 
 const input = z.object({
@@ -22,6 +23,15 @@ export async function POST(request: Request) {
   if (!session) return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
   try {
     const data = input.parse(await request.json());
+    if (razorpayConfigured()) {
+      const checkout = await createRazorpayCheckout(
+        session.userId,
+        data.planCode,
+        data.mode === "trial" ? "TRIAL" : "PAID",
+        data.deviceFingerprint,
+      );
+      return NextResponse.json({ ok: true, checkout });
+    }
     const currency = resolveCurrency(request.headers);
     const country = detectCountry(request.headers) ?? "IN";
     const subscription =
@@ -44,11 +54,12 @@ export async function POST(request: Request) {
         ? 404
         : message === "INVALID_DISCOUNT" ||
             message === "TRIAL_ALREADY_USED" ||
-            message === "TRIAL_NOT_AVAILABLE"
+            message === "TRIAL_NOT_AVAILABLE" ||
+            message === "TRIAL_EMAIL_REQUIRED"
           ? 422
           : message === "SUBSCRIPTION_EXISTS"
             ? 409
-            : message === "PAYMENTS_UNAVAILABLE"
+            : message === "PAYMENTS_UNAVAILABLE" || message === "RAZORPAY_REQUEST_FAILED"
               ? 503
               : 400;
     return NextResponse.json({ error: { message } }, { status });

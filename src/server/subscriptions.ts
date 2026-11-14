@@ -2,6 +2,7 @@ import { Prisma, SubscriptionInterval, SubscriptionStatus } from "@prisma/client
 import { prisma } from "./db";
 import { discountedAmount, choosePlanPrice } from "./currency";
 import { paymentsEnabled, subscriptionProvider } from "./subscription-providers";
+import { cancelRazorpaySubscription } from "./razorpay";
 
 const day = 86_400_000;
 
@@ -33,7 +34,7 @@ function nextBoundary(periodBoundary: Date, now: Date, interval: SubscriptionInt
   return next;
 }
 
-function statusEvent(
+export function statusEvent(
   tx: Prisma.TransactionClient,
   subscriptionId: string,
   fromStatus: SubscriptionStatus | null,
@@ -92,7 +93,7 @@ async function priceWithDiscount(
 
 export const DEFAULT_PLAN_CODE = "VIP_ANNUAL";
 
-async function findPlan(planCode: string) {
+export async function findPlan(planCode: string) {
   const include = { prices: { where: { isActive: true } } } as const;
   const plan = await prisma.plan.findUnique({ where: { code: planCode }, include });
   if (plan?.isActive || planCode !== DEFAULT_PLAN_CODE) return plan?.isActive ? plan : null;
@@ -111,8 +112,9 @@ export async function getSubscriptionOffers(currency: string) {
   });
   return plans
     .map((plan) => ({ plan, price: choosePlanPrice(plan, currency) }))
-    .filter((offer): offer is { plan: (typeof plans)[number]; price: NonNullable<typeof offer.price> } =>
-      Boolean(offer.price),
+    .filter(
+      (offer): offer is { plan: (typeof plans)[number]; price: NonNullable<typeof offer.price> } =>
+        Boolean(offer.price),
     )
     .sort((a, b) => INTERVAL_MONTHS[a.plan.interval] - INTERVAL_MONTHS[b.plan.interval]);
 }
@@ -462,6 +464,7 @@ async function renewSubscription(subscriptionId: string, now: Date, gracePeriodH
       ],
       renewalStartedAt: null,
       cancelAtPeriodEnd: false,
+      provider: { not: "RAZORPAY" },
     },
     data: { renewalStartedAt: now },
   });
@@ -600,6 +603,7 @@ export async function runSubscriptionCron(now = new Date()) {
         },
       ],
       cancelAtPeriodEnd: false,
+      provider: { not: "RAZORPAY" },
     },
     select: { id: true },
   });
@@ -630,6 +634,7 @@ export async function runSubscriptionCron(now = new Date()) {
           currentPeriodEnd: { lt: now },
         },
         { status: "CANCELED", currentPeriodEnd: { lt: now } },
+        { status: "INCOMPLETE", createdAt: { lt: addDays(now, -1) } },
         {
           cancelAtPeriodEnd: true,
           status: { in: ["TRIALING", "ACTIVE"] },
@@ -671,8 +676,14 @@ export async function cancelSubscription(
   });
   if (!subscription) throw new Error("SUBSCRIPTION_NOT_FOUND");
   if (subscription.status === "EXPIRED") return subscription;
-  const provider = subscriptionProvider();
-  if (immediate && subscription.providerRef) await provider.cancel(subscription.providerRef);
+  if (subscription.provider === "RAZORPAY") {
+    if (subscription.providerRef && !subscription.cancelAtPeriodEnd)
+      await cancelRazorpaySubscription(
+        subscription.providerRef,
+        !immediate && subscription.status === "ACTIVE",
+      );
+  } else if (immediate && subscription.providerRef)
+    await subscriptionProvider().cancel(subscription.providerRef);
   return prisma.$transaction(async (tx) => {
     const nextStatus = immediate ? "CANCELED" : subscription.status;
     const result = await tx.subscription.update({
@@ -725,7 +736,7 @@ export async function adminExtendSubscription(
 
 export async function getUserSubscription(userId: string) {
   return prisma.subscription.findFirst({
-    where: { userId },
+    where: { userId, status: { not: "INCOMPLETE" } },
     orderBy: { createdAt: "desc" },
     include: {
       plan: true,

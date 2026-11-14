@@ -137,7 +137,11 @@ export function devPaymentsAllowed() {
 
 /** False in production when no real payment provider is configured, so plans can't be bought for free. */
 export function paymentsEnabled() {
-  return Boolean(env.STRIPE_SECRET_KEY) || devPaymentsAllowed();
+  return (
+    Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET) ||
+    Boolean(env.STRIPE_SECRET_KEY) ||
+    devPaymentsAllowed()
+  );
 }
 
 export function subscriptionProvider() {

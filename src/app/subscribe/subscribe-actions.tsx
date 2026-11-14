@@ -4,6 +4,45 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 type PlanOption = { code: string; name: string; priceLabel: string };
+type RazorpayCheckout = {
+  keyId: string;
+  razorpaySubscriptionId: string;
+  description: string;
+  prefill: { email?: string; contact?: string; name?: string };
+};
+type RazorpayResult = {
+  razorpay_payment_id: string;
+  razorpay_subscription_id: string;
+  razorpay_signature: string;
+};
+type RazorpayOptions = {
+  key: string;
+  subscription_id: string;
+  name: string;
+  description: string;
+  prefill: RazorpayCheckout["prefill"];
+  theme: { color: string };
+  modal: { ondismiss: () => void };
+  handler: (result: RazorpayResult) => void;
+};
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayOptions) => { open: () => void };
+  }
+}
+
+function loadRazorpayScript() {
+  if (window.Razorpay) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("RAZORPAY_LOAD_FAILED"));
+    document.body.appendChild(script);
+  });
+}
+
 type TrialOption = { planCode: string; days: number; priceLabel: string; thenLabel: string };
 
 export default function SubscribeActions({
@@ -47,6 +86,11 @@ export default function SubscribeActions({
       }),
     });
     if (response.ok) {
+      const { checkout } = (await response.json()) as { checkout?: RazorpayCheckout };
+      if (checkout) {
+        await openRazorpay(checkout, mode);
+        return;
+      }
       router.replace(`/watch/${episodeId}`);
       return;
     }
@@ -60,6 +104,46 @@ export default function SubscribeActions({
           : (errorMessage ?? "Could not start subscription"),
     );
     setPending(null);
+  }
+
+  async function openRazorpay(checkout: RazorpayCheckout, mode: "trial" | "paid") {
+    try {
+      await loadRazorpayScript();
+    } catch {
+      setMessage("Could not load the payment page. Check your connection and try again.");
+      setPending(null);
+      return;
+    }
+    const razorpay = new window.Razorpay!({
+      key: checkout.keyId,
+      subscription_id: checkout.razorpaySubscriptionId,
+      name: "Reels",
+      description: checkout.description,
+      prefill: checkout.prefill,
+      theme: { color: "#e11d48" },
+      modal: { ondismiss: () => setPending(null) },
+      handler: async (result) => {
+        const verify = await fetch("/api/subscriptions/razorpay/verify", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            razorpayPaymentId: result.razorpay_payment_id,
+            razorpaySubscriptionId: result.razorpay_subscription_id,
+            razorpaySignature: result.razorpay_signature,
+            ...(mode === "trial" ? { deviceFingerprint: getDeviceFingerprint() } : {}),
+          }),
+        });
+        if (verify.ok) {
+          router.replace(`/watch/${episodeId}`);
+          return;
+        }
+        setMessage(
+          "Payment received but confirmation is pending. VIP will activate in a few minutes.",
+        );
+        setPending(null);
+      },
+    });
+    razorpay.open();
   }
 
   async function unlockWithCoins() {
