@@ -10,12 +10,14 @@ export default function SubscribeActions({
   episodeId,
   plans,
   trial,
+  paymentsAvailable,
   trialAlreadyUsed,
   coinPrice,
 }: {
   episodeId: string;
   plans: PlanOption[];
   trial: TrialOption | null;
+  paymentsAvailable: boolean;
   trialAlreadyUsed: boolean;
   coinPrice: number;
 }) {
@@ -77,9 +79,7 @@ export default function SubscribeActions({
   }
 
   async function getErrorMessage(response: Response, fallback: string) {
-    return (
-      ((await response.json()) as { error?: { message?: string } }).error?.message ?? fallback
-    );
+    return ((await response.json()) as { error?: { message?: string } }).error?.message ?? fallback;
   }
 
   async function unlockWithAd() {
@@ -116,7 +116,25 @@ export default function SubscribeActions({
 
   return (
     <div className="mt-6 space-y-3">
-      {trial && !trialAlreadyUsed && (
+      {!paymentsAvailable && (
+        <div className="rounded-2xl border border-amber-400/40 p-4 text-sm text-amber-100">
+          <p className="font-bold">VIP subscriptions open soon.</p>
+          <ul className="mt-2 space-y-1">
+            {trial && (
+              <li>
+                {trial.days}-day trial for {trial.priceLabel}, then {trial.thenLabel}
+              </li>
+            )}
+            {plans.map((plan) => (
+              <li key={plan.code}>
+                {plan.name}: {plan.priceLabel}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-zinc-300">Meanwhile, unlock this episode below.</p>
+        </div>
+      )}
+      {paymentsAvailable && trial && !trialAlreadyUsed && (
         <button
           type="button"
           disabled={pending !== null}
@@ -127,18 +145,19 @@ export default function SubscribeActions({
           <span className="block text-sm font-semibold opacity-80">Then {trial.thenLabel}</span>
         </button>
       )}
-      {plans.map((plan) => (
-        <button
-          key={plan.code}
-          type="button"
-          disabled={pending !== null}
-          onClick={() => void startSubscription("paid", plan.code)}
-          className="flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-400/60 px-5 py-4 text-left font-bold text-amber-100 disabled:opacity-60"
-        >
-          <span>{plan.name}</span>
-          <span className="shrink-0">{plan.priceLabel}</span>
-        </button>
-      ))}
+      {paymentsAvailable &&
+        plans.map((plan) => (
+          <button
+            key={plan.code}
+            type="button"
+            disabled={pending !== null}
+            onClick={() => void startSubscription("paid", plan.code)}
+            className="flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-400/60 px-5 py-4 text-left font-bold text-amber-100 disabled:opacity-60"
+          >
+            <span>{plan.name}</span>
+            <span className="shrink-0">{plan.priceLabel}</span>
+          </button>
+        ))}
       {coinPrice > 0 && (
         <button
           type="button"

@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { getSession } from "@/server/auth";
 import { resolveCurrency } from "@/server/currency";
 import { getSubscriptionOffers, getUserSubscription, intervalLabel } from "@/server/subscriptions";
+import { paymentsEnabled } from "@/server/subscription-providers";
 import SubscriptionActions from "./actions";
 import PasswordChange from "./password-change";
 import AccountNav from "../account-nav";
@@ -66,12 +67,16 @@ export default async function SubscriptionPage() {
             </ul>
           )}
           <p className="mt-2 text-sm">Unlimited locked episodes, no ads and a VIP badge.</p>
-          <Link
-            href="/"
-            className="mt-5 inline-block rounded-full bg-zinc-950 px-5 py-3 font-bold text-white"
-          >
-            Start trial from an episode
-          </Link>
+          {paymentsEnabled() ? (
+            <Link
+              href="/"
+              className="mt-5 inline-block rounded-full bg-zinc-950 px-5 py-3 font-bold text-white"
+            >
+              Start trial from an episode
+            </Link>
+          ) : (
+            <p className="mt-5 font-bold">VIP subscriptions open soon.</p>
+          )}
         </section>
       ) : (
         <>

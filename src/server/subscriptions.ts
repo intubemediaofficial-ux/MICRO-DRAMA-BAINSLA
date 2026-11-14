@@ -1,7 +1,7 @@
 import { Prisma, SubscriptionInterval, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "./db";
 import { discountedAmount, choosePlanPrice } from "./currency";
-import { subscriptionProvider } from "./subscription-providers";
+import { paymentsEnabled, subscriptionProvider } from "./subscription-providers";
 
 const day = 86_400_000;
 
@@ -147,6 +147,7 @@ async function startSubscription(
   deviceFingerprint: string | undefined,
   now: Date,
 ) {
+  if (!paymentsEnabled()) throw new Error("PAYMENTS_UNAVAILABLE");
   const plan = await findPlan(planCode);
   if (!plan) throw new Error("PLAN_NOT_FOUND");
   const price = choosePlanPrice(plan, currency);

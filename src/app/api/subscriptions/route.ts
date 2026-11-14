@@ -48,7 +48,9 @@ export async function POST(request: Request) {
           ? 422
           : message === "SUBSCRIPTION_EXISTS"
             ? 409
-            : 400;
+            : message === "PAYMENTS_UNAVAILABLE"
+              ? 503
+              : 400;
     return NextResponse.json({ error: { message } }, { status });
   }
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { subscriptionProvider } from "@/server/subscription-providers";
+import { devPaymentsAllowed, subscriptionProvider } from "@/server/subscription-providers";
 import { processSubscriptionWebhook } from "@/server/subscriptions";
 
 export async function POST(
@@ -7,7 +7,10 @@ export async function POST(
   { params }: { params: Promise<{ provider: string }> },
 ) {
   const { provider } = await params;
-  if (provider !== "dev" && provider !== "stripe")
+  if (
+    (provider !== "dev" && provider !== "stripe") ||
+    (provider === "dev" && !devPaymentsAllowed())
+  )
     return NextResponse.json({ error: { message: "Provider not found" } }, { status: 404 });
   const payload = await request.text();
   try {

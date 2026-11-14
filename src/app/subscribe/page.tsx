@@ -7,6 +7,7 @@ import { resolveCurrency } from "@/server/currency";
 import { prisma } from "@/server/db";
 import { resolveEpisodeEntitlement } from "@/server/entitlements";
 import { getSubscriptionOffers, hasUsedTrial, intervalLabel } from "@/server/subscriptions";
+import { paymentsEnabled } from "@/server/subscription-providers";
 import SubscribeActions from "./subscribe-actions";
 
 export default async function SubscribePage({
@@ -74,6 +75,7 @@ export default async function SubscribePage({
                   }
                 : null
             }
+            paymentsAvailable={paymentsEnabled()}
             trialAlreadyUsed={trialAlreadyUsed}
             coinPrice={episode.coinPrice}
           />
