@@ -332,7 +332,10 @@ object Api {
     }
 
     suspend fun verifyOtp(identifier: String, code: String) {
-        Net.post("/api/auth/verify", JSONObject().put("identifier", identifier).put("code", code))
+        val body = JSONObject().put("identifier", identifier).put("code", code)
+        AppPreferences.pendingReferralCode?.let { body.put("referralCode", it) }
+        Net.post("/api/auth/verify", body)
+        AppPreferences.pendingReferralCode = null
     }
 
     suspend fun logout() {

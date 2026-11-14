@@ -326,6 +326,7 @@ fun AccountScreen(
     openWeb: (String) -> Unit,
     openSeries: (String) -> Unit,
 ) {
+    val context = LocalContext.current
     var profile by remember { mutableStateOf<Profile?>(null) }
     var history by remember { mutableStateOf<List<HistoryItem>>(emptyList()) }
     var myList by remember { mutableStateOf<List<SeriesCard>>(emptyList()) }
@@ -350,6 +351,23 @@ fun AccountScreen(
             Text(user.email ?: user.phone ?: "My account", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
             Spacer(Modifier.height(12.dp))
             Text("Coins: ${user.coins}", color = Color.White)
+            if (user.referralCode != null && user.referralLink != null) {
+                Spacer(Modifier.height(16.dp))
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                        Text("Invite friends", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Code: ${user.referralCode} · Earn ${user.referralBonusCoins ?: MobileConfigState.current.referralBonusCoins} coins",
+                            color = Muted,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                        Button(
+                            onClick = { shareText(context, "Join Intube Reels", user.referralLink) },
+                            modifier = Modifier.padding(top = 8.dp),
+                        ) { Text("Invite") }
+                    }
+                }
+            }
             Text(
                 if (user.vipActive) "VIP active – ${user.planName.orEmpty()}" else "No active VIP plan",
                 color = if (user.vipActive) Color(0xFFFFC107) else Muted,
