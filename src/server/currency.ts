@@ -1,4 +1,5 @@
 import type { PlanPrice } from "@prisma/client";
+import { env } from "./config";
 import { prisma } from "./db";
 
 const COUNTRY_CURRENCY: Record<string, string> = {
@@ -37,6 +38,8 @@ export function currencyForCountry(country: string | null) {
 }
 
 export function resolveCurrency(headers: Headers) {
+  // Razorpay subscriptions bill in INR, so show INR prices whenever it is the provider.
+  if (env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET) return "INR";
   return currencyForCountry(detectCountry(headers));
 }
 
