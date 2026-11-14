@@ -1,4 +1,4 @@
-import { Prisma, SubscriptionStatus } from "@prisma/client";
+import { Prisma, SubscriptionInterval, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "./db";
 import { discountedAmount, choosePlanPrice } from "./currency";
 import { subscriptionProvider } from "./subscription-providers";
@@ -9,15 +9,27 @@ function addDays(date: Date, days: number) {
   return new Date(date.getTime() + days * day);
 }
 
-function addAnnual(date: Date) {
+export const INTERVAL_MONTHS: Record<SubscriptionInterval, number> = {
+  MONTHLY: 1,
+  HALF_YEARLY: 6,
+  ANNUAL: 12,
+};
+
+export function addInterval(date: Date, interval: SubscriptionInterval) {
   const result = new Date(date);
-  result.setUTCFullYear(result.getUTCFullYear() + 1);
+  const dayOfMonth = result.getUTCDate();
+  result.setUTCDate(1);
+  result.setUTCMonth(result.getUTCMonth() + INTERVAL_MONTHS[interval]);
+  const lastDay = new Date(
+    Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  result.setUTCDate(Math.min(dayOfMonth, lastDay));
   return result;
 }
 
-function nextAnnualBoundary(periodBoundary: Date, now: Date) {
-  let next = addAnnual(periodBoundary);
-  while (next <= now) next = addAnnual(next);
+function nextBoundary(periodBoundary: Date, now: Date, interval: SubscriptionInterval) {
+  let next = addInterval(periodBoundary, interval);
+  while (next <= now) next = addInterval(next, interval);
   return next;
 }
 
@@ -91,6 +103,20 @@ async function findPlan(planCode: string) {
   });
 }
 
+export async function getSubscriptionOffers(currency: string) {
+  const plans = await prisma.plan.findMany({
+    where: { isActive: true },
+    include: { prices: { where: { isActive: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  return plans
+    .map((plan) => ({ plan, price: choosePlanPrice(plan, currency) }))
+    .filter((offer): offer is { plan: (typeof plans)[number]; price: NonNullable<typeof offer.price> } =>
+      Boolean(offer.price),
+    )
+    .sort((a, b) => INTERVAL_MONTHS[a.plan.interval] - INTERVAL_MONTHS[b.plan.interval]);
+}
+
 export async function getSubscriptionOffer(planCode: string, currency: string) {
   const plan = await findPlan(planCode);
   if (!plan) return null;
@@ -109,7 +135,7 @@ export async function hasUsedTrial(userId: string) {
   );
 }
 
-type PurchaseMode = "TRIAL" | "ANNUAL";
+type PurchaseMode = "TRIAL" | "PAID";
 
 async function startSubscription(
   userId: string,
@@ -127,7 +153,8 @@ async function startSubscription(
   if (!price) throw new Error("PRICE_NOT_FOUND");
   const selected = await priceWithDiscount(plan.id, price.id, discountCode, now);
   const trialEndsAt = mode === "TRIAL" ? addDays(now, plan.trialDays) : now;
-  const currentPeriodEnd = mode === "TRIAL" ? trialEndsAt : addAnnual(now);
+  if (mode === "TRIAL" && plan.trialDays < 1) throw new Error("TRIAL_NOT_AVAILABLE");
+  const currentPeriodEnd = mode === "TRIAL" ? trialEndsAt : addInterval(now, plan.interval);
   const status = mode === "TRIAL" ? "TRIALING" : "ACTIVE";
   const invoiceKind = mode === "TRIAL" ? "TRIAL" : "RENEWAL";
   const periodKey =
@@ -204,7 +231,7 @@ async function startSubscription(
         subscriptionId,
         null,
         status,
-        mode === "TRIAL" ? "Trial started" : "Annual subscription started",
+        mode === "TRIAL" ? "Trial started" : "Subscription started",
         "SYSTEM",
       );
       return { subscription };
@@ -280,7 +307,7 @@ async function startSubscription(
         subscriptionId,
         status,
         "EXPIRED",
-        mode === "TRIAL" ? "Trial charge failed" : "Annual charge failed",
+        mode === "TRIAL" ? "Trial charge failed" : "Subscription charge failed",
         "SYSTEM",
       );
     });
@@ -307,7 +334,7 @@ async function startSubscription(
         subscriptionId,
         status,
         status,
-        mode === "TRIAL" ? "Trial charge paid" : "Annual subscription paid",
+        mode === "TRIAL" ? "Trial charge paid" : "Subscription paid",
         "SYSTEM",
       );
       if (selected.discount) {
@@ -349,7 +376,7 @@ async function startSubscription(
           status,
           mode === "TRIAL"
             ? "Trial charge paid; reconciliation required"
-            : "Annual charge paid; reconciliation required",
+            : "Subscription charge paid; reconciliation required",
           "SYSTEM",
         );
       });
@@ -381,7 +408,7 @@ export async function startTrial(
   );
 }
 
-export async function purchaseAnnual(
+export async function purchasePlan(
   userId: string,
   planCode: string,
   currency: string,
@@ -394,7 +421,7 @@ export async function purchaseAnnual(
     planCode,
     currency,
     country,
-    "ANNUAL",
+    "PAID",
     discountCode,
     undefined,
     now,
@@ -455,7 +482,7 @@ async function renewSubscription(subscriptionId: string, now: Date, gracePeriodH
       trial: false,
       periodKey,
     });
-    const nextEnd = nextAnnualBoundary(periodBoundary, now);
+    const nextEnd = nextBoundary(periodBoundary, now, subscription.plan.interval);
     await prisma.$transaction(async (tx) => {
       await tx.subscriptionInvoice.upsert({
         where: {
@@ -738,7 +765,7 @@ export async function processSubscriptionWebhook(
     return prisma.$transaction(async (tx) => {
       const current = await tx.subscription.findUniqueOrThrow({
         where: { id: subscription.id },
-        include: { invoices: true },
+        include: { invoices: true, plan: true },
       });
       const matchedInvoice = current.invoices.find(
         (invoice) => invoice.providerRef === webhook.providerRef,
@@ -818,7 +845,7 @@ export async function processSubscriptionWebhook(
               data: {
                 status: "ACTIVE",
                 currentPeriodStart: periodBoundary,
-                currentPeriodEnd: nextAnnualBoundary(periodBoundary, now),
+                currentPeriodEnd: nextBoundary(periodBoundary, now, current.plan.interval),
                 providerRef: webhook.providerRef,
                 renewalStartedAt: null,
                 pastDueSince: null,
@@ -897,4 +924,10 @@ export async function processSubscriptionWebhook(
       return { duplicate: true, handled: false };
     throw error;
   }
+}
+
+export const purchaseAnnual = purchasePlan;
+
+export function intervalLabel(interval: SubscriptionInterval) {
+  return interval === "MONTHLY" ? "month" : interval === "HALF_YEARLY" ? "6 months" : "year";
 }

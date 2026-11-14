@@ -6,7 +6,7 @@ import { getSession } from "@/server/auth";
 import { resolveCurrency } from "@/server/currency";
 import { prisma } from "@/server/db";
 import { resolveEpisodeEntitlement } from "@/server/entitlements";
-import { getSubscriptionOffer, hasUsedTrial } from "@/server/subscriptions";
+import { getSubscriptionOffers, hasUsedTrial, intervalLabel } from "@/server/subscriptions";
 import SubscribeActions from "./subscribe-actions";
 
 export default async function SubscribePage({
@@ -27,15 +27,12 @@ export default async function SubscribePage({
   const entitlement = await resolveEpisodeEntitlement(session?.userId ?? null, episode.id);
   if (entitlement.entitled) redirect(`/watch/${episode.id}`);
 
-  const offer = await getSubscriptionOffer(
-    "VIP_ANNUAL",
-    resolveCurrency(new Headers(await headers())),
-  );
+  const offers = await getSubscriptionOffers(resolveCurrency(new Headers(await headers())));
+  const trialOffer =
+    offers.find((offer) => offer.plan.trialDays > 0 && offer.price.trialAmountMinor > 0) ?? null;
   const trialAlreadyUsed = session ? await hasUsedTrial(session.userId) : false;
   const money = (minor: number, currency: string) =>
     new Intl.NumberFormat("en", { style: "currency", currency }).format(minor / 100);
-  const trialLabel = offer ? money(offer.price.trialAmountMinor, offer.price.currency) : null;
-  const annualLabel = offer ? `${money(offer.price.amountMinor, offer.price.currency)}/year` : null;
   const returnTo = `/subscribe?episode=${encodeURIComponent(episode.id)}`;
 
   return (
@@ -62,20 +59,23 @@ export default async function SubscribePage({
         ) : (
           <SubscribeActions
             episodeId={episode.id}
-            offer={
-              offer
+            plans={offers.map((offer) => ({
+              code: offer.plan.code,
+              name: offer.plan.name,
+              priceLabel: `${money(offer.price.amountMinor, offer.price.currency)}/${intervalLabel(offer.plan.interval)}`,
+            }))}
+            trial={
+              trialOffer
                 ? {
-                    currency: offer.price.currency,
-                    amountMinor: offer.price.amountMinor,
-                    trialAmountMinor: offer.price.trialAmountMinor,
-                    trialDays: offer.plan.trialDays,
+                    planCode: trialOffer.plan.code,
+                    days: trialOffer.plan.trialDays,
+                    priceLabel: money(trialOffer.price.trialAmountMinor, trialOffer.price.currency),
+                    thenLabel: `${money(trialOffer.price.amountMinor, trialOffer.price.currency)}/${intervalLabel(trialOffer.plan.interval)}`,
                   }
                 : null
             }
             trialAlreadyUsed={trialAlreadyUsed}
             coinPrice={episode.coinPrice}
-            trialLabel={trialLabel}
-            annualLabel={annualLabel}
           />
         )}
         <Link href="/account/subscription" className="mt-6 block text-center text-sm text-zinc-400">

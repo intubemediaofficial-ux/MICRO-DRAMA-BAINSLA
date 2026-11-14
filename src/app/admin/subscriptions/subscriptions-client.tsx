@@ -24,10 +24,17 @@ type Metrics = {
     }[];
   }[];
 };
+const INTERVALS = [
+  { value: "MONTHLY", label: "Monthly" },
+  { value: "HALF_YEARLY", label: "6 months" },
+  { value: "ANNUAL", label: "Yearly" },
+];
+
 type Plan = {
   id: string;
   name: string;
   code: string;
+  interval: string;
   trialDays: number;
   isActive: boolean;
   prices: {
@@ -240,14 +247,28 @@ export default function AdminSubscriptionsClient({
                   kind: "plan",
                   id: plan.id,
                   name: String(form.get("name")),
+                  interval: String(form.get("interval")),
                   trialDays: Number(form.get("trialDays")),
                   isActive: form.get("isActive") === "on",
                 }, `${plan.code} plan saved — ${Number(form.get("trialDays"))} trial days.`, `plan-${plan.id}`);
               }}
             >
               <input name="name" defaultValue={plan.name} className="rounded bg-zinc-800 p-2" />
+              <select
+                name="interval"
+                defaultValue={plan.interval}
+                title="Billing period"
+                className="rounded bg-zinc-800 p-2"
+              >
+                {INTERVALS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
               <input
                 name="trialDays"
+                title="Trial days (0 = no trial)"
                 type="number"
                 min="0"
                 defaultValue={plan.trialDays}
@@ -313,6 +334,65 @@ export default function AdminSubscriptionsClient({
             </div>
           </div>
         ))}
+        <form
+          className="mt-6 flex flex-wrap items-end gap-2 border-t border-zinc-800 pt-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const formElement = event.currentTarget;
+            const form = new FormData(formElement);
+            void save(
+              {
+                kind: "newPlan",
+                name: String(form.get("name")),
+                interval: String(form.get("interval")),
+                amountMinor: toMinor(form.get("amountMinor")),
+                trialDays: Number(form.get("trialDays") || 0),
+                trialAmountMinor: toMinor(form.get("trialAmountMinor")),
+              },
+              `${String(form.get("name"))} plan added.`,
+              "new-plan",
+            ).then(() => formElement.reset());
+          }}
+        >
+          <p className="w-full text-sm font-semibold text-zinc-300">Add plan (INR)</p>
+          <input name="name" required placeholder="Plan name" className="rounded bg-zinc-800 p-2" />
+          <select name="interval" defaultValue="MONTHLY" className="rounded bg-zinc-800 p-2">
+            {INTERVALS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <input
+            name="amountMinor"
+            type="number"
+            step="0.01"
+            min="1"
+            required
+            placeholder="Price ₹"
+            className="w-28 rounded bg-zinc-800 p-2"
+          />
+          <input
+            name="trialDays"
+            type="number"
+            min="0"
+            defaultValue={0}
+            title="Trial days (0 = no trial)"
+            className="w-24 rounded bg-zinc-800 p-2"
+          />
+          <input
+            name="trialAmountMinor"
+            type="number"
+            step="0.01"
+            min="0"
+            defaultValue={0}
+            title="Trial price ₹"
+            className="w-24 rounded bg-zinc-800 p-2"
+          />
+          <Button type="submit" variant="secondary" pending={pending === "new-plan"}>
+            Add plan
+          </Button>
+        </form>
       </section>
       <section className="rounded-2xl bg-zinc-900 p-5">
         <h2 className="text-xl font-bold">User overrides</h2>

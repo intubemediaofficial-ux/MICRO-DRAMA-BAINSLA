@@ -47,6 +47,8 @@ enum PurchaseStatus {
 }
 
 enum SubscriptionInterval {
+  MONTHLY
+  HALF_YEARLY
   ANNUAL
 }
 

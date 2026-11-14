@@ -33,8 +33,17 @@ const input = z.discriminatedUnion("kind", [
     kind: z.literal("plan"),
     id: z.string(),
     name: z.string().min(1).max(80),
+    interval: z.enum(["MONTHLY", "HALF_YEARLY", "ANNUAL"]).optional(),
     trialDays: z.number().int().nonnegative(),
     isActive: z.boolean(),
+  }),
+  z.object({
+    kind: z.literal("newPlan"),
+    name: z.string().trim().min(1).max(80),
+    interval: z.enum(["MONTHLY", "HALF_YEARLY", "ANNUAL"]),
+    amountMinor: z.number().int().positive(),
+    trialDays: z.number().int().nonnegative(),
+    trialAmountMinor: z.number().int().nonnegative(),
   }),
 ]);
 
@@ -101,8 +110,35 @@ export async function POST(request: Request) {
       return NextResponse.json(
         await prisma.plan.update({
           where: { id: data.id },
-          data: { name: data.name, trialDays: data.trialDays, isActive: data.isActive },
+          data: {
+            name: data.name,
+            trialDays: data.trialDays,
+            isActive: data.isActive,
+            ...(data.interval ? { interval: data.interval } : {}),
+          },
         }),
+      );
+    }
+    if (data.kind === "newPlan") {
+      return NextResponse.json(
+        await prisma.plan.create({
+          data: {
+            code: `VIP_${data.interval}_${Date.now()}`,
+            name: data.name,
+            interval: data.interval,
+            trialDays: data.trialDays,
+            prices: {
+              create: {
+                currency: "INR",
+                amountMinor: data.amountMinor,
+                trialAmountMinor: data.trialAmountMinor,
+                countryCodes: ["IN"],
+              },
+            },
+          },
+          include: { prices: true },
+        }),
+        { status: 201 },
       );
     }
     const discount = await prisma.discountCode.create({

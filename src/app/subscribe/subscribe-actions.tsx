@@ -3,31 +3,25 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-type SubscriptionOffer = {
-  currency: string;
-  amountMinor: number;
-  trialAmountMinor: number;
-  trialDays: number;
-};
+type PlanOption = { code: string; name: string; priceLabel: string };
+type TrialOption = { planCode: string; days: number; priceLabel: string; thenLabel: string };
 
 export default function SubscribeActions({
   episodeId,
-  offer,
+  plans,
+  trial,
   trialAlreadyUsed,
   coinPrice,
-  trialLabel,
-  annualLabel,
 }: {
   episodeId: string;
-  offer: SubscriptionOffer | null;
+  plans: PlanOption[];
+  trial: TrialOption | null;
   trialAlreadyUsed: boolean;
   coinPrice: number;
-  trialLabel: string | null;
-  annualLabel: string | null;
 }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
-  const [pending, setPending] = useState<"trial" | "annual" | "coin" | "ad" | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
 
   function getDeviceFingerprint() {
     const key = "microdrama_device_fingerprint";
@@ -38,14 +32,14 @@ export default function SubscribeActions({
     return fingerprint;
   }
 
-  async function startSubscription(mode: "trial" | "annual") {
-    setPending(mode);
+  async function startSubscription(mode: "trial" | "paid", planCode: string) {
+    setPending(mode === "trial" ? "trial" : planCode);
     setMessage("");
     const response = await fetch("/api/subscriptions", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        planCode: "VIP_ANNUAL",
+        planCode,
         mode,
         ...(mode === "trial" ? { deviceFingerprint: getDeviceFingerprint() } : {}),
       }),
@@ -60,7 +54,7 @@ export default function SubscribeActions({
       errorMessage === "SUBSCRIPTION_EXISTS"
         ? "You already have a subscription. Manage it from My Subscription."
         : errorMessage === "TRIAL_ALREADY_USED"
-          ? "Trial already used — buy the annual pass."
+          ? "Trial already used — choose a plan below."
           : (errorMessage ?? "Could not start subscription"),
     );
     setPending(null);
@@ -122,26 +116,29 @@ export default function SubscribeActions({
 
   return (
     <div className="mt-6 space-y-3">
-      {offer && trialLabel && !trialAlreadyUsed && (
+      {trial && !trialAlreadyUsed && (
         <button
           type="button"
           disabled={pending !== null}
-          onClick={() => void startSubscription("trial")}
+          onClick={() => void startSubscription("trial", trial.planCode)}
           className="w-full rounded-2xl bg-amber-400 px-5 py-4 text-left font-bold text-zinc-950 disabled:opacity-60"
         >
-          Start {offer.trialDays}-Day Trial for just {trialLabel}
+          Start {trial.days}-Day Trial for just {trial.priceLabel}
+          <span className="block text-sm font-semibold opacity-80">Then {trial.thenLabel}</span>
         </button>
       )}
-      {offer && annualLabel && (
+      {plans.map((plan) => (
         <button
+          key={plan.code}
           type="button"
           disabled={pending !== null}
-          onClick={() => void startSubscription("annual")}
-          className="w-full rounded-2xl border border-amber-400/60 px-5 py-4 text-left font-bold text-amber-100 disabled:opacity-60"
+          onClick={() => void startSubscription("paid", plan.code)}
+          className="flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-400/60 px-5 py-4 text-left font-bold text-amber-100 disabled:opacity-60"
         >
-          Full Annual Pass: {annualLabel}
+          <span>{plan.name}</span>
+          <span className="shrink-0">{plan.priceLabel}</span>
         </button>
-      )}
+      ))}
       {coinPrice > 0 && (
         <button
           type="button"

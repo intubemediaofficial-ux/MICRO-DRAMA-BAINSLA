@@ -50,7 +50,11 @@ export async function localizedPlan(planCode: string, currency: string) {
 }
 
 export function choosePlanPrice(plan: { prices: PlanPrice[] }, currency: string) {
-  return plan.prices.find((price) => price.currency === currency) ?? null;
+  return (
+    plan.prices.find((price) => price.currency === currency) ??
+    plan.prices.find((price) => price.currency === "INR") ??
+    null
+  );
 }
 
 export function discountedAmount(
