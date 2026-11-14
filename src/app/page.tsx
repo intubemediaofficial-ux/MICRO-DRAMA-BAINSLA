@@ -2,10 +2,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { getSession } from "@/server/auth";
 import { getHomeFeed } from "@/server/home-curation";
+import { continueWatching } from "@/server/watch-history";
 
 export default async function HomePage() {
   const session = await getSession();
-  const { heroItems, groups } = await getHomeFeed(session?.userId);
+  const [{ heroItems, groups }, resumeItems] = await Promise.all([
+    getHomeFeed(session?.userId),
+    session ? continueWatching(session.userId) : Promise.resolve([]),
+  ]);
   return (
     <div className="pb-20">
       <header className="flex items-center justify-between p-5">
@@ -20,6 +24,36 @@ export default async function HomePage() {
           {session ? "My account" : "Sign in"}
         </Link>
       </header>
+      {resumeItems.length > 0 ? (
+        <section className="px-5 pb-5">
+          <h2 className="mb-3 text-lg font-bold">Continue Watching</h2>
+          <div className="hide-scrollbar flex gap-3 overflow-x-auto">
+            {resumeItems.map((item) => (
+              <Link
+                href={`/watch/${item.episodeId}`}
+                key={item.id}
+                className="flex w-72 shrink-0 items-center gap-3 rounded-2xl bg-zinc-900 p-3"
+              >
+                <div className="relative h-20 w-16 shrink-0 overflow-hidden rounded-lg bg-zinc-800">
+                  <Image src={item.posterUrl} alt="" fill sizes="64px" className="object-cover" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-bold">{item.title}</p>
+                  <p className="mt-1 text-xs text-zinc-400">Episode {item.episodeNumber}</p>
+                  <div className="mt-2 h-1 overflow-hidden rounded bg-zinc-700">
+                    <div
+                      className="h-full bg-rose-500"
+                      style={{
+                        width: `${item.durationSec > 0 ? Math.min(100, (item.positionSec / item.durationSec) * 100) : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <section className="feed-snap hide-scrollbar flex h-[70vh] snap-y overflow-y-auto md:h-[620px]">
         {heroItems.map((item) => (
           <article

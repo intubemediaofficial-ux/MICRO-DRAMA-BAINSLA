@@ -72,6 +72,7 @@ describe("mobile api", () => {
   it("serves home rails, series detail with access, search and account", async () => {
     const home = await (await homeGet()).json();
     expect(Array.isArray(home.rails)).toBe(true);
+    expect(home.continueWatching).toEqual([]);
 
     const params = { params: Promise.resolve({ slug }) };
     const detail = await (await seriesGet(new Request("http://x"), params)).json();
