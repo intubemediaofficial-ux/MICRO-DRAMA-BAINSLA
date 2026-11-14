@@ -16,9 +16,9 @@ const price = z.object({
 const plan = z.object({
   code: z.string().min(2).max(40),
   name: z.string().min(1).max(80),
-  interval: z.enum(["MONTHLY", "HALF_YEARLY", "ANNUAL"]).default("ANNUAL"),
+  interval: z.enum(["MONTHLY", "HALF_YEARLY", "ANNUAL"]).optional(),
   trialDays: z.number().int().nonnegative(),
-  isActive: z.boolean().default(true),
+  isActive: z.boolean().optional(),
   prices: z.array(price).min(1),
 });
 
@@ -46,9 +46,9 @@ export async function POST(request: Request) {
         data: {
           code: data.code,
           name: data.name,
-          interval: data.interval,
+          interval: data.interval ?? "ANNUAL",
           trialDays: data.trialDays,
-          isActive: data.isActive,
+          isActive: data.isActive ?? true,
           prices: { create: data.prices },
         },
         include: { prices: true },
