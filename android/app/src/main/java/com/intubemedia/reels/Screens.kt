@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +59,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import android.widget.Toast
 
 private val Muted = Color.White.copy(alpha = 0.65f)
 
@@ -456,6 +464,7 @@ fun AccountScreen(
 
 @Composable
 private fun LoginForm(onLoggedIn: () -> Unit) {
+    val context = LocalContext.current
     var identifier by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var codeSent by remember { mutableStateOf(false) }
@@ -473,6 +482,43 @@ private fun LoginForm(onLoggedIn: () -> Unit) {
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.Center) {
         Text("Log in", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 24.sp)
         Text("We'll send a 6-digit code to your phone or email.", color = Muted)
+        MobileConfigState.current.googleWebClientId?.let { clientId ->
+            OutlinedButton(
+                enabled = !busy,
+                onClick = {
+                    busy = true
+                    scope.launch {
+                        try {
+                            val option = GetGoogleIdOption.Builder()
+                                .setServerClientId(clientId)
+                                .setFilterByAuthorizedAccounts(false)
+                                .build()
+                            val request = GetCredentialRequest.Builder()
+                                .addCredentialOption(option)
+                                .build()
+                            val credential = CredentialManager.create(context)
+                                .getCredential(context, request).credential
+                            if (credential is CustomCredential &&
+                                credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                            ) {
+                                val token = GoogleIdTokenCredential.createFrom(credential.data).idToken
+                                Api.googleLogin(token)
+                                onLoggedIn()
+                            } else {
+                                Toast.makeText(context, "No Google credential available", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (_: GetCredentialCancellationException) {
+                            Toast.makeText(context, "Google sign-in cancelled", Toast.LENGTH_SHORT).show()
+                        } catch (_: Exception) {
+                            Toast.makeText(context, "Google sign-in unavailable", Toast.LENGTH_SHORT).show()
+                        } finally {
+                            busy = false
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            ) { Text("Continue with Google", color = Color.White) }
+        }
         Spacer(Modifier.height(20.dp))
         OutlinedTextField(
             value = identifier,

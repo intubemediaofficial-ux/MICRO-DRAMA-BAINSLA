@@ -338,6 +338,13 @@ object Api {
         AppPreferences.pendingReferralCode = null
     }
 
+    suspend fun googleLogin(idToken: String) {
+        val body = JSONObject().put("idToken", idToken)
+        AppPreferences.pendingReferralCode?.let { body.put("referralCode", it) }
+        Net.post("/api/auth/google", body)
+        AppPreferences.pendingReferralCode = null
+    }
+
     suspend fun logout() {
         runCatching { Net.post("/api/auth/logout") }
         Net.clearSession()
