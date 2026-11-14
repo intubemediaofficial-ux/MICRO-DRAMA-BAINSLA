@@ -151,7 +151,8 @@ private fun VideoView(episode: EpisodeItem, ready: Playback.Ready, active: Boole
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
                 if (state == Player.STATE_ENDED) {
-                    AppScope.launch { Api.saveProgress(episode.id, (player.duration / 1000).toInt(), true) }
+                    val durationSec = (player.duration / 1000).toInt()
+                    AppScope.launch { Api.saveProgress(episode.id, durationSec, true) }
                     onEnded()
                 }
             }
