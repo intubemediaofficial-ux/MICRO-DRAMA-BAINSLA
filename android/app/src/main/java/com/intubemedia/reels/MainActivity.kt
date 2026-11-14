@@ -113,7 +113,7 @@ private fun ReelsNav(openWeb: (String) -> Unit) {
 private fun NavHostController.switchTab(route: String) {
     if (route == "home") {
         navigate("home") {
-            popUpTo("home") { inclusive = false }
+            popUpTo("home") { saveState = true }
             launchSingleTop = true
         }
     } else {
