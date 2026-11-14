@@ -328,6 +328,7 @@ fun AccountScreen(
     var history by remember { mutableStateOf<List<HistoryItem>>(emptyList()) }
     var myList by remember { mutableStateOf<List<SeriesCard>>(emptyList()) }
     var myListAvailable by remember { mutableStateOf(false) }
+    var checkin by remember { mutableStateOf<CheckinStatus?>(null) }
     var loaded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(AppState.authVersion) {
@@ -337,6 +338,7 @@ fun AccountScreen(
         val listResult = if (profile != null) runCatching { Api.watchlist() } else null
         myList = listResult?.getOrDefault(emptyList()).orEmpty()
         myListAvailable = listResult?.isSuccess == true
+        checkin = if (profile != null) runCatching { Api.checkinStatus() }.getOrNull() else null
         loaded = true
     }
     if (!loaded) return Loading()
@@ -359,6 +361,34 @@ fun AccountScreen(
                     }
                 }
                 OutlinedButton(onClick = { scope.launch { Api.logout(); AppState.authVersion++ } }) { Text("Log out", color = Color.White) }
+            }
+            checkin?.let { status ->
+                Spacer(Modifier.height(18.dp))
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                        Text("Daily check-in", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Streak: ${status.streak} days · Today: ${status.nextReward} coins", color = Muted, modifier = Modifier.padding(top = 4.dp))
+                        Button(
+                            enabled = !status.checkedInToday,
+                            onClick = {
+                                scope.launch {
+                                    runCatching { Api.claimCheckin() }.onSuccess { result ->
+                                        profile = user.copy(coins = result.optInt("balance", user.coins))
+                                        checkin = status.copy(
+                                            checkedInToday = true,
+                                            streak = result.optInt("streak", status.streak),
+                                        )
+                                    }.onFailure { error ->
+                                        if (error is ApiException && error.status == 409) {
+                                            checkin = status.copy(checkedInToday = true)
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.padding(top = 8.dp),
+                        ) { Text(if (status.checkedInToday) "Claimed today" else "Claim") }
+                    }
+                }
             }
             Spacer(Modifier.height(24.dp))
             Text("Continue watching", color = Color.White, fontWeight = FontWeight.Bold)

@@ -237,6 +237,18 @@ object Api {
         if (saved) Net.delete("/api/watchlist", body) else Net.post("/api/watchlist", body)
     }
 
+    suspend fun checkinStatus(): CheckinStatus {
+        val json = Net.get("/api/mobile/checkin")
+        return CheckinStatus(
+            checkedInToday = json.optBoolean("checkedInToday"),
+            streak = json.optInt("streak"),
+            nextReward = json.optInt("nextReward"),
+            rewards = json.optJSONArray("rewards").ints(),
+        )
+    }
+
+    suspend fun claimCheckin(): JSONObject = Net.post("/api/mobile/checkin")
+
     /** Null when the user is logged out. */
     suspend fun profile(): Profile? = try {
         val json = Net.get("/api/mobile/me")
