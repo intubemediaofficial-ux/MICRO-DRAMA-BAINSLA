@@ -369,7 +369,8 @@ export async function processRazorpayWebhook(eventId: string, event: RazorpayEve
   if (event.event === "subscription.cancelled" || event.event === "subscription.completed") {
     if (local.status === "EXPIRED" || local.status === "CANCELED")
       return { duplicate: false, handled: false };
-    const status = local.status === "INCOMPLETE" ? "EXPIRED" : "CANCELED";
+    // Keep access until the paid period ends; the cron expires it via cancelAtPeriodEnd.
+    const status = local.status === "INCOMPLETE" ? "EXPIRED" : local.status;
     await prisma.$transaction(async (tx) => {
       await tx.subscription.update({
         where: { id: local.id },
