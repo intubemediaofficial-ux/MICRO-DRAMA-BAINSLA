@@ -45,13 +45,13 @@ export async function POST(request: Request) {
             seriesId: data.seriesId,
             episodeNumber: episodeNumber + 1,
             message: messageFor(episodeNumber),
-            dryRun: !configured,
+            dryRun: data.dryRun || !configured,
           },
         }),
       ),
     );
     let sendResult = { configured: false, sent: 0, failed: 0 };
-    if (configured) {
+    if (configured && !data.dryRun) {
       const tokens = await prisma.deviceToken.findMany({
         where: { userId: { in: stale.map(([userId]) => userId) } },
         select: { token: true },
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       );
     }
     return NextResponse.json({
-      dryRun: !sendResult.configured,
+      dryRun: data.dryRun || !sendResult.configured,
       matchedUsers: stale.length,
       logs,
       ...sendResult,
