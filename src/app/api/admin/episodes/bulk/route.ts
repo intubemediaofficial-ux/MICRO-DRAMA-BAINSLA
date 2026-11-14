@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
+import { notifyNewPublicEpisode } from "@/server/episode-notifications";
 import { prisma } from "@/server/db";
 import { hasPlayableVideo } from "@/lib/publishing";
 import {
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
     const data = input.parse(await request.json());
     const series = await prisma.series.findUnique({
       where: { id: data.seriesId },
-      select: { id: true, posterUrl: true },
+      select: { id: true, posterUrl: true, isPublished: true },
     });
     if (!series) return NextResponse.json({ error: { message: "Series not found" } }, { status: 404 });
     const season = data.seasonId
@@ -98,6 +99,10 @@ export async function POST(request: Request) {
       }
       throw error;
     }
+    if (series.isPublished)
+      for (const episode of episodes)
+        if (episode.publishedAt && hasPlayableVideo(episode))
+          void notifyNewPublicEpisode(episode.id).catch(() => {});
     return NextResponse.json(
       {
         episodes,
@@ -132,7 +137,7 @@ export async function PATCH(request: Request) {
     const result = await prisma.$transaction(async (tx) => {
       const selectedEpisodes = await tx.episode.findMany({
         where: { id: { in: data.episodeIds } },
-        select: { id: true, hlsPath: true, processingStatus: true },
+        select: { id: true, hlsPath: true, processingStatus: true, publishedAt: true },
       });
       const playableIds = selectedEpisodes.filter(hasPlayableVideo).map((episode) => episode.id);
       const skippedWithoutVideo =
@@ -162,8 +167,16 @@ export async function PATCH(request: Request) {
           orderBy: { number: "asc" },
         }),
         skippedWithoutVideo,
+        newlyPublicIds:
+          data.publishedAt && data.publishedAt !== null
+            ? selectedEpisodes
+                .filter((episode) => episode.publishedAt === null && playableIds.includes(episode.id))
+                .map((episode) => episode.id)
+            : [],
       };
     });
+    for (const episodeId of result.newlyPublicIds)
+      void notifyNewPublicEpisode(episodeId).catch(() => {});
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bulk episode update failed";

@@ -129,6 +129,7 @@ model User {
   likes                           EpisodeLike[]
   couponRedemptions               CouponRedemption[]
   notifications                   NotificationLog[]
+  deviceTokens                   DeviceToken[]
   subscriptions                   Subscription[]
   subscriptionEvents              SubscriptionEvent[]
   subscriptionDiscountRedemptions SubscriptionDiscountRedemption[]
@@ -411,6 +412,19 @@ model NotificationLog {
 
   @@unique([subscriptionId, kind])
   @@index([userId, seriesId, sentAt])
+}
+
+model DeviceToken {
+  id         String   @id @default(cuid())
+  token      String   @unique
+  userId     String?
+  platform   String   @default("android")
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([lastSeenAt])
 }
 
 model AdRewardNonce {

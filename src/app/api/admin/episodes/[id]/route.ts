@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
+import { notifyNewPublicEpisode } from "@/server/episode-notifications";
 import { prisma } from "@/server/db";
 import { hasPlayableVideo } from "@/lib/publishing";
 import { duplicateSkuMessage, episodeNumberConflictMessage } from "@/server/episode-validation";
@@ -67,8 +68,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         );
     }
     try {
-      return NextResponse.json(
-        await prisma.episode.update({
+      const updated = await prisma.episode.update({
           where: { id },
           data: {
             ...data,
@@ -79,8 +79,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
               : {}),
             ...(data.thumbnailUrl ? { thumbnailSource: "CUSTOM" } : {}),
           },
-        }),
-      );
+        });
+      if (!existing.publishedAt && updated.publishedAt)
+        void notifyNewPublicEpisode(updated.id).catch(() => {});
+      return NextResponse.json(updated);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         if (data.number !== undefined) {

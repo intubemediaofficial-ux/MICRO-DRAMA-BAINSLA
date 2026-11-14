@@ -9,6 +9,7 @@ import {
   episodeNumberConflictMessage,
   findEpisodeNumberCollision,
 } from "@/server/episode-validation";
+import { notifyNewPublicEpisode } from "@/server/episode-notifications";
 
 const input = z.object({
   seriesId: z.string(),
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
     const data = input.parse(await request.json());
     const series = await prisma.series.findUnique({
       where: { id: data.seriesId },
-      select: { id: true, posterUrl: true },
+      select: { id: true, posterUrl: true, isPublished: true },
     });
     if (!series) return NextResponse.json({ error: { message: "Series not found" } }, { status: 404 });
     const season = data.seasonId
@@ -100,6 +101,10 @@ export async function POST(request: Request) {
       }
       throw error;
     }
+    if (series.isPublished)
+      for (const episode of episodes)
+        if (episode.publishedAt && hasPlayableVideo(episode))
+          void notifyNewPublicEpisode(episode.id).catch(() => {});
     return NextResponse.json(
       {
         episodes,
