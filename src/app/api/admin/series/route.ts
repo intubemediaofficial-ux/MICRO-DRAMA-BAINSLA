@@ -46,7 +46,11 @@ export async function PATCH(request: Request) {
     const payload = z
       .object({ id: z.string(), data: seriesInput.partial() })
       .parse(await request.json());
-    if (payload.data.isPublished === true) {
+    const existing = await prisma.series.findUnique({
+      where: { id: payload.id },
+      select: { isPublished: true },
+    });
+    if (payload.data.isPublished === true && !existing?.isPublished) {
       const episode = await prisma.episode.findFirst({
         where: { seriesId: payload.id, ...publicEpisodeWhere },
         select: { id: true },

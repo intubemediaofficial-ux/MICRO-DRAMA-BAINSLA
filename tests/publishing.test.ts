@@ -203,6 +203,15 @@ describe("video-required publishing", () => {
       },
     });
 
+    const alreadyPublished = await makeSeries("already-published", true);
+    const metadataSave = await patchSeries(
+      jsonRequest(
+        { id: alreadyPublished.series.id, data: { title: "x", isPublished: true } },
+        "PATCH",
+      ),
+    );
+    expect(metadataSave.status).toBe(200);
+
     const created = await createSeries(
       jsonRequest({
         slug: `publishing-${suffix}-new`,

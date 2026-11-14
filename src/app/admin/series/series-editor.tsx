@@ -957,16 +957,18 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
             <input
               type="checkbox"
               checked={isPublished}
-              disabled={!canPublishSeries}
+              disabled={!canPublishSeries && !isPublished}
               onChange={(event) => setIsPublished(event.target.checked)}
               className="h-4 w-4 accent-rose-500"
             />
             <span>
               <b className="block text-sm">Published</b>
               <small className="text-xs text-zinc-500">
-                {canPublishSeries
-                  ? "Make this series visible on the public catalogue."
-                  : "Needs at least one published episode with a video"}
+                {!canPublishSeries && !isPublished
+                  ? "Needs at least one published episode with a video"
+                  : isPublished
+                    ? "Unpublish this series from the public catalogue."
+                    : "Make this series visible on the public catalogue."}
               </small>
             </span>
           </label>
