@@ -110,6 +110,15 @@ private fun EpisodePage(
     var attempt by remember { mutableIntStateOf(0) }
     var playback by remember { mutableStateOf<Playback?>(null) }
     LaunchedEffect(episode.id, attempt, AppState.authVersion) { playback = Api.playback(episode.id) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        // A VIP purchase happens in the browser; re-check entitlement when the user comes back.
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && playback is Playback.Locked) attempt++
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
 
     Box(Modifier.fillMaxSize()) {
         when (val state = playback) {
