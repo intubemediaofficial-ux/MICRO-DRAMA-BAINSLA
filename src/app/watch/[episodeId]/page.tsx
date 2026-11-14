@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -6,6 +7,29 @@ import { resolveSeriesEpisodeEntitlements } from "@/server/entitlements";
 import { getWatchedEpisodeIds } from "@/server/discovery";
 import { findPublicEpisode, publicEpisodeWhere } from "@/server/publishing";
 import WatchClient from "./watch-client";
+
+const SITE_ORIGIN = "https://intubedrama.com";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ episodeId: string }>;
+}): Promise<Metadata> {
+  const { episodeId } = await params;
+  const episode = await findPublicEpisode(episodeId);
+  if (!episode) notFound();
+  const image = new URL(episode.series.posterUrl, SITE_ORIGIN).toString();
+  return {
+    title: `${episode.series.title} · Episode ${episode.number} | Intube Drama`,
+    description: episode.title,
+    alternates: { canonical: `${SITE_ORIGIN}/watch/${encodeURIComponent(episode.id)}` },
+    openGraph: {
+      title: `${episode.series.title} · Episode ${episode.number}`,
+      description: episode.title,
+      images: [image],
+    },
+  };
+}
 
 export default async function WatchPage({ params }: { params: Promise<{ episodeId: string }> }) {
   const { episodeId } = await params;

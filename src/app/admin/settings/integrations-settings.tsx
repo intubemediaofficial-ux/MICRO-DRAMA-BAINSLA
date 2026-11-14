@@ -13,6 +13,7 @@ type SettingsResponse = {
   FIREBASE_API_KEY?: string;
   FIREBASE_PROJECT_ID?: string;
   FIREBASE_SENDER_ID?: string;
+  ANDROID_CERT_SHA256?: string;
   GOOGLE_OAUTH_WEB_CLIENT_ID?: string;
   ADMOB_REWARDED_UNIT_ID?: string;
   ADS_ENABLED?: boolean;
@@ -26,6 +27,7 @@ type FormValues = {
   FIREBASE_API_KEY: string;
   FIREBASE_PROJECT_ID: string;
   FIREBASE_SENDER_ID: string;
+  ANDROID_CERT_SHA256: string;
   GOOGLE_OAUTH_WEB_CLIENT_ID: string;
   ADMOB_REWARDED_UNIT_ID: string;
   ADS_ENABLED: boolean;
@@ -44,6 +46,7 @@ const initialValues: FormValues = {
   FIREBASE_API_KEY: "",
   FIREBASE_PROJECT_ID: "",
   FIREBASE_SENDER_ID: "",
+  ANDROID_CERT_SHA256: "",
   GOOGLE_OAUTH_WEB_CLIENT_ID: "",
   ADMOB_REWARDED_UNIT_ID: "",
   ADS_ENABLED: false,
@@ -138,6 +141,7 @@ export default function IntegrationsSettings() {
       FIREBASE_API_KEY: settings.FIREBASE_API_KEY ?? "",
       FIREBASE_PROJECT_ID: settings.FIREBASE_PROJECT_ID ?? "",
       FIREBASE_SENDER_ID: settings.FIREBASE_SENDER_ID ?? "",
+      ANDROID_CERT_SHA256: settings.ANDROID_CERT_SHA256 ?? "",
       GOOGLE_OAUTH_WEB_CLIENT_ID: settings.GOOGLE_OAUTH_WEB_CLIENT_ID ?? "",
       ADMOB_REWARDED_UNIT_ID: settings.ADMOB_REWARDED_UNIT_ID ?? "",
       ADS_ENABLED: settings.ADS_ENABLED ?? false,
@@ -339,6 +343,16 @@ export default function IntegrationsSettings() {
                   className={inputClass}
                   value={values.FIREBASE_SENDER_ID}
                   onChange={(event) => setValue("FIREBASE_SENDER_ID", event.target.value)}
+                />
+              </Field>
+              <Field
+                label="Android signing certificate SHA-256 fingerprints"
+                hint="Comma-separated fingerprints used by Android App Links."
+              >
+                <textarea
+                  className={`${inputClass} min-h-20 resize-y`}
+                  value={values.ANDROID_CERT_SHA256}
+                  onChange={(event) => setValue("ANDROID_CERT_SHA256", event.target.value)}
                 />
               </Field>
               <Field label="Google OAuth web client ID">

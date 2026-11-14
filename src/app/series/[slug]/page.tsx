@@ -1,10 +1,32 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { getSeriesDetail } from "@/server/series-detail";
 import WatchlistToggle from "../watchlist-toggle";
+import ShareButton from "../share-button";
+
+const SITE_ORIGIN = "https://intubedrama.com";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const slug = decodeURIComponent((await params).slug);
+  const detail = await getSeriesDetail(slug, null);
+  if (!detail) notFound();
+  const { series } = detail;
+  const image = new URL(series.posterUrl, SITE_ORIGIN).toString();
+  return {
+    title: `${series.title} | Intube Drama`,
+    description: series.synopsis,
+    alternates: { canonical: `${SITE_ORIGIN}/series/${encodeURIComponent(series.slug)}` },
+    openGraph: { title: series.title, description: series.synopsis, images: [image] },
+  };
+}
 import TeaserPlayer from "./teaser-player";
 import SeasonEpisodes from "./season-episodes";
 
@@ -56,6 +78,10 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
             seriesId={series.id}
             initialInWatchlist={inWatchlist}
             signedIn={Boolean(session)}
+          />
+          <ShareButton
+            title={series.title}
+            url={`${SITE_ORIGIN}/series/${encodeURIComponent(series.slug)}`}
           />
         </div>
         <div className="mt-5 flex flex-wrap gap-3 text-sm text-zinc-400">

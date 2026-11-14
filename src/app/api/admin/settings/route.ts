@@ -46,6 +46,7 @@ const settingsPatch = z.object({
   FIREBASE_API_KEY: z.string().max(255).optional(),
   FIREBASE_PROJECT_ID: z.string().max(255).optional(),
   FIREBASE_SENDER_ID: z.string().max(255).optional(),
+  ANDROID_CERT_SHA256: z.string().max(4_000).optional(),
   GOOGLE_OAUTH_WEB_CLIENT_ID: z.string().max(512).optional(),
   ADMOB_REWARDED_UNIT_ID: z.string().max(255).optional(),
   ADS_ENABLED: z.boolean().optional(),

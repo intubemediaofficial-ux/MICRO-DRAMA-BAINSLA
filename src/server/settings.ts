@@ -12,6 +12,7 @@ export const SETTING_REGISTRY = {
   FIREBASE_API_KEY: { kind: "string", secret: false },
   FIREBASE_PROJECT_ID: { kind: "string", secret: false },
   FIREBASE_SENDER_ID: { kind: "string", secret: false },
+  ANDROID_CERT_SHA256: { kind: "string", secret: false },
   GOOGLE_OAUTH_WEB_CLIENT_ID: { kind: "string", secret: false },
   ADMOB_REWARDED_UNIT_ID: { kind: "string", secret: false },
   ADS_ENABLED: { kind: "boolean", secret: false, default: false },
