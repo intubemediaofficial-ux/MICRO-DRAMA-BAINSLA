@@ -42,7 +42,7 @@ export async function getEngagementMetrics() {
       UNION
       SELECT "userId", "createdAt"::date AS day FROM "AnalyticsEvent" WHERE "userId" IS NOT NULL
     ), cohorts AS (
-      SELECT id, "createdAt"::date AS day
+      SELECT id, "createdAt", "createdAt"::date AS day
       FROM "User"
       WHERE "createdAt" >= NOW() - INTERVAL '30 days'
     )
@@ -50,12 +50,12 @@ export async function getEngagementMetrics() {
       (SELECT COUNT(DISTINCT "userId") FROM activity WHERE day = CURRENT_DATE) AS dau,
       (SELECT COUNT(DISTINCT "userId") FROM activity WHERE day >= CURRENT_DATE - 6) AS "active7d",
       COUNT(*) AS "cohortUsers",
-      COUNT(*) FILTER (WHERE "createdAt" <= NOW() - INTERVAL '1 day') AS "d1EligibleUsers",
-      COUNT(*) FILTER (WHERE "createdAt" <= NOW() - INTERVAL '1 day' AND EXISTS (
+      COUNT(*) FILTER (WHERE cohorts."createdAt" <= NOW() - INTERVAL '1 day') AS "d1EligibleUsers",
+      COUNT(*) FILTER (WHERE cohorts."createdAt" <= NOW() - INTERVAL '1 day' AND EXISTS (
         SELECT 1 FROM activity a WHERE a."userId" = cohorts.id AND a.day = cohorts.day + 1
       )) AS "d1Users",
-      COUNT(*) FILTER (WHERE "createdAt" <= NOW() - INTERVAL '7 days') AS "d7EligibleUsers",
-      COUNT(*) FILTER (WHERE "createdAt" <= NOW() - INTERVAL '7 days' AND EXISTS (
+      COUNT(*) FILTER (WHERE cohorts."createdAt" <= NOW() - INTERVAL '7 days') AS "d7EligibleUsers",
+      COUNT(*) FILTER (WHERE cohorts."createdAt" <= NOW() - INTERVAL '7 days' AND EXISTS (
         SELECT 1 FROM activity a WHERE a."userId" = cohorts.id AND a.day = cohorts.day + 7
       )) AS "d7Users"
     FROM cohorts

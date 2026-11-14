@@ -27,6 +27,7 @@ describe("engagement retention cohorts", () => {
     const source = query.sql;
     expect(source).toContain(`FROM "UserActivityDay"`);
     expect(source).not.toContain(`FROM "WatchProgress"`);
+    expect(source).toMatch(/SELECT id,\s*"createdAt",\s*"createdAt"::date AS day/);
     expect(source).toContain(`"createdAt" <= NOW() - INTERVAL '1 day'`);
     expect(source).toContain(`"createdAt" <= NOW() - INTERVAL '7 days'`);
     expect(metrics).toMatchObject({
