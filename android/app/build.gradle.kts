@@ -19,8 +19,8 @@ android {
         applicationId = "com.intubemedia.reels"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.1.1"
         buildConfigField("String", "BASE_URL", "\"https://intubedrama.com\"")
         manifestPlaceholders["ADMOB_APP_ID"] =
             providers.gradleProperty("ADMOB_APP_ID").orElse("ca-app-pub-3940256099942544~3347511713").get()
