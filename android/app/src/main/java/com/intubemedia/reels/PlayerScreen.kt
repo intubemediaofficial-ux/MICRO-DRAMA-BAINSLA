@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -113,7 +114,7 @@ private fun EpisodePage(
     Box(Modifier.fillMaxSize()) {
         when (val state = playback) {
             null -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-            is Playback.Ready -> VideoView(episode, state, active, onEnded)
+            is Playback.Ready -> VideoView(episode, state, attempt, active, onEnded) { attempt++ }
             is Playback.Locked -> LockedView(state, episode, onLogin, openWeb) { attempt++ }
             is Playback.Failed -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(state.message, color = Color.White)
@@ -133,13 +134,21 @@ private fun EpisodePage(
 }
 
 @Composable
-private fun VideoView(episode: EpisodeItem, ready: Playback.Ready, active: Boolean, onEnded: () -> Unit) {
+private fun VideoView(
+    episode: EpisodeItem,
+    ready: Playback.Ready,
+    attempt: Int,
+    active: Boolean,
+    onEnded: () -> Unit,
+    onRetry: () -> Unit,
+) {
     val context = LocalContext.current
     var buffering by remember { mutableStateOf(true) }
     var paused by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
     var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_ZOOM) }
-    val player = remember(ready.url) {
+    val player = remember(ready.url, attempt) {
         MediaCache.newPlayer(context).apply {
             setMediaItem(MediaCache.mediaItem(ready))
             if (ready.resumeSec > 0) seekTo(ready.resumeSec * 1000L)
@@ -156,6 +165,10 @@ private fun VideoView(episode: EpisodeItem, ready: Playback.Ready, active: Boole
                     AppScope.launch { Api.saveProgress(episode.id, durationSec, true) }
                     onEnded()
                 }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                failed = true
             }
 
             override fun onVideoSizeChanged(size: VideoSize) {
@@ -216,7 +229,15 @@ private fun VideoView(episode: EpisodeItem, ready: Playback.Ready, active: Boole
             },
             modifier = Modifier.fillMaxSize(),
         )
-        if (buffering && active) CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
+        if (failed) {
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Video could not load", color = Color.White)
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = onRetry) { Text("Retry") }
+            }
+        } else if (buffering && active) {
+            CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
+        }
         if (paused) {
             Icon(
                 Icons.Filled.PlayArrow,
