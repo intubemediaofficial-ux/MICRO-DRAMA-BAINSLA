@@ -3,14 +3,15 @@ import { z } from "zod";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { createAdToken } from "@/server/tokens";
+import { findPublicEpisode } from "@/server/publishing";
 const input = z.object({ episodeId: z.string().min(1) });
 export async function POST(request: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
   try {
     const { episodeId } = input.parse(await request.json());
-    const episode = await prisma.episode.findUnique({ where: { id: episodeId } });
-    if (!episode) return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
+    if (!(await findPublicEpisode(episodeId)))
+      return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
     const token = createAdToken(session.userId, episodeId);
     const verified = token.split(".")[0];
     const [userId, id, nonce, exp] = Buffer.from(verified, "base64url").toString().split(".");

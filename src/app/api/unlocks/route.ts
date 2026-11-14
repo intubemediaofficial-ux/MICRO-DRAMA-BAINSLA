@@ -5,6 +5,7 @@ import { unlockEpisode } from "@/server/coins";
 import { prisma } from "@/server/db";
 import { verifyAdToken } from "@/server/tokens";
 import { rateLimit } from "@/server/rate-limit";
+import { findPublicEpisode } from "@/server/publishing";
 const input = z.object({
   episodeId: z.string().min(1),
   source: z.enum(["coin", "ad"]),
@@ -17,6 +18,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: { message: "Too many requests" } }, { status: 429 });
   try {
     const data = input.parse(await request.json());
+    if (!(await findPublicEpisode(data.episodeId)))
+      return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
     if (data.source === "ad") {
       const token = data.adToken ? verifyAdToken(data.adToken) : null;
       if (!token || token.userId !== session.userId || token.episodeId !== data.episodeId)

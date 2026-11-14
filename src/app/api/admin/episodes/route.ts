@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
 import { prisma } from "@/server/db";
+import { hasPlayableVideo } from "@/lib/publishing";
 import {
   duplicateSkuMessage,
   episodeNumberConflictMessage,
@@ -20,7 +21,7 @@ const input = z.object({
         coinPrice: z.number().int().positive(),
         isFree: z.boolean(),
         durationSec: z.number().int().positive().default(90),
-        hlsPath: z.string().default("sample.mp4"),
+        hlsPath: z.string().default(""),
         thumbnailUrl: z.string().optional(),
         publishedAt: z.coerce.date().nullable().optional(),
         originalFilename: z.string().max(255).nullable().optional(),
@@ -74,6 +75,7 @@ export async function POST(request: Request) {
           prisma.episode.create({
             data: {
               ...episode,
+              publishedAt: hasPlayableVideo(episode) ? (episode.publishedAt ?? null) : null,
               seriesId: data.seriesId,
               seasonId: season.id,
               thumbnailUrl: episode.thumbnailUrl ?? series.posterUrl,
@@ -98,7 +100,13 @@ export async function POST(request: Request) {
       }
       throw error;
     }
-    return NextResponse.json({ episodes }, { status: 201 });
+    return NextResponse.json(
+      {
+        episodes,
+        draftedWithoutVideo: episodes.filter((episode) => !hasPlayableVideo(episode)).length,
+      },
+      { status: 201 },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Episode creation failed";
     return NextResponse.json(

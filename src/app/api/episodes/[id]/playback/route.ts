@@ -6,20 +6,18 @@ import { resolveEpisodeEntitlement } from "@/server/entitlements";
 import { resolveCurrency } from "@/server/currency";
 import { getSubscriptionOffers, hasUsedTrial } from "@/server/subscriptions";
 import { getResumePositionForEpisode } from "@/server/watch-history";
+import { findPublicEpisode } from "@/server/publishing";
 
 const STREAM_TTL_SECONDS = 1_800;
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   const { id } = await params;
+  const episode = await findPublicEpisode(id);
+  if (!episode) return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
   if (!session) {
     const entitlement = await resolveEpisodeEntitlement(null, id);
     if (!entitlement.entitled)
       return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
-    const episode = await prisma.episode.findUnique({
-      where: { id },
-      select: { hlsPath: true, subtitles: { select: { lang: true } } },
-    });
-    if (!episode) return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
     return NextResponse.json({
       playbackUrl: `/api/stream/${createStreamToken(GUEST_USER_ID, id, STREAM_TTL_SECONDS)}`,
       isHls: episode.hlsPath.endsWith(".m3u8"),
@@ -33,11 +31,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       resumePositionSec: 0,
     });
   }
-  const episode = await prisma.episode.findUnique({
-    where: { id },
-    include: { series: true, subtitles: { select: { lang: true } } },
-  });
-  if (!episode) return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
   const entitlement = await resolveEpisodeEntitlement(session.userId, id);
   if (!entitlement.entitled) {
     const offers = await getSubscriptionOffers(resolveCurrency(_request.headers));

@@ -3,12 +3,15 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { env } from "@/server/config";
+import { findPublicEpisode } from "@/server/publishing";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string; lang: string }> },
 ) {
   const { id, lang } = await params;
+  if (!(await findPublicEpisode(id)))
+    return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
   const subtitle = await prisma.subtitle.findUnique({
     where: { episodeId_lang: { episodeId: id, lang } },
   });

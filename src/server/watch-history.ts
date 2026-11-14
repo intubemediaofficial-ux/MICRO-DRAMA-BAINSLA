@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { hasPlayableVideo } from "@/lib/publishing";
 
 export const WATCH_HISTORY_LIMIT = 50;
 const WATCH_HISTORY_SCAN_LIMIT = 100;
@@ -92,7 +93,8 @@ export async function getWatchHistory(userId: string): Promise<WatchHistoryItem[
   const latest = collapseLatestProgress(rows);
   return latest.slice(0, WATCH_HISTORY_LIMIT).map((row) => {
     const episode = row.episode;
-    const available = episode.series.isPublished && episode.publishedAt !== null;
+    const available =
+      episode.series.isPublished && episode.publishedAt !== null && hasPlayableVideo(episode);
     return {
       id: row.id,
       episodeId: row.episodeId,

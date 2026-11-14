@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
+import { publicSeriesSql } from "@/server/publishing";
 
 export async function GET(request: Request) {
   const query = new URL(request.url).searchParams.get("q")?.trim();
@@ -12,12 +13,12 @@ export async function GET(request: Request) {
       FROM (
         SELECT s.title AS value
         FROM "Series" s
-        WHERE s."isPublished" = true AND s.title ILIKE ${pattern}
+        WHERE ${publicSeriesSql} AND s.title ILIKE ${pattern}
         UNION
         SELECT tag AS value
         FROM "Series" s
         CROSS JOIN LATERAL unnest(s.genres || s."tropeTags") AS tag
-        WHERE s."isPublished" = true AND tag ILIKE ${pattern}
+        WHERE ${publicSeriesSql} AND tag ILIKE ${pattern}
       ) suggestions
       ORDER BY value ASC
       LIMIT 8

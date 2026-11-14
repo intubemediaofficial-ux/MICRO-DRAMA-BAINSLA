@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
 import { prisma } from "@/server/db";
+import { publicEpisodeWhere } from "@/server/publishing";
 
 const seriesInput = z.object({
   slug: z.string().min(1),
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     await adminSession();
     const data = seriesInput.parse(await request.json());
     const series = await prisma.$transaction(async (tx) => {
-      const created = await tx.series.create({ data });
+      const created = await tx.series.create({ data: { ...data, isPublished: false } });
       await tx.season.create({
         data: { seriesId: created.id, number: 1, title: "Season 1", sortOrder: 0 },
       });
@@ -45,6 +46,21 @@ export async function PATCH(request: Request) {
     const payload = z
       .object({ id: z.string(), data: seriesInput.partial() })
       .parse(await request.json());
+    if (payload.data.isPublished === true) {
+      const episode = await prisma.episode.findFirst({
+        where: { seriesId: payload.id, ...publicEpisodeWhere },
+        select: { id: true },
+      });
+      if (!episode)
+        return NextResponse.json(
+          {
+            error: {
+              message: "Publish at least one episode with a video file before publishing the series.",
+            },
+          },
+          { status: 400 },
+        );
+    }
     return NextResponse.json(
       await prisma.series.update({ where: { id: payload.id }, data: payload.data }),
     );

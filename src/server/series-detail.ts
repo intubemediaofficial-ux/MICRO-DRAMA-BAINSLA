@@ -1,20 +1,21 @@
 import { prisma } from "./db";
 import { resolveSeriesEpisodeEntitlements } from "./entitlements";
 import { getWatchedEpisodeIds } from "./discovery";
+import { publicEpisodeWhere } from "./publishing";
 
 export async function getSeriesDetail(slug: string, userId: string | null) {
-  const series = await prisma.series.findUnique({
+  const series = await prisma.series.findFirst({
     where: { slug },
     include: {
-      episodes: { orderBy: { number: "asc" } },
+      episodes: { where: publicEpisodeWhere, orderBy: { number: "asc" } },
       seasons: {
         orderBy: [{ sortOrder: "asc" }, { number: "asc" }],
-        include: { episodes: { orderBy: { number: "asc" } } },
+        include: { episodes: { where: publicEpisodeWhere, orderBy: { number: "asc" } } },
       },
       castMembers: { orderBy: { sortOrder: "asc" } },
     },
   });
-  if (!series) return null;
+  if (!series?.isPublished || !series.episodes.length) return null;
   const [entitlementByEpisodeId, watchedIds] = await Promise.all([
     resolveSeriesEpisodeEntitlements(userId, series.episodes, series.freeEpisodeCount),
     userId

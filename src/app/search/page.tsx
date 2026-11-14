@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { prisma } from "@/server/db";
+import { publicSeriesWhere } from "@/server/publishing";
 import SearchControls from "./search-controls";
 
 export default async function SearchPage({
@@ -12,7 +13,7 @@ export default async function SearchPage({
   const q = params.q?.trim();
   const items = await prisma.series.findMany({
     where: {
-      isPublished: true,
+      ...publicSeriesWhere,
       ...(q
         ? {
             OR: [

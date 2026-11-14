@@ -4,20 +4,22 @@ import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { resolveSeriesEpisodeEntitlements } from "@/server/entitlements";
 import { getWatchedEpisodeIds } from "@/server/discovery";
+import { findPublicEpisode, publicEpisodeWhere } from "@/server/publishing";
 import WatchClient from "./watch-client";
 
 export default async function WatchPage({ params }: { params: Promise<{ episodeId: string }> }) {
   const { episodeId } = await params;
   const session = await getSession();
-  const episode = await prisma.episode.findUnique({
-    where: { id: episodeId },
+  if (!(await findPublicEpisode(episodeId))) notFound();
+  const episode = await prisma.episode.findFirst({
+    where: { id: episodeId, ...publicEpisodeWhere, series: { isPublished: true } },
     include: {
       series: {
         include: {
-          episodes: { orderBy: { number: "asc" } },
+          episodes: { where: publicEpisodeWhere, orderBy: { number: "asc" } },
           seasons: {
             orderBy: [{ sortOrder: "asc" }, { number: "asc" }],
-            include: { episodes: { select: { id: true } } },
+            include: { episodes: { where: publicEpisodeWhere, select: { id: true } } },
           },
         },
       },

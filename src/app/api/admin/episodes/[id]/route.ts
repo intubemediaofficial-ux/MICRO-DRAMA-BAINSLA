@@ -3,13 +3,14 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
 import { prisma } from "@/server/db";
+import { hasPlayableVideo } from "@/lib/publishing";
 import { duplicateSkuMessage, episodeNumberConflictMessage } from "@/server/episode-validation";
 
 const input = z.object({
   title: z.string().min(1).optional(),
   number: z.number().int().positive().optional(),
   durationSec: z.number().int().positive().optional(),
-  hlsPath: z.string().min(1).optional(),
+  hlsPath: z.string().optional(),
   thumbnailUrl: z.string().min(1).optional(),
   isFree: z.boolean().optional(),
   coinPrice: z.number().int().positive().optional(),
@@ -24,8 +25,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     await adminSession();
     const { id } = await params;
     const data = input.parse(await request.json());
-    const existing = await prisma.episode.findUnique({ where: { id }, select: { seriesId: true } });
+    const existing = await prisma.episode.findUnique({
+      where: { id },
+      select: { seriesId: true, hlsPath: true, processingStatus: true, publishedAt: true },
+    });
     if (!existing) return NextResponse.json({ error: { message: "Episode not found" } }, { status: 404 });
+    const merged = {
+      hlsPath: data.hlsPath === undefined ? existing.hlsPath : data.hlsPath,
+      processingStatus: existing.processingStatus,
+    };
+    if (data.publishedAt && !hasPlayableVideo(merged))
+      return NextResponse.json(
+        { error: { message: "Upload a video file before publishing this episode." } },
+        { status: 400 },
+      );
     if (data.seasonId) {
       const season = await prisma.season.findUnique({ where: { id: data.seasonId }, select: { seriesId: true } });
       if (!season || season.seriesId !== existing.seriesId)
@@ -57,7 +70,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json(
         await prisma.episode.update({
           where: { id },
-          data: { ...data, ...(data.thumbnailUrl ? { thumbnailSource: "CUSTOM" } : {}) },
+          data: {
+            ...data,
+            ...(data.publishedAt === undefined &&
+            existing.publishedAt !== null &&
+            !hasPlayableVideo(merged)
+              ? { publishedAt: null }
+              : {}),
+            ...(data.thumbnailUrl ? { thumbnailSource: "CUSTOM" } : {}),
+          },
         }),
       );
     } catch (error) {

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
+import { publicEpisodeWhere, publicSeriesWhere } from "@/server/publishing";
 export async function GET() {
   const series = await prisma.series.findMany({
-    where: { isPublished: true },
-    include: { _count: { select: { episodes: true } } },
+    where: publicSeriesWhere,
+    include: { _count: { select: { episodes: { where: publicEpisodeWhere } } } },
     orderBy: { createdAt: "desc" },
   });
   return NextResponse.json(series);
@@ -28,7 +29,8 @@ export async function POST(request: Request) {
     isPublished: z.boolean(),
   });
   try {
-    const series = await prisma.series.create({ data: schema.parse(await request.json()) });
+    const data = schema.parse(await request.json());
+    const series = await prisma.series.create({ data: { ...data, isPublished: false } });
     return NextResponse.json(series, { status: 201 });
   } catch {
     return NextResponse.json({ error: { message: "Invalid series" } }, { status: 400 });
