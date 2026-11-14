@@ -95,9 +95,14 @@ private fun ReelsNav(openWeb: (String) -> Unit) {
         NavHost(nav, startDestination = "home", modifier = Modifier.padding(if (route?.startsWith("play/") == true) androidx.compose.foundation.layout.PaddingValues() else padding)) {
             composable("home") { HomeScreen(openSeries, play) }
             composable("search") { SearchScreen(openSeries) }
-            composable("account") { AccountScreen(play, openWeb) }
+            composable("account") { AccountScreen(play, openWeb, openSeries) }
             composable("series/{slug}") { entry ->
-                SeriesScreen(entry.arguments?.getString("slug").orEmpty(), play, onBack = { nav.popBackStack() })
+                SeriesScreen(
+                    entry.arguments?.getString("slug").orEmpty(),
+                    play,
+                    onBack = { nav.popBackStack() },
+                    onLogin = { nav.switchTab("account") },
+                )
             }
             composable("play/{slug}/{episodeId}/{startPositionSec}") { entry ->
                 PlayerScreen(

@@ -229,6 +229,14 @@ object Api {
     suspend fun search(query: String): List<SeriesCard> =
         Net.get("/api/mobile/search?q=${Uri.encode(query)}").getJSONArray("items").objects().map(::card)
 
+    suspend fun watchlist(): List<SeriesCard> =
+        Net.get("/api/mobile/watchlist").optJSONArray("items").objects().map(::card)
+
+    suspend fun setWatchlist(seriesId: String, saved: Boolean) {
+        val body = JSONObject().put("seriesId", seriesId)
+        if (saved) Net.delete("/api/watchlist", body) else Net.post("/api/watchlist", body)
+    }
+
     /** Null when the user is logged out. */
     suspend fun profile(): Profile? = try {
         val json = Net.get("/api/mobile/me")

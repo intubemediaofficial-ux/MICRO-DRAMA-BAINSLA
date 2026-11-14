@@ -37,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -201,11 +202,16 @@ fun SeriesScreen(slug: String, play: (String, String, Int) -> Unit, onBack: () -
     var detail by remember { mutableStateOf<SeriesDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableStateOf(0) }
+    var inWatchlist by remember(slug) { mutableStateOf<Boolean?>(null) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(slug, attempt, AppState.authVersion) {
         error = null
         runCatching { Api.series(slug) }.onSuccess { detail = it }.onFailure { error = it.message ?: "Could not load" }
     }
     val series = detail
+    LaunchedEffect(series?.slug, series?.inWatchlist) {
+        inWatchlist = series?.inWatchlist
+    }
     when {
         series != null -> LazyVerticalGrid(
             columns = GridCells.Fixed(5),
@@ -235,6 +241,24 @@ fun SeriesScreen(slug: String, play: (String, String, Int) -> Unit, onBack: () -
                                     Text(if (it.number == 1) "Play EP 1" else "Continue EP ${it.number}")
                                 }
                             }
+                            if (series.id != null && inWatchlist != null) {
+                                Spacer(Modifier.height(6.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            val save = inWatchlist != true
+                                            runCatching { Api.setWatchlist(series.id, save) }
+                                                .onSuccess { inWatchlist = save }
+                                                .onFailure { error ->
+                                                    if (error is ApiException && error.status == 401) onLogin()
+                                                    inWatchlist = null
+                                                }
+                                        }
+                                    },
+                                ) {
+                                    Text(if (inWatchlist == true) "✓ My List" else "+ My List", color = Color.White)
+                                }
+                            }
                         }
                     }
                     Spacer(Modifier.height(12.dp))
@@ -247,7 +271,7 @@ fun SeriesScreen(slug: String, play: (String, String, Int) -> Unit, onBack: () -
                 Box(
                     Modifier.aspectRatio(1f).clip(RoundedCornerShape(8.dp))
                         .background(if (episode.watched) Color(0xFF3A1D20) else MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable { play(series.slug, episode.id) },
+                        .clickable { play(series.slug, episode.id, 0) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text("${episode.number}", color = Color.White, fontWeight = FontWeight.SemiBold)
@@ -295,15 +319,24 @@ fun SearchScreen(openSeries: (String) -> Unit) {
 }
 
 @Composable
-fun AccountScreen(play: (String, String, Int) -> Unit, openWeb: (String) -> Unit) {
+fun AccountScreen(
+    play: (String, String, Int) -> Unit,
+    openWeb: (String) -> Unit,
+    openSeries: (String) -> Unit,
+) {
     var profile by remember { mutableStateOf<Profile?>(null) }
     var history by remember { mutableStateOf<List<HistoryItem>>(emptyList()) }
+    var myList by remember { mutableStateOf<List<SeriesCard>>(emptyList()) }
+    var myListAvailable by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(AppState.authVersion) {
         loaded = false
         profile = runCatching { Api.profile() }.getOrNull()
         history = if (profile != null) runCatching { Api.history() }.getOrDefault(emptyList()) else emptyList()
+        val listResult = if (profile != null) runCatching { Api.watchlist() } else null
+        myList = listResult?.getOrDefault(emptyList()).orEmpty()
+        myListAvailable = listResult?.isSuccess == true
         loaded = true
     }
     if (!loaded) return Loading()
@@ -345,6 +378,26 @@ fun AccountScreen(play: (String, String, Int) -> Unit, openWeb: (String) -> Unit
                 Column(Modifier.padding(start = 12.dp)) {
                     Text(item.seriesTitle, color = Color.White)
                     Text("EP ${item.episodeNumber}", color = Muted, fontSize = 12.sp)
+                }
+            }
+        }
+        if (myListAvailable) {
+            item {
+                Text("My List", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 24.dp))
+                if (myList.isEmpty()) Text("No series saved", color = Muted, modifier = Modifier.padding(top = 8.dp))
+            }
+            items(myList, key = { "saved-${it.slug}" }) { card ->
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 12.dp).clickable { openSeries(card.slug) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AsyncImage(
+                        card.posterUrl,
+                        card.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.width(56.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)),
+                    )
+                    Text(card.title, color = Color.White, modifier = Modifier.padding(start = 12.dp))
                 }
             }
         }

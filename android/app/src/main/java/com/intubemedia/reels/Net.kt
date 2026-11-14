@@ -99,6 +99,14 @@ object Net {
             .build(),
     )
 
+    suspend fun delete(path: String, body: JSONObject = JSONObject()): JSONObject = call(
+        Request.Builder()
+            .url(BuildConfig.BASE_URL + path)
+            .header("Origin", BuildConfig.BASE_URL)
+            .delete(body.toString().toRequestBody(json))
+            .build(),
+    )
+
     private suspend fun call(request: Request): JSONObject = withContext(Dispatchers.IO) {
         client.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
