@@ -14,12 +14,14 @@ describe("media delivery", () => {
   it("keeps uploaded episode videos off the public media route", () => {
     expect(isProtectedEpisodeMedia("episodes/abc-clip.mp4")).toBe(true);
     expect(isProtectedEpisodeMedia("/media/episodes/abc-clip-hls/v0/seg-000.ts")).toBe(true);
+    expect(isProtectedEpisodeMedia("x/../episodes/abc-clip.mp4")).toBe(true);
+    expect(isProtectedEpisodeMedia("./episodes//abc-clip.mp4")).toBe(true);
     expect(isProtectedEpisodeMedia("episodes/abc-clip.mp4.jpg")).toBe(false);
     expect(isProtectedEpisodeMedia("admin/teaser/x.mp4")).toBe(false);
   });
 
   it("derives the HLS ladder location and signs nested playlists", () => {
-    expect(hlsKeyFor("episodes/abc-clip.mp4")).toBe("episodes/abc-clip-hls/master.m3u8");
+    expect(hlsKeyFor("episodes/abc-clip.mp4", "v1")).toBe("episodes/abc-clip-hls-v1/master.m3u8");
     const master = rewriteHlsManifest(
       "#EXTM3U\nv0/index.m3u8",
       "tok",
