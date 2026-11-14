@@ -82,6 +82,15 @@ object MediaCache {
     fun mediaItem(ready: Playback.Ready): MediaItem = MediaItem.Builder()
         .setUri(ready.url)
         .setMimeType(if (ready.isHls) MimeTypes.APPLICATION_M3U8 else MimeTypes.VIDEO_MP4)
+        .setSubtitleConfigurations(
+            ready.subtitles.map { subtitle ->
+                MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.url))
+                    .setMimeType(if (subtitle.format == "srt") MimeTypes.APPLICATION_SUBRIP else MimeTypes.TEXT_VTT)
+                    .setLanguage(subtitle.lang)
+                    .setLabel(subtitle.label)
+                    .build()
+            },
+        )
         .build()
 }
 

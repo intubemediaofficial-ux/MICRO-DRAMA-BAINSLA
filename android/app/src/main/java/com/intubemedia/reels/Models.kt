@@ -108,7 +108,7 @@ data class CheckinStatus(
 )
 
 sealed interface Playback {
-    data class Subtitle(val lang: String, val url: String)
+    data class Subtitle(val lang: String, val label: String, val url: String, val format: String)
     data class Ready(
         val url: String,
         val isHls: Boolean,
@@ -307,7 +307,12 @@ object Api {
             json.optJSONArray("subtitles").objects().mapNotNull { subtitle ->
                 val lang = subtitle.str("lang") ?: return@mapNotNull null
                 val subtitleUrl = Net.absolute(subtitle.str("url")) ?: return@mapNotNull null
-                Playback.Subtitle(lang, subtitleUrl)
+                Playback.Subtitle(
+                    lang,
+                    subtitle.str("label") ?: lang,
+                    subtitleUrl,
+                    subtitle.optString("format", "vtt"),
+                )
             },
             json.str("seriesSlug"),
         )

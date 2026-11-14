@@ -28,6 +28,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       watermark: "",
       subtitles: episode.subtitles.map((subtitle) => ({
         lang: subtitle.lang,
+        label: subtitle.lang,
+        format: subtitle.srtPath.toLowerCase().endsWith(".vtt") ? "vtt" : "srt",
         url: `/api/episodes/${id}/subtitles/${subtitle.lang}`,
       })),
       expiresIn: STREAM_TTL_SECONDS,
@@ -73,9 +75,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     playbackUrl: `/api/stream/${token}`,
     isHls: episode.hlsPath.endsWith(".m3u8"),
     watermark: watermark(user.phone, session.userId),
-    subtitles: episode.subtitles.map((subtitle) => ({
-      lang: subtitle.lang,
-      url: `/api/episodes/${id}/subtitles/${subtitle.lang}`,
+      subtitles: episode.subtitles.map((subtitle) => ({
+        lang: subtitle.lang,
+        label: subtitle.lang,
+        format: subtitle.srtPath.toLowerCase().endsWith(".vtt") ? "vtt" : "srt",
+        url: `/api/episodes/${id}/subtitles/${subtitle.lang}`,
     })),
     expiresIn: STREAM_TTL_SECONDS,
     entitlement: entitlement.reason,

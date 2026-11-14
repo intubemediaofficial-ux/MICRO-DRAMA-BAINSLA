@@ -62,6 +62,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -213,9 +214,16 @@ private fun VideoView(
     var failed by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
     var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_ZOOM) }
+    var subtitleLanguage by remember(episode.id) { mutableStateOf(AppPreferences.subtitleLanguage) }
+    val subtitleChoices = listOf("off") + ready.subtitles.map { it.lang }
     val player = remember(ready.url) {
         MediaCache.newPlayer(context).apply {
             setMediaItem(MediaCache.mediaItem(ready))
+            val selectedLanguage = subtitleLanguage
+            trackSelectionParameters = trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, selectedLanguage == "off")
+                .apply { if (selectedLanguage != "off") setPreferredTextLanguage(selectedLanguage) }
+                .build()
             val resumeSec = startPositionSec.takeIf { it > 0 } ?: ready.resumeSec
             if (resumeSec > 0) seekTo(resumeSec * 1000L)
             if (startPositionSec > 0) onStartPositionConsumed()
@@ -290,6 +298,7 @@ private fun VideoView(
                 PlayerView(it).apply {
                     useController = false
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
+                    subtitleView?.setBottomPaddingFraction(0.25f)
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 }
             },
@@ -323,6 +332,20 @@ private fun VideoView(
             color = Color.White,
             trackColor = Color.White.copy(alpha = 0.2f),
         )
+        if (ready.subtitles.isNotEmpty()) {
+            TextButton(
+                onClick = {
+                    val next = subtitleChoices[(subtitleChoices.indexOf(subtitleLanguage) + 1) % subtitleChoices.size]
+                    subtitleLanguage = next
+                    AppPreferences.subtitleLanguage = next
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, next == "off")
+                        .apply { if (next != "off") setPreferredTextLanguage(next) }
+                        .build()
+                },
+                modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(bottom = 32.dp, end = 12.dp),
+            ) { Text(if (subtitleLanguage == "off") "CC Off" else "CC $subtitleLanguage", color = Color.White) }
+        }
     }
 }
 

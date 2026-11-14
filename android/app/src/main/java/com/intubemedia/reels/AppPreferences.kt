@@ -20,4 +20,10 @@ object AppPreferences {
         set(value) {
             prefs.edit().putBoolean("notificationPermissionRequested", value).apply()
         }
+
+    var subtitleLanguage: String
+        get() = prefs.getString("subtitleLanguage", "off") ?: "off"
+        set(value) {
+            prefs.edit().putString("subtitleLanguage", value).apply()
+        }
 }
