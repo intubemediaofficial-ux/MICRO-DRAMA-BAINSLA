@@ -30,6 +30,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -206,7 +208,12 @@ fun HomeScreen(openSeries: (String) -> Unit, play: (String, String, Int) -> Unit
 }
 
 @Composable
-fun SeriesScreen(slug: String, play: (String, String, Int) -> Unit, onBack: () -> Unit) {
+fun SeriesScreen(
+    slug: String,
+    play: (String, String, Int) -> Unit,
+    onBack: () -> Unit,
+    onLogin: () -> Unit,
+) {
     val context = LocalContext.current
     var detail by remember { mutableStateOf<SeriesDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }

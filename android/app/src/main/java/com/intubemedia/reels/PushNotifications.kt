@@ -3,9 +3,12 @@ package com.intubemedia.reels
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.google.firebase.FirebaseApp
@@ -33,7 +36,7 @@ object PushNotifications {
 
     fun registerCurrentToken() {
         val app = runCatching { FirebaseApp.getInstance() }.getOrNull() ?: return
-        FirebaseMessaging.getInstance(app).token.addOnSuccessListener { token ->
+        FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
             AppPreferences.pushToken = token
             AppScope.launch { Api.registerPushToken(token) }
         }
@@ -72,7 +75,13 @@ object PushNotifications {
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
             .build()
-        runCatching { NotificationManagerCompat.from(context).notify(System.currentTimeMillis().toInt(), notification) }
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            NotificationManagerCompat.from(context).notify(System.currentTimeMillis().toInt(), notification)
+        }
     }
 }
 

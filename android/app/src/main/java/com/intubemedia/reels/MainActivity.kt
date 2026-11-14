@@ -34,6 +34,7 @@ import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /** App-wide scope for fire-and-forget calls (progress saves) that must outlive a screen. */
 val AppScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
