@@ -14,4 +14,10 @@ object AppPreferences {
         set(value) {
             prefs.edit().putString("pendingReferralCode", value).apply()
         }
+
+    var notificationPermissionRequested: Boolean
+        get() = prefs.getBoolean("notificationPermissionRequested", false)
+        set(value) {
+            prefs.edit().putBoolean("notificationPermissionRequested", value).apply()
+        }
 }

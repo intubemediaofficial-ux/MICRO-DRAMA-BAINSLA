@@ -249,6 +249,10 @@ object Api {
 
     suspend fun claimCheckin(): JSONObject = Net.post("/api/mobile/checkin")
 
+    suspend fun registerPushToken(token: String) {
+        runCatching { Net.post("/api/mobile/push-token", JSONObject().put("token", token)) }
+    }
+
     /** Null when the user is logged out. */
     suspend fun profile(): Profile? = try {
         val json = Net.get("/api/mobile/me")
@@ -336,6 +340,7 @@ object Api {
         AppPreferences.pendingReferralCode?.let { body.put("referralCode", it) }
         Net.post("/api/auth/verify", body)
         AppPreferences.pendingReferralCode = null
+        PushNotifications.registerCurrentToken()
     }
 
     suspend fun googleLogin(idToken: String) {
@@ -343,6 +348,7 @@ object Api {
         AppPreferences.pendingReferralCode?.let { body.put("referralCode", it) }
         Net.post("/api/auth/google", body)
         AppPreferences.pendingReferralCode = null
+        PushNotifications.registerCurrentToken()
     }
 
     suspend fun logout() {

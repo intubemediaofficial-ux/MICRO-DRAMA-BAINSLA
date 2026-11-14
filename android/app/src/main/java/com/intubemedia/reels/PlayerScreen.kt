@@ -2,7 +2,12 @@
 
 package com.intubemedia.reels
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.view.ViewGroup
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -47,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -72,6 +78,20 @@ fun PlayerScreen(
     onLogin: () -> Unit,
     openWeb: (String) -> Unit,
 ) {
+    val context = LocalContext.current
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    var firstPlaybackStarted by remember { mutableStateOf(false) }
+    val onFirstPlayback = {
+        if (!firstPlaybackStarted) {
+            firstPlaybackStarted = true
+            if (Build.VERSION.SDK_INT >= 33 && !AppPreferences.notificationPermissionRequested) {
+                AppPreferences.notificationPermissionRequested = true
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+        }
+    }
     var detail by remember { mutableStateOf<SeriesDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(slug) {
@@ -91,6 +111,7 @@ fun PlayerScreen(
                         episode = series.episodes[page],
                         startPositionSec = if (page == start) pendingStartPositionSec else 0,
                         onStartPositionConsumed = { pendingStartPositionSec = 0 },
+                        onFirstPlayback = onFirstPlayback,
                         active = pager.settledPage == page,
                         onEnded = {
                             if (page + 1 < series.episodes.size) scope.launch { pager.animateScrollToPage(page + 1) }
@@ -115,6 +136,7 @@ private fun EpisodePage(
     episode: EpisodeItem,
     startPositionSec: Int,
     onStartPositionConsumed: () -> Unit,
+    onFirstPlayback: () -> Unit,
     active: Boolean,
     onEnded: () -> Unit,
     onLogin: () -> Unit,
@@ -139,7 +161,7 @@ private fun EpisodePage(
             null -> CircularProgressIndicator(Modifier.align(Alignment.Center))
             // Keyed so a retry rebuilds the player together with all of its error/progress state.
             is Playback.Ready -> key(state.url, attempt) {
-                VideoView(episode, state, active, startPositionSec, onStartPositionConsumed, onEnded) { attempt++ }
+                VideoView(episode, state, active, startPositionSec, onStartPositionConsumed, onFirstPlayback, onEnded) { attempt++ }
             }
             is Playback.Locked -> LockedView(state, episode, onLogin, openWeb) { attempt++ }
             is Playback.Failed -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -170,6 +192,7 @@ private fun VideoView(
     active: Boolean,
     startPositionSec: Int,
     onStartPositionConsumed: () -> Unit,
+    onFirstPlayback: () -> Unit,
     onEnded: () -> Unit,
     onRetry: () -> Unit,
 ) {
@@ -191,6 +214,10 @@ private fun VideoView(
     }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) onFirstPlayback()
+            }
+
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
                 if (state == Player.STATE_ENDED) {

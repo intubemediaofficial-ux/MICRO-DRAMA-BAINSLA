@@ -3,6 +3,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".ReelsApp"
@@ -35,5 +36,12 @@
                 <data android:scheme="https" android:host="intubedrama.com" android:pathPrefix="/watch/" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".ReelsMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

@@ -13,7 +13,10 @@ class ReelsApp : Application(), ImageLoaderFactory {
         Net.init(this)
         AppPreferences.init(this)
         MediaCache.init(this)
-        AppScope.launch { Api.config(refresh = true) }
+        AppScope.launch {
+            val config = Api.config(refresh = true)
+            config.firebase?.let { PushNotifications.configure(this@ReelsApp, it) }
+        }
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
