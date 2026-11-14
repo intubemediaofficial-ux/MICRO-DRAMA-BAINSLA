@@ -399,7 +399,7 @@ fun AccountScreen(
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val checkoutEpisode = history.firstOrNull()?.episodeId
-                if (user.vipActive || checkoutEpisode != null) {
+                if (BuildConfig.WEB_CHECKOUT && (user.vipActive || checkoutEpisode != null)) {
                     Button(onClick = { openWeb(if (user.vipActive) "/account/subscription" else "/subscribe?episode=$checkoutEpisode") }) {
                         Text(if (user.vipActive) "Manage VIP" else "Get VIP")
                     }

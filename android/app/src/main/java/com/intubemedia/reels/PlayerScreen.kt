@@ -442,7 +442,12 @@ private fun LockedView(
     ) {
         Icon(Icons.Filled.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
         Spacer(Modifier.height(12.dp))
-        Text("Episode ${episode.number} is locked", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text(
+            if (BuildConfig.WEB_CHECKOUT) "Episode ${episode.number} is locked" else "Locked episode",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+        )
         Spacer(Modifier.height(20.dp))
         if (state.needsLogin) {
             Button(onClick = onLogin) { Text("Log in to continue") }
@@ -460,10 +465,12 @@ private fun LockedView(
                 },
             ) { Text("Unlock for ${state.coinPrice} coins") }
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = {
-                Analytics.track("subscribe_click", episodeId = episode.id)
-                openWeb("/subscribe?episode=${episode.id}")
-            }) { Text("Get VIP – watch everything", color = Color.White) }
+            if (BuildConfig.WEB_CHECKOUT) {
+                OutlinedButton(onClick = {
+                    Analytics.track("subscribe_click", episodeId = episode.id)
+                    openWeb("/subscribe?episode=${episode.id}")
+                }) { Text("Get VIP – watch everything", color = Color.White) }
+            }
             if (adsEnabled) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(

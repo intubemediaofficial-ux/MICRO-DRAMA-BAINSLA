@@ -38,7 +38,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("boolean", "WEB_CHECKOUT", "true")
+        }
         release {
+            buildConfigField("boolean", "WEB_CHECKOUT", "false")
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
