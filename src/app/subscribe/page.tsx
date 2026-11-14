@@ -29,7 +29,7 @@ export default async function SubscribePage({
 
   const offers = await getSubscriptionOffers(resolveCurrency(new Headers(await headers())));
   const trialOffer =
-    offers.find((offer) => offer.plan.trialDays > 0 && offer.price.trialAmountMinor > 0) ?? null;
+    offers.find((offer) => offer.plan.trialDays > 0) ?? null;
   const trialAlreadyUsed = session ? await hasUsedTrial(session.userId) : false;
   const money = (minor: number, currency: string) =>
     new Intl.NumberFormat("en", { style: "currency", currency }).format(minor / 100);
