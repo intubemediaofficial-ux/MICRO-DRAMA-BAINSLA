@@ -57,7 +57,7 @@ export async function POST(request: Request) {
             message === "TRIAL_NOT_AVAILABLE" ||
             message === "TRIAL_EMAIL_REQUIRED"
           ? 422
-          : message === "SUBSCRIPTION_EXISTS"
+          : message === "SUBSCRIPTION_EXISTS" || message === "CHECKOUT_PENDING"
             ? 409
             : message === "PAYMENTS_UNAVAILABLE" || message === "RAZORPAY_REQUEST_FAILED"
               ? 503

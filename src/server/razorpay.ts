@@ -114,8 +114,13 @@ export async function createRazorpayCheckout(
   });
   for (const item of stale) {
     if (item.providerRef)
-      await cancelRazorpaySubscription(item.providerRef, false).catch(() => undefined);
-    await prisma.subscription.update({ where: { id: item.id }, data: { status: "EXPIRED" } });
+      await cancelRazorpaySubscription(item.providerRef, false).catch(() => {
+        throw new Error("CHECKOUT_PENDING");
+      });
+    await prisma.subscription.updateMany({
+      where: { id: item.id, status: "INCOMPLETE" },
+      data: { status: "EXPIRED" },
+    });
   }
 
   const trial = mode === "TRIAL";

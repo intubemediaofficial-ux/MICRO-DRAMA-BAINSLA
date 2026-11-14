@@ -99,9 +99,11 @@ export default function SubscribeActions({
     setMessage(
       errorMessage === "SUBSCRIPTION_EXISTS"
         ? "You already have a subscription. Manage it from My Subscription."
-        : errorMessage === "TRIAL_ALREADY_USED"
-          ? "Trial already used — choose a plan below."
-          : (errorMessage ?? "Could not start subscription"),
+        : errorMessage === "CHECKOUT_PENDING"
+          ? "Your previous payment is still processing. Try again in a few minutes."
+          : errorMessage === "TRIAL_ALREADY_USED"
+            ? "Trial already used — choose a plan below."
+            : (errorMessage ?? "Could not start subscription"),
     );
     setPending(null);
   }
