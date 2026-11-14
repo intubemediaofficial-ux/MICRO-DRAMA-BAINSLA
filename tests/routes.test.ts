@@ -46,6 +46,7 @@ describe("protected playback and reward flows", () => {
         castNames: [],
         freeEpisodeCount: 0,
         defaultCoinPrice: 10,
+        isPublished: true,
       },
     });
     const episode = await prisma.episode.create({
@@ -54,9 +55,10 @@ describe("protected playback and reward flows", () => {
         number: 1,
         title: "Locked",
         durationSec: 10,
-        hlsPath: "sample.mp4",
+        hlsPath: "episodes/routes-locked.m3u8",
         thumbnailUrl: "",
         coinPrice: 10,
+        publishedAt: new Date(),
       },
     });
     episodeId = episode.id;

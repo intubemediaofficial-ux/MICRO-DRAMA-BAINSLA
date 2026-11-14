@@ -53,10 +53,11 @@ describe("mobile api", () => {
           create: [1, 2].map((number) => ({
             number,
             title: `Ep ${number}`,
-            hlsPath: "sample.mp4",
+            hlsPath: `episodes/mobile-${number}.m3u8`,
             thumbnailUrl: "",
             durationSec: 30,
             coinPrice: 10,
+            publishedAt: new Date(),
           })),
         },
       },
