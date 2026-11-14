@@ -6,6 +6,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
 
 object Analytics {
     private data class Event(
@@ -69,7 +70,10 @@ object Analytics {
                         })
                     }
                 })
-            if (runCatching { Net.post("/api/events", body) }.isFailure) {
+            val error = runCatching { Net.post("/api/events", body) }.exceptionOrNull() ?: continue
+            val retryable = error is IOException ||
+                (error is ApiException && (error.status == 429 || error.status in 500..599))
+            if (retryable) {
                 requeueAtFront(chunks.drop(index).flatten())
                 return@withLock
             }
