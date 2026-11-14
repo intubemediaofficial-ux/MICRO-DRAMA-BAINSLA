@@ -29,6 +29,12 @@ export default async function AccountPage() {
         </p>
         <p className="mt-4 break-all rounded-xl bg-zinc-950 p-3 text-sm">{referralLink}</p>
       </section>
+      <Link
+        href="/account/delete"
+        className="mt-6 inline-block text-sm text-zinc-400 underline hover:text-zinc-200"
+      >
+        Delete your account
+      </Link>
     </div>
   );
 }

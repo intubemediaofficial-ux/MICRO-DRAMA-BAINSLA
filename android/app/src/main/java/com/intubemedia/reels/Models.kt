@@ -390,4 +390,9 @@ object Api {
         }
         Net.clearSession()
     }
+
+    suspend fun deleteAccount() {
+        Net.post("/api/account/delete", JSONObject().put("confirm", "DELETE"))
+        Net.clearSession()
+    }
 }

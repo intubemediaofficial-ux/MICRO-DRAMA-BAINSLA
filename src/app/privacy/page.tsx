@@ -20,10 +20,13 @@ export default function PrivacyPage() {
         privacy information.
       </p>
       <p>
-        To ask us to delete your account and associated account data, email
-        {" "}<a className="text-rose-300" href="mailto:intubemediaofficial@gmail.com">intubemediaofficial@gmail.com</a>.
-        We may need to retain transaction records where required to handle payments or support
-        requests.
+        To delete your account, visit{" "}
+        <a className="text-rose-300" href="https://intubedrama.com/account/delete">
+          https://intubedrama.com/account/delete
+        </a>
+        . We remove personal profile and activity data. Purchase, payment, subscription, coin,
+        episode-unlock, and trial-abuse-prevention records may be retained where needed for legal,
+        accounting, and fraud-prevention purposes.
       </p>
     </PolicyPage>
   );

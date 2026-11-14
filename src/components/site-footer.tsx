@@ -5,6 +5,7 @@ const links = [
   ["/terms", "Terms"],
   ["/refund-policy", "Refund policy"],
   ["/contact", "Contact"],
+  ["/account/delete", "Delete account"],
 ] as const;
 
 export default function SiteFooter() {

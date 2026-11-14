@@ -33,6 +33,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -349,6 +350,7 @@ fun AccountScreen(
     play: (String, String, Int) -> Unit,
     openWeb: (String) -> Unit,
     openSeries: (String) -> Unit,
+    onHome: () -> Unit,
 ) {
     val context = LocalContext.current
     var profile by remember { mutableStateOf<Profile?>(null) }
@@ -357,6 +359,8 @@ fun AccountScreen(
     var myListAvailable by remember { mutableStateOf(false) }
     var checkin by remember { mutableStateOf<CheckinStatus?>(null) }
     var loaded by remember { mutableStateOf(false) }
+    var deleteDialogStep by remember { mutableStateOf(0) }
+    var deletingAccount by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(AppState.authVersion) {
         loaded = false
@@ -370,6 +374,62 @@ fun AccountScreen(
     }
     if (!loaded) return Loading()
     val user = profile ?: return LoginForm { AppState.authVersion++ }
+    if (deleteDialogStep == 1) {
+        AlertDialog(
+            onDismissRequest = { deleteDialogStep = 0 },
+            title = { Text("Delete account?") },
+            text = { Text("This permanently removes your personal account data and signs you out.") },
+            confirmButton = {
+                TextButton(onClick = { deleteDialogStep = 2 }) { Text("Continue") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteDialogStep = 0 }) { Text("Cancel") }
+            },
+        )
+    }
+    if (deleteDialogStep == 2) {
+        AlertDialog(
+            onDismissRequest = { if (!deletingAccount) deleteDialogStep = 0 },
+            title = { Text("Confirm account deletion") },
+            text = {
+                Text(
+                    "Watch history and personal activity will be deleted. Payment, coin, " +
+                        "subscription, unlock, and trial-abuse records are retained.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !deletingAccount,
+                    onClick = {
+                        deletingAccount = true
+                        scope.launch {
+                            runCatching { Api.deleteAccount() }
+                                .onSuccess {
+                                    AppState.authVersion++
+                                    Toast.makeText(context, "Account deleted", Toast.LENGTH_SHORT).show()
+                                    onHome()
+                                }
+                                .onFailure { error ->
+                                    Toast.makeText(
+                                        context,
+                                        error.message ?: "Could not delete account",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
+                            deletingAccount = false
+                            deleteDialogStep = 0
+                        }
+                    },
+                ) { Text(if (deletingAccount) "Deleting…" else "Delete account") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !deletingAccount,
+                    onClick = { deleteDialogStep = 0 },
+                ) { Text("Cancel") }
+            },
+        )
+    }
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = PaddingValues(16.dp)) {
         item {
             Text(user.email ?: user.phone ?: "My account", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
@@ -406,6 +466,11 @@ fun AccountScreen(
                 }
                 OutlinedButton(onClick = { scope.launch { Api.logout(); AppState.authVersion++ } }) { Text("Log out", color = Color.White) }
             }
+            TextButton(
+                enabled = !deletingAccount,
+                onClick = { deleteDialogStep = 1 },
+                modifier = Modifier.padding(top = 8.dp),
+            ) { Text("Delete account", color = Color(0xFFFF8A8A)) }
             checkin?.let { status ->
                 Spacer(Modifier.height(18.dp))
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
