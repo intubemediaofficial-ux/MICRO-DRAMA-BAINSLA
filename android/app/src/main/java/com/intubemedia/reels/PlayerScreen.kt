@@ -64,7 +64,14 @@ import kotlinx.coroutines.launch
 
 /** Full-screen vertical feed of a series; neighbouring episodes are prepared so a swipe starts instantly. */
 @Composable
-fun PlayerScreen(slug: String, episodeId: String, onBack: () -> Unit, onLogin: () -> Unit, openWeb: (String) -> Unit) {
+fun PlayerScreen(
+    slug: String,
+    episodeId: String,
+    startPositionSec: Int,
+    onBack: () -> Unit,
+    onLogin: () -> Unit,
+    openWeb: (String) -> Unit,
+) {
     var detail by remember { mutableStateOf<SeriesDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(slug) {
@@ -77,10 +84,13 @@ fun PlayerScreen(slug: String, episodeId: String, onBack: () -> Unit, onLogin: (
                 val start = series.episodes.indexOfFirst { it.id == episodeId }.coerceAtLeast(0)
                 val pager = rememberPagerState(initialPage = start) { series.episodes.size }
                 val scope = rememberCoroutineScope()
+                var pendingStartPositionSec by remember(episodeId) { mutableIntStateOf(startPositionSec) }
                 VerticalPager(state = pager, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize()) { page ->
                     EpisodePage(
                         series = series,
                         episode = series.episodes[page],
+                        startPositionSec = if (page == start) pendingStartPositionSec else 0,
+                        onStartPositionConsumed = { pendingStartPositionSec = 0 },
                         active = pager.settledPage == page,
                         onEnded = {
                             if (page + 1 < series.episodes.size) scope.launch { pager.animateScrollToPage(page + 1) }
@@ -103,6 +113,8 @@ fun PlayerScreen(slug: String, episodeId: String, onBack: () -> Unit, onLogin: (
 private fun EpisodePage(
     series: SeriesDetail,
     episode: EpisodeItem,
+    startPositionSec: Int,
+    onStartPositionConsumed: () -> Unit,
     active: Boolean,
     onEnded: () -> Unit,
     onLogin: () -> Unit,
@@ -125,7 +137,9 @@ private fun EpisodePage(
         when (val state = playback) {
             null -> CircularProgressIndicator(Modifier.align(Alignment.Center))
             // Keyed so a retry rebuilds the player together with all of its error/progress state.
-            is Playback.Ready -> key(state.url, attempt) { VideoView(episode, state, active, onEnded) { attempt++ } }
+            is Playback.Ready -> key(state.url, attempt) {
+                VideoView(episode, state, active, startPositionSec, onStartPositionConsumed, onEnded) { attempt++ }
+            }
             is Playback.Locked -> LockedView(state, episode, onLogin, openWeb) { attempt++ }
             is Playback.Failed -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(state.message, color = Color.White)
@@ -149,6 +163,8 @@ private fun VideoView(
     episode: EpisodeItem,
     ready: Playback.Ready,
     active: Boolean,
+    startPositionSec: Int,
+    onStartPositionConsumed: () -> Unit,
     onEnded: () -> Unit,
     onRetry: () -> Unit,
 ) {
@@ -161,7 +177,9 @@ private fun VideoView(
     val player = remember(ready.url) {
         MediaCache.newPlayer(context).apply {
             setMediaItem(MediaCache.mediaItem(ready))
-            if (ready.resumeSec > 0) seekTo(ready.resumeSec * 1000L)
+            val resumeSec = startPositionSec.takeIf { it > 0 } ?: ready.resumeSec
+            if (resumeSec > 0) seekTo(resumeSec * 1000L)
+            if (startPositionSec > 0) onStartPositionConsumed()
             playWhenReady = false
             prepare()
         }

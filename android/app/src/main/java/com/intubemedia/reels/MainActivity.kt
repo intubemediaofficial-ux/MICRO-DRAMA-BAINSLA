@@ -71,7 +71,9 @@ private val tabs = listOf(
 private fun ReelsNav(openWeb: (String) -> Unit) {
     val nav = rememberNavController()
     val route = nav.currentBackStackEntryAsState().value?.destination?.route
-    val play: (String, String) -> Unit = { slug, episodeId -> nav.navigate("play/${Uri.encode(slug)}/$episodeId") }
+    val play: (String, String, Int) -> Unit = { slug, episodeId, startPositionSec ->
+        nav.navigate("play/${Uri.encode(slug)}/$episodeId/$startPositionSec")
+    }
     val openSeries: (String) -> Unit = { slug -> nav.navigate("series/${Uri.encode(slug)}") }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -97,10 +99,11 @@ private fun ReelsNav(openWeb: (String) -> Unit) {
             composable("series/{slug}") { entry ->
                 SeriesScreen(entry.arguments?.getString("slug").orEmpty(), play, onBack = { nav.popBackStack() })
             }
-            composable("play/{slug}/{episodeId}") { entry ->
+            composable("play/{slug}/{episodeId}/{startPositionSec}") { entry ->
                 PlayerScreen(
                     slug = entry.arguments?.getString("slug").orEmpty(),
                     episodeId = entry.arguments?.getString("episodeId").orEmpty(),
+                    startPositionSec = entry.arguments?.getString("startPositionSec")?.toIntOrNull() ?: 0,
                     onBack = { nav.popBackStack() },
                     onLogin = { nav.switchTab("account") },
                     openWeb = openWeb,

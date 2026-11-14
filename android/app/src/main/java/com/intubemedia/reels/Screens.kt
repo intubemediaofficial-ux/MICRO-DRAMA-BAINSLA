@@ -96,7 +96,7 @@ private fun Poster(card: SeriesCard, width: androidx.compose.ui.unit.Dp?, onClic
 }
 
 @Composable
-fun HomeScreen(openSeries: (String) -> Unit, play: (String, String) -> Unit) {
+fun HomeScreen(openSeries: (String) -> Unit, play: (String, String, Int) -> Unit) {
     var feed by remember { mutableStateOf<HomeFeed?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableStateOf(0) }
@@ -116,6 +116,48 @@ fun HomeScreen(openSeries: (String) -> Unit, play: (String, String) -> Unit) {
                     modifier = Modifier.statusBarsPadding().padding(16.dp),
                 )
             }
+            if (data.continueWatching.isNotEmpty()) {
+                item {
+                    Column(Modifier.padding(top = 8.dp)) {
+                        Text(
+                            "Continue Watching",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            items(data.continueWatching, key = { it.episodeId }) { item ->
+                                Column(
+                                    Modifier.width(120.dp).clickable {
+                                        play(item.series.slug, item.episodeId, item.positionSec)
+                                    },
+                                ) {
+                                    AsyncImage(
+                                        item.series.posterUrl,
+                                        item.series.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
+                                            .clip(RoundedCornerShape(10.dp)),
+                                    )
+                                    Text(
+                                        item.series.title,
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text("EP ${item.episodeNumber}", color = Muted, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             item {
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(data.hero.distinctBy { it.slug }, key = { it.slug }) { card ->
@@ -129,7 +171,7 @@ fun HomeScreen(openSeries: (String) -> Unit, play: (String, String) -> Unit) {
                                 Text(card.genres.joinToString(" · "), color = Muted, fontSize = 12.sp, maxLines = 1)
                                 card.firstEpisodeId?.let { first ->
                                     Spacer(Modifier.height(8.dp))
-                                    Button(onClick = { play(card.slug, first) }) {
+                                    Button(onClick = { play(card.slug, first, 0) }) {
                                         Icon(Icons.Filled.PlayArrow, contentDescription = null)
                                         Text("Play")
                                     }
@@ -155,7 +197,7 @@ fun HomeScreen(openSeries: (String) -> Unit, play: (String, String) -> Unit) {
 }
 
 @Composable
-fun SeriesScreen(slug: String, play: (String, String) -> Unit, onBack: () -> Unit) {
+fun SeriesScreen(slug: String, play: (String, String, Int) -> Unit, onBack: () -> Unit) {
     var detail by remember { mutableStateOf<SeriesDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableStateOf(0) }
@@ -188,7 +230,7 @@ fun SeriesScreen(slug: String, play: (String, String) -> Unit, onBack: () -> Uni
                             Spacer(Modifier.height(10.dp))
                             val next = series.episodes.firstOrNull { !it.watched } ?: series.episodes.firstOrNull()
                             next?.let {
-                                Button(onClick = { play(series.slug, it.id) }) {
+                                Button(onClick = { play(series.slug, it.id, 0) }) {
                                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
                                     Text(if (it.number == 1) "Play EP 1" else "Continue EP ${it.number}")
                                 }
@@ -253,7 +295,7 @@ fun SearchScreen(openSeries: (String) -> Unit) {
 }
 
 @Composable
-fun AccountScreen(play: (String, String) -> Unit, openWeb: (String) -> Unit) {
+fun AccountScreen(play: (String, String, Int) -> Unit, openWeb: (String) -> Unit) {
     var profile by remember { mutableStateOf<Profile?>(null) }
     var history by remember { mutableStateOf<List<HistoryItem>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
@@ -291,7 +333,7 @@ fun AccountScreen(play: (String, String) -> Unit, openWeb: (String) -> Unit) {
         }
         items(history, key = { it.episodeId }) { item ->
             Row(
-                Modifier.fillMaxWidth().padding(top = 12.dp).clickable { play(item.seriesSlug, item.episodeId) },
+                Modifier.fillMaxWidth().padding(top = 12.dp).clickable { play(item.seriesSlug, item.episodeId, 0) },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AsyncImage(
