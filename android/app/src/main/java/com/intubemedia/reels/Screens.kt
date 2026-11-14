@@ -270,12 +270,14 @@ fun SeriesScreen(
                                 OutlinedButton(
                                     onClick = {
                                         scope.launch {
-                                            val save = inWatchlist != true
+                                            val previous = inWatchlist
+                                            val save = previous != true
                                             runCatching { Api.setWatchlist(series.id, save) }
                                                 .onSuccess { inWatchlist = save }
                                                 .onFailure { error ->
+                                                    inWatchlist = previous
                                                     if (error is ApiException && error.status == 401) onLogin()
-                                                    inWatchlist = null
+                                                    Toast.makeText(context, "Couldn't update My List", Toast.LENGTH_SHORT).show()
                                                 }
                                         }
                                     },
