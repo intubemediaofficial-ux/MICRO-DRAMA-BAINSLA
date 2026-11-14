@@ -5,7 +5,7 @@ import { getSettings } from "./settings";
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const FCM_URL = "https://fcm.googleapis.com/v1/projects";
-let cachedAccessToken: { value: string; expiresAt: number } | null = null;
+let cachedAccessToken: { identity: string; value: string; expiresAt: number } | null = null;
 
 type FcmPayload = { title: string; body: string; data?: Record<string, string> };
 type ServiceAccount = { client_email: string; private_key: string; project_id: string };
@@ -29,7 +29,12 @@ export async function isFcmConfigured() {
 }
 
 async function accessToken(account: ServiceAccount, fetcher: Fetcher) {
-  if (cachedAccessToken && cachedAccessToken.expiresAt > Date.now()) return cachedAccessToken.value;
+  const identity = `${account.client_email}:${account.project_id}`;
+  if (
+    cachedAccessToken?.identity === identity &&
+    cachedAccessToken.expiresAt > Date.now()
+  )
+    return cachedAccessToken.value;
   const privateKey = await importPKCS8(account.private_key, "RS256");
   const assertion = await new SignJWT({ scope: FCM_SCOPE })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
@@ -52,6 +57,7 @@ async function accessToken(account: ServiceAccount, fetcher: Fetcher) {
   };
   if (!response.ok || !result.access_token) return null;
   cachedAccessToken = {
+    identity,
     value: result.access_token,
     expiresAt: Date.now() + Math.max(0, (result.expires_in ?? 3600) * 1000 - 5 * 60 * 1000),
   };
