@@ -109,6 +109,14 @@ export async function createRazorpayCheckout(
     where: { userId, status: { in: ["TRIALING", "ACTIVE", "PAST_DUE"] } },
   });
   if (existing) throw new Error("SUBSCRIPTION_EXISTS");
+  const stale = await prisma.subscription.findMany({
+    where: { userId, status: "INCOMPLETE", provider: "RAZORPAY" },
+  });
+  for (const item of stale) {
+    if (item.providerRef)
+      await cancelRazorpaySubscription(item.providerRef, false).catch(() => undefined);
+    await prisma.subscription.update({ where: { id: item.id }, data: { status: "EXPIRED" } });
+  }
 
   const trial = mode === "TRIAL";
   const trialEndsAt = trial ? new Date(now.getTime() + plan.trialDays * 24 * 60 * 60 * 1_000) : now;
