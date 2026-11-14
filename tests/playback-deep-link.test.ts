@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  env: (() => {
+    process.env.DATABASE_URL ??= "postgresql://postgres:postgres@localhost:5432/microdrama";
+    process.env.SESSION_SECRET ??= "test-session-secret-123456";
+    process.env.STREAM_TOKEN_SECRET ??= "test-stream-secret-123456";
+    return true;
+  })(),
   getSession: vi.fn(),
   findPublicEpisode: vi.fn(),
   resolveEpisodeEntitlement: vi.fn(),

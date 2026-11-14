@@ -101,7 +101,7 @@ describe("mobile api", () => {
     expect(resumed.seasons[0].episodes[0]).toMatchObject({ completed: true, positionSec: 30 });
     expect(resumed.seasons[0].episodes[1]).toMatchObject({ completed: false, positionSec: 17 });
     await prisma.watchProgress.deleteMany({ where: { userId, episodeId: { in: episodesForResume.map((item) => item.id) } } });
-    await logoutPost();
+    await logoutPost(new Request("http://localhost", { method: "POST" }));
     expect(cookieState.token).toBe("");
   });
 });

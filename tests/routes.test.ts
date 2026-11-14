@@ -149,25 +149,6 @@ describe("protected playback and reward flows", () => {
     const current = await prisma.episodeUnlock.count({
       where: { userId, source: "AD", createdAt: { gte: new Date(new Date().setUTCHours(0, 0, 0, 0)) } },
     });
-    const extra = await Promise.all(
-      Array.from({ length: 10 - current }, (_, index) =>
-        prisma.episode.create({
-          data: {
-            seriesId: episode.seriesId,
-            number: 100 + index,
-            title: `Limit ${index}`,
-            durationSec: 10,
-            hlsPath: `episodes/limit-${index}.m3u8`,
-            thumbnailUrl: "",
-            coinPrice: 10,
-            publishedAt: new Date(),
-          },
-        }),
-      ),
-    );
-    await prisma.episodeUnlock.createMany({
-      data: extra.map((item) => ({ userId, episodeId: item.id, source: "AD" })),
-    });
     const candidate = await prisma.episode.create({
       data: {
         seriesId: episode.seriesId,
@@ -187,9 +168,29 @@ describe("protected playback and reward flows", () => {
         headers: { "content-type": "application/json" },
       }),
     );
+    expect(tokenResponse.status).toBe(200);
     const token = (await tokenResponse.json()).token as string;
     const nonce = Buffer.from(token.split(".")[0], "base64url").toString().split(".")[2];
     await prisma.adRewardNonce.update({ where: { nonce }, data: { verifiedAt: new Date() } });
+    const extra = await Promise.all(
+      Array.from({ length: 10 - current }, (_, index) =>
+        prisma.episode.create({
+          data: {
+            seriesId: episode.seriesId,
+            number: 100 + index,
+            title: `Limit ${index}`,
+            durationSec: 10,
+            hlsPath: `episodes/limit-${index}.m3u8`,
+            thumbnailUrl: "",
+            coinPrice: 10,
+            publishedAt: new Date(),
+          },
+        }),
+      ),
+    );
+    await prisma.episodeUnlock.createMany({
+      data: extra.map((item) => ({ userId, episodeId: item.id, source: "AD" })),
+    });
     const response = await unlockPost(
       new Request("http://localhost", {
         method: "POST",
@@ -229,6 +230,7 @@ describe("protected playback and reward flows", () => {
   });
 
   it("does not downgrade completed progress on a later partial save", async () => {
+    await issueSession({ userId, role: "USER" });
     await prisma.watchProgress.upsert({
       where: { userId_episodeId: { userId, episodeId } },
       create: { userId, episodeId, positionSec: 10, completed: true },
