@@ -38,12 +38,14 @@ let userId = "";
 let activeUserId = "";
 let referrerId = "";
 let replacementUserId = "";
+const autoRenewUserIds: string[] = [];
 let seriesId = "";
 let episodeId = "";
 let planId = "";
 let priceId = "";
 let bundleId = "";
 let subscriptionId = "";
+let incompleteSubscriptionId = "";
 
 function deleteRequest(body: unknown) {
   return deleteAccountPost(
@@ -53,6 +55,36 @@ function deleteRequest(body: unknown) {
       headers: { "content-type": "application/json" },
     }),
   );
+}
+
+async function createAutoRenewUser(
+  prefix: string,
+  status: "ACTIVE" | "PAST_DUE",
+  currentPeriodEnd: Date,
+  cancelAtPeriodEnd = false,
+) {
+  const user = await prisma.user.create({
+    data: {
+      email: `account-${prefix}-${suffix}@test.local`,
+      referralCode: `A${prefix.toUpperCase()}${suffix}`,
+    },
+  });
+  autoRenewUserIds.push(user.id);
+  await prisma.subscription.create({
+    data: {
+      userId: user.id,
+      planId,
+      priceId,
+      status,
+      cancelAtPeriodEnd,
+      trialEndsAt: new Date(),
+      currentPeriodStart: new Date(Date.now() - 30 * 86_400_000),
+      currentPeriodEnd,
+      provider: "DEV",
+      currency: "INR",
+    },
+  });
+  return user.id;
 }
 
 describe("account deletion", () => {
@@ -165,6 +197,20 @@ describe("account deletion", () => {
       }),
     ]);
     subscriptionId = retainedSubscription.id;
+    const incompleteSubscription = await prisma.subscription.create({
+      data: {
+        userId,
+        planId,
+        priceId,
+        status: "INCOMPLETE",
+        trialEndsAt: now,
+        currentPeriodStart: now,
+        currentPeriodEnd: new Date(now.getTime() + 30 * 86_400_000),
+        provider: "DEV",
+        currency: "INR",
+      },
+    });
+    incompleteSubscriptionId = incompleteSubscription.id;
     await prisma.subscriptionWebhookEvent.create({
       data: {
         provider: "DEV",
@@ -253,7 +299,9 @@ describe("account deletion", () => {
       },
     });
     await prisma.user.deleteMany({
-      where: { id: { in: [userId, activeUserId, referrerId, replacementUserId].filter(Boolean) } },
+      where: {
+        id: { in: [userId, activeUserId, referrerId, replacementUserId, ...autoRenewUserIds].filter(Boolean) },
+      },
     });
     await prisma.series.deleteMany({ where: { id: seriesId } });
     await prisma.coinBundle.deleteMany({ where: { id: bundleId } });
@@ -282,6 +330,50 @@ describe("account deletion", () => {
     });
     expect(await prisma.user.findUniqueOrThrow({ where: { id: activeUserId } })).toMatchObject({
       isDisabled: false,
+    });
+  });
+
+  it("blocks PAST_DUE subscriptions with auto-renew enabled", async () => {
+    const dueUserId = await createAutoRenewUser(
+      "past-due",
+      "PAST_DUE",
+      new Date(Date.now() - 86_400_000),
+    );
+    await issueSession({ userId: dueUserId, role: "USER" });
+
+    const response = await deleteRequest({ confirm: "DELETE" });
+
+    expect(response.status).toBe(409);
+  });
+
+  it("blocks expired ACTIVE subscriptions with auto-renew enabled", async () => {
+    const expiredUserId = await createAutoRenewUser(
+      "expired-active",
+      "ACTIVE",
+      new Date(Date.now() - 86_400_000),
+    );
+    await issueSession({ userId: expiredUserId, role: "USER" });
+
+    const response = await deleteRequest({ confirm: "DELETE" });
+
+    expect(response.status).toBe(409);
+  });
+
+  it("allows deletion when an ACTIVE subscription is already set to cancel", async () => {
+    const cancelingUserId = await createAutoRenewUser(
+      "canceling",
+      "ACTIVE",
+      new Date(Date.now() + 30 * 86_400_000),
+      true,
+    );
+    await issueSession({ userId: cancelingUserId, role: "USER" });
+
+    const response = await deleteRequest({ confirm: "DELETE" });
+
+    expect(response.status).toBe(200);
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: cancelingUserId } })).toMatchObject({
+      email: null,
+      isDisabled: true,
     });
   });
 
@@ -348,7 +440,10 @@ describe("account deletion", () => {
       notifications,
       otpChallenges,
     ]).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
-    expect([purchases, transactions, unlocks, subscriptions]).toEqual([1, 1, 1, 1]);
+    expect([purchases, transactions, unlocks, subscriptions]).toEqual([1, 1, 1, 2]);
+    expect(
+      await prisma.subscription.findUniqueOrThrow({ where: { id: incompleteSubscriptionId } }),
+    ).toMatchObject({ status: "CANCELED" });
     expect(analyticsEvent?.userId).toBeNull();
     expect(webhookEvent?.payload).toBeNull();
     expect(trialClaim).toMatchObject({

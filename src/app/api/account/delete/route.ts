@@ -26,19 +26,20 @@ export async function POST(request: Request) {
     });
     if (!user) return "missing" as const;
 
-    const now = new Date();
     const renewableSubscription = await tx.subscription.findFirst({
       where: {
         userId: session.userId,
         cancelAtPeriodEnd: false,
-        OR: [
-          { status: "ACTIVE", currentPeriodEnd: { gt: now } },
-          { status: "TRIALING", trialEndsAt: { gt: now } },
-        ],
+        status: { in: ["TRIALING", "ACTIVE", "PAST_DUE"] },
       },
       select: { id: true },
     });
     if (renewableSubscription) return "subscription" as const;
+
+    await tx.subscription.updateMany({
+      where: { userId: session.userId, status: "INCOMPLETE" },
+      data: { status: "CANCELED" },
+    });
 
     const identifiers = [user.email, user.phone].filter(
       (identifier): identifier is string => Boolean(identifier),
