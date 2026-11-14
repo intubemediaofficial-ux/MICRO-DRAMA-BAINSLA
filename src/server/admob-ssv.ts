@@ -21,28 +21,38 @@ export function clearAdmobVerifierKeyCache() {
   cachedUntil = 0;
 }
 
-export async function verifyAdmobSignature(rawSearch: string, fetcher: typeof fetch = fetch) {
+export function parseAdmobSsvQuery(rawSearch: string) {
   const raw = rawSearch.startsWith("?") ? rawSearch.slice(1) : rawSearch;
   const signatureOffset = raw.indexOf("&signature=");
-  if (signatureOffset < 0) return false;
+  if (signatureOffset <= 0 || raw.indexOf("&signature=", signatureOffset + 1) >= 0) return null;
   const message = raw.slice(0, signatureOffset);
-  const params = new URLSearchParams(raw);
-  const signature = params.get("signature");
-  const keyId = Number(params.get("key_id"));
-  if (!signature || !Number.isInteger(keyId)) return false;
+  const suffix = raw.slice(signatureOffset + "&signature=".length);
+  const keyOffset = suffix.indexOf("&key_id=");
+  if (keyOffset <= 0) return null;
+  const signature = suffix.slice(0, keyOffset);
+  const keyIdText = suffix.slice(keyOffset + "&key_id=".length);
+  if (!signature || !keyIdText || keyIdText.includes("&")) return null;
+  const keyId = Number(keyIdText);
+  if (!Number.isInteger(keyId)) return null;
+  return { message, signature, keyId };
+}
+
+export async function verifyAdmobSignature(rawSearch: string, fetcher: typeof fetch = fetch) {
+  const parsed = parseAdmobSsvQuery(rawSearch);
+  if (!parsed) return false;
   let keys = await fetchVerifierKeys(fetcher);
-  let key = keys.find((item) => item.keyId === keyId);
+  let key = keys.find((item) => item.keyId === parsed.keyId);
   if (!key) {
     keys = await fetchVerifierKeys(fetcher, true);
-    key = keys.find((item) => item.keyId === keyId);
+    key = keys.find((item) => item.keyId === parsed.keyId);
   }
   if (!key) return false;
   try {
     return verifySignature(
       "sha256",
-      Buffer.from(message),
+      Buffer.from(parsed.message),
       { key: key.pem as unknown as KeyObject, dsaEncoding: "der" },
-      Buffer.from(signature, "base64url"),
+      Buffer.from(parsed.signature, "base64url"),
     );
   } catch {
     return false;

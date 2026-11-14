@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { verifyAdToken } from "@/server/tokens";
-import { verifyAdmobSignature } from "@/server/admob-ssv";
+import { parseAdmobSsvQuery, verifyAdmobSignature } from "@/server/admob-ssv";
 
 export async function GET(request: Request) {
   const rawSearch = new URL(request.url).search;
-  const params = new URLSearchParams(rawSearch);
-  const customData = params.get("custom_data");
+  const signedQuery = parseAdmobSsvQuery(rawSearch);
+  const customData = signedQuery ? new URLSearchParams(signedQuery.message).get("custom_data") : null;
   if (!customData) return NextResponse.json({ error: "Missing custom_data" }, { status: 400 });
   if (!(await verifyAdmobSignature(rawSearch)))
     return NextResponse.json({ error: "Invalid signature" }, { status: 403 });

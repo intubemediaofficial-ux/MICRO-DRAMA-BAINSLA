@@ -36,11 +36,28 @@ describe("AdMob SSV signatures", () => {
       dsaEncoding: "der",
     }).toString("base64url");
     expect(await verifyAdmobSignature(`${message}&signature=${signature}`, fetcher as typeof fetch)).toBe(
-      true,
+      false,
     );
+    const signedMessage = "ad_network=sample&custom_data=token";
+    const validSignature = sign("sha256", Buffer.from(signedMessage), {
+      key: privateKey,
+      dsaEncoding: "der",
+    }).toString("base64url");
     expect(
       await verifyAdmobSignature(
-        `ad_network=other&custom_data=token&key_id=17&signature=${signature}`,
+        `${signedMessage}&signature=${validSignature}&key_id=17`,
+        fetcher as typeof fetch,
+      ),
+    ).toBe(true);
+    expect(
+      await verifyAdmobSignature(
+        `${signedMessage}&signature=${validSignature}&custom_data=evil&key_id=17`,
+        fetcher as typeof fetch,
+      ),
+    ).toBe(false);
+    expect(
+      await verifyAdmobSignature(
+        `ad_network=other&custom_data=token&signature=${validSignature}&key_id=17`,
         fetcher as typeof fetch,
       ),
     ).toBe(false);
