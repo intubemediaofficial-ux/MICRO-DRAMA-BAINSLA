@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { Prisma, SubscriptionInterval } from "@prisma/client";
+import { Prisma, Subscription, SubscriptionInterval } from "@prisma/client";
 import { env } from "./config";
 import { prisma } from "./db";
 import { addInterval, findPlan, statusEvent } from "./subscriptions";
@@ -307,6 +307,25 @@ export async function processRazorpayWebhook(eventId: string, event: RazorpayEve
     throw error;
   }
   if (!local) return { duplicate: false, handled: false };
+  try {
+    return await applyRazorpayEvent(local, { ...remote, id: remote.id }, event);
+  } catch (error) {
+    await prisma.subscriptionWebhookEvent
+      .delete({ where: { providerEventId: eventId } })
+      .catch(() => undefined);
+    throw error;
+  }
+}
+
+type RemoteSubscription = NonNullable<
+  NonNullable<NonNullable<RazorpayEvent["payload"]>["subscription"]>["entity"]
+> & { id: string };
+
+async function applyRazorpayEvent(
+  local: Subscription,
+  remote: RemoteSubscription,
+  event: RazorpayEvent,
+) {
   const payment = event.payload?.payment?.entity;
 
   if (event.event === "subscription.authenticated" || event.event === "subscription.activated") {
