@@ -5,20 +5,28 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
-import kotlinx.coroutines.launch
 import com.google.android.gms.ads.MobileAds
 
 class ReelsApp : Application(), ImageLoaderFactory {
+    private var configuredFirebase: FirebaseConfig? = null
+    private var adsInitialized = false
+
     override fun onCreate() {
         super.onCreate()
         Net.init(this)
         AppPreferences.init(this)
         MediaCache.init(this)
         Analytics.start()
-        AppScope.launch {
-            val config = Api.config(refresh = true)
-            config.firebase?.let { PushNotifications.configure(this@ReelsApp, it) }
-            if (config.adsEnabled) MobileAds.initialize(this@ReelsApp)
+    }
+
+    fun initializeConfiguredFeatures(config: MobileConfig) {
+        config.firebase?.takeIf { it != configuredFirebase }?.let {
+            PushNotifications.configure(this, it)
+            configuredFirebase = it
+        }
+        if (config.adsEnabled && !adsInitialized) {
+            MobileAds.initialize(this)
+            adsInitialized = true
         }
     }
 

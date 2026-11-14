@@ -68,6 +68,14 @@ class MainActivity : ComponentActivity() {
         inboundLink = notificationLink(intent)
     }
 
+    override fun onStart() {
+        super.onStart()
+        AppScope.launch {
+            val config = Api.config(refresh = true)
+            (application as ReelsApp).initializeConfiguredFeatures(config)
+        }
+    }
+
     override fun onStop() {
         super.onStop()
         AppScope.launch { Analytics.flush() }

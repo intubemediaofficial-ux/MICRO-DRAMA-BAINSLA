@@ -146,7 +146,7 @@ object Api {
 
     suspend fun config(refresh: Boolean = false): MobileConfig {
         if (!refresh) cachedConfig?.let { return it }
-        val config = runCatching {
+        val result = runCatching {
             val json = Net.get("/api/mobile/config")
             val firebaseJson = json.optJSONObject("firebase")
             val firebase = firebaseJson?.let {
@@ -171,7 +171,8 @@ object Api {
                     MobileConfig().checkinRewards
                 },
             )
-        }.getOrDefault(MobileConfig())
+        }
+        val config = result.getOrElse { return cachedConfig ?: MobileConfig() }
         cachedConfig = config
         MobileConfigState.update(config)
         return config
