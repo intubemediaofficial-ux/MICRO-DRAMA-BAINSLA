@@ -67,7 +67,7 @@ export async function clearReferralCookie() {
   (await cookies()).delete(REFERRAL_COOKIE);
 }
 
-export async function findOrCreateUser(identifier: string, referralCode?: string) {
+export async function findOrCreateUser(identifier: string, referralCode?: string, name?: string) {
   const isEmail = identifier.includes("@");
   return prisma.$transaction(async (tx) => {
     const existing = await tx.user.findFirst({
@@ -102,6 +102,7 @@ export async function findOrCreateUser(identifier: string, referralCode?: string
     const user = await tx.user.create({
       data: {
         ...(isEmail ? { email: identifier } : { phone: identifier }),
+        ...(name ? { name } : {}),
         referralCode: `MD${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
         ...(referrerId ? { referredById: referrerId } : {}),
       },
