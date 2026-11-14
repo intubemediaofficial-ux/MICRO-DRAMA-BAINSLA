@@ -305,6 +305,15 @@ object Api {
         Playback.Failed("Check your internet connection")
     }
 
+    suspend fun resolveSeriesSlug(episodeId: String): String? {
+        val response = try {
+            Net.get("/api/episodes/$episodeId/playback")
+        } catch (error: ApiException) {
+            error.body ?: throw error
+        }
+        return response.str("seriesSlug")
+    }
+
     suspend fun unlockWithCoins(episodeId: String) {
         Net.post("/api/unlocks", JSONObject().put("episodeId", episodeId).put("source", "coin"))
     }

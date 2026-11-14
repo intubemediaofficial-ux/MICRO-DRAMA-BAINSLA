@@ -199,6 +199,7 @@ fun HomeScreen(openSeries: (String) -> Unit, play: (String, String, Int) -> Unit
 
 @Composable
 fun SeriesScreen(slug: String, play: (String, String, Int) -> Unit, onBack: () -> Unit) {
+    val context = LocalContext.current
     var detail by remember { mutableStateOf<SeriesDetail?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableStateOf(0) }
@@ -231,6 +232,7 @@ fun SeriesScreen(slug: String, play: (String, String, Int) -> Unit, onBack: () -
                         )
                         Column(Modifier.padding(start = 14.dp)) {
                             Text(series.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            TextButton(onClick = { shareSeries(context, series.title, series.slug) }) { Text("Share") }
                             Text(series.genres.joinToString(" · "), color = Muted, fontSize = 12.sp)
                             Text("${series.episodes.size} episodes", color = Muted, fontSize = 12.sp)
                             Spacer(Modifier.height(10.dp))

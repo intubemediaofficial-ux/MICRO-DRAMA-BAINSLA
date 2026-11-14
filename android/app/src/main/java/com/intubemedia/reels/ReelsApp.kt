@@ -11,6 +11,7 @@ class ReelsApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         Net.init(this)
+        AppPreferences.init(this)
         MediaCache.init(this)
         AppScope.launch { Api.config(refresh = true) }
     }

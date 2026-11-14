@@ -120,6 +120,7 @@ private fun EpisodePage(
     onLogin: () -> Unit,
     openWeb: (String) -> Unit,
 ) {
+    val context = LocalContext.current
     var attempt by remember { mutableIntStateOf(0) }
     var playback by remember { mutableStateOf<Playback?>(null) }
     LaunchedEffect(episode.id, attempt, AppState.authVersion) { playback = Api.playback(episode.id) }
@@ -155,6 +156,10 @@ private fun EpisodePage(
             Text(series.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             Text("EP ${episode.number} / ${series.episodes.size}", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
         }
+        TextButton(
+            onClick = { shareSeries(context, series.title, series.slug) },
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp),
+        ) { Text("Share", color = Color.White) }
     }
 }
 

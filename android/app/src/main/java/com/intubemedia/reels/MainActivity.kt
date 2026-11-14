@@ -21,7 +21,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavHostController
@@ -50,10 +52,19 @@ private val colors = darkColorScheme(
 )
 
 class MainActivity : ComponentActivity() {
+    private var inboundLink by mutableStateOf<Uri?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme(colorScheme = colors) { ReelsNav(::openWeb) } }
+        inboundLink = intent?.data
+        setContent { MaterialTheme(colorScheme = colors) { ReelsNav(::openWeb, inboundLink) } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        inboundLink = intent.data
     }
 
     private fun openWeb(path: String) {
@@ -68,13 +79,28 @@ private val tabs = listOf(
 )
 
 @Composable
-private fun ReelsNav(openWeb: (String) -> Unit) {
+private fun ReelsNav(openWeb: (String) -> Unit, deepLink: Uri?) {
     val nav = rememberNavController()
     val route = nav.currentBackStackEntryAsState().value?.destination?.route
     val play: (String, String, Int) -> Unit = { slug, episodeId, startPositionSec ->
         nav.navigate("play/${Uri.encode(slug)}/$episodeId/$startPositionSec")
     }
     val openSeries: (String) -> Unit = { slug -> nav.navigate("series/${Uri.encode(slug)}") }
+    LaunchedEffect(deepLink) {
+        val uri = deepLink ?: return@LaunchedEffect
+        uri.getQueryParameter("ref")?.takeIf { it.isNotBlank() }?.let { AppPreferences.pendingReferralCode = it }
+        when (uri.pathSegments.firstOrNull()) {
+            "series" -> uri.pathSegments.getOrNull(1)?.let(openSeries)
+            "watch" -> {
+                val episodeId = uri.pathSegments.getOrNull(1)
+                if (episodeId != null) {
+                    val slug = uri.getQueryParameter("seriesSlug")
+                        ?: runCatching { Api.resolveSeriesSlug(episodeId) }.getOrNull()
+                    if (!slug.isNullOrBlank()) play(slug, episodeId, 0)
+                }
+            }
+        }
+    }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {

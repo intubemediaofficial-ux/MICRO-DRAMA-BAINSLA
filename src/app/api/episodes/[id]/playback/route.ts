@@ -17,8 +17,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!session) {
     const entitlement = await resolveEpisodeEntitlement(null, id);
     if (!entitlement.entitled)
-      return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
+      return NextResponse.json(
+        { error: { message: "Unauthorized" }, seriesSlug: episode.series.slug },
+        { status: 401 },
+      );
     return NextResponse.json({
+      seriesSlug: episode.series.slug,
       playbackUrl: `/api/stream/${createStreamToken(GUEST_USER_ID, id, STREAM_TTL_SECONDS)}`,
       isHls: episode.hlsPath.endsWith(".m3u8"),
       watermark: "",
@@ -39,6 +43,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json(
       {
         locked: true,
+        seriesSlug: episode.series.slug,
         coinPrice: episode.coinPrice,
         subscriptionOffer: offer
           ? {
@@ -64,6 +69,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     episode.durationSec,
   );
   return NextResponse.json({
+    seriesSlug: episode.series.slug,
     playbackUrl: `/api/stream/${token}`,
     isHls: episode.hlsPath.endsWith(".m3u8"),
     watermark: watermark(user.phone, session.userId),
