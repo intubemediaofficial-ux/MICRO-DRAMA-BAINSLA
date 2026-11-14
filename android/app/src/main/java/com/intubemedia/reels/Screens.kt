@@ -118,7 +118,7 @@ fun HomeScreen(openSeries: (String) -> Unit, play: (String, String) -> Unit) {
             }
             item {
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(data.hero, key = { it.slug }) { card ->
+                    items(data.hero.distinctBy { it.slug }, key = { it.slug }) { card ->
                         Box(Modifier.width(260.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp)).clickable { openSeries(card.slug) }) {
                             AsyncImage(card.posterUrl, card.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                             Column(
@@ -144,7 +144,7 @@ fun HomeScreen(openSeries: (String) -> Unit, play: (String, String) -> Unit) {
                     Text(rail.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp, modifier = Modifier.padding(horizontal = 16.dp))
                     Spacer(Modifier.height(10.dp))
                     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(rail.items, key = { it.slug }) { card -> Poster(card, 120.dp) { openSeries(card.slug) } }
+                        items(rail.items.distinctBy { it.slug }, key = { it.slug }) { card -> Poster(card, 120.dp) { openSeries(card.slug) } }
                     }
                 }
             }
