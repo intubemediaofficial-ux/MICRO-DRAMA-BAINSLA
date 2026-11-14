@@ -27,7 +27,15 @@ export async function getSeriesFunnel(seriesId: string) {
 
 export async function getEngagementMetrics() {
   const [row] = await prisma.$queryRaw<
-    { dau: bigint; active7d: bigint; cohortUsers: bigint; d1Users: bigint; d7Users: bigint }[]
+    {
+      dau: bigint;
+      active7d: bigint;
+      cohortUsers: bigint;
+      d1EligibleUsers: bigint;
+      d1Users: bigint;
+      d7EligibleUsers: bigint;
+      d7Users: bigint;
+    }[]
   >(Prisma.sql`
     WITH activity AS (
       SELECT "userId", "createdAt"::date AS day FROM "AnalyticsEvent" WHERE "userId" IS NOT NULL
@@ -42,23 +50,29 @@ export async function getEngagementMetrics() {
       (SELECT COUNT(DISTINCT "userId") FROM activity WHERE day = CURRENT_DATE) AS dau,
       (SELECT COUNT(DISTINCT "userId") FROM activity WHERE day >= CURRENT_DATE - 6) AS "active7d",
       COUNT(*) AS "cohortUsers",
-      COUNT(*) FILTER (WHERE EXISTS (
+      COUNT(*) FILTER (WHERE "createdAt" <= NOW() - INTERVAL '1 day') AS "d1EligibleUsers",
+      COUNT(*) FILTER (WHERE "createdAt" <= NOW() - INTERVAL '1 day' AND EXISTS (
         SELECT 1 FROM activity a WHERE a."userId" = cohorts.id AND a.day = cohorts.day + 1
       )) AS "d1Users",
-      COUNT(*) FILTER (WHERE EXISTS (
+      COUNT(*) FILTER (WHERE "createdAt" <= NOW() - INTERVAL '7 days') AS "d7EligibleUsers",
+      COUNT(*) FILTER (WHERE "createdAt" <= NOW() - INTERVAL '7 days' AND EXISTS (
         SELECT 1 FROM activity a WHERE a."userId" = cohorts.id AND a.day = cohorts.day + 7
       )) AS "d7Users"
     FROM cohorts
   `);
   const cohortUsers = Number(row?.cohortUsers ?? 0);
+  const d1EligibleUsers = Number(row?.d1EligibleUsers ?? 0);
   const d1Users = Number(row?.d1Users ?? 0);
+  const d7EligibleUsers = Number(row?.d7EligibleUsers ?? 0);
   const d7Users = Number(row?.d7Users ?? 0);
   return {
     dau: Number(row?.dau ?? 0),
     active7d: Number(row?.active7d ?? 0),
     cohortUsers,
-    d1Retention: cohortUsers ? d1Users / cohortUsers : 0,
-    d7Retention: cohortUsers ? d7Users / cohortUsers : 0,
+    d1EligibleUsers,
+    d7EligibleUsers,
+    d1Retention: d1EligibleUsers ? d1Users / d1EligibleUsers : 0,
+    d7Retention: d7EligibleUsers ? d7Users / d7EligibleUsers : 0,
   };
 }
 

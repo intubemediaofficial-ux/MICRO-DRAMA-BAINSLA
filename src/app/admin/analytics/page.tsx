@@ -70,7 +70,7 @@ export default async function AnalyticsPage({
         <Metric label="DAU today" value={analytics.engagement.dau} />
         <Metric label="7-day active" value={analytics.engagement.active7d} />
         <Metric
-          label={`D1 / D7 retention · ${analytics.engagement.cohortUsers} signups`}
+          label={`D1 / D7 retention · ${analytics.engagement.d1EligibleUsers} / ${analytics.engagement.d7EligibleUsers} eligible signups`}
           value={`${(analytics.engagement.d1Retention * 100).toFixed(1)}% / ${(analytics.engagement.d7Retention * 100).toFixed(1)}%`}
         />
       </div>
