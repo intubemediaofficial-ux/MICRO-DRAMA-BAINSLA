@@ -21,7 +21,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
-        buildConfigField("String", "BASE_URL", "\"https://reels.intubemedia.com\"")
+        buildConfigField("String", "BASE_URL", "\"https://intubedrama.com\"")
     }
 
     signingConfigs {
