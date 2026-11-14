@@ -3,6 +3,7 @@ import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { razorpayConfigured } from "@/server/razorpay";
 import CoinPackCheckout from "./coin-pack-checkout";
+import CheckinCard from "./checkin-card";
 export default async function WalletPage() {
   const session = await getSession();
   const user = session
@@ -37,12 +38,8 @@ export default async function WalletPage() {
           <div className="mt-6 rounded-3xl bg-gradient-to-br from-amber-400 to-orange-600 p-6 text-zinc-950">
             <p className="text-sm font-bold uppercase">Available coins</p>
             <p className="mt-2 text-5xl font-black">🪙 {user.coinBalance}</p>
-            <form action="/api/checkin" method="post">
-              <button className="mt-5 rounded-full bg-zinc-950 px-5 py-3 font-bold text-white">
-                Claim daily check-in
-              </button>
-            </form>
           </div>
+          <CheckinCard />
           <h2 className="mt-8 text-xl font-bold">Top up</h2>
           {coinPacksEnabled ? (
             <CoinPackCheckout
