@@ -70,8 +70,9 @@ const HLS_LADDER = [
 ];
 const HLS_TIMEOUT_MS = 20 * 60_000;
 
-export function hlsKeyFor(inputKey: string) {
-  return `${inputKey.replace(/\.[^./]+$/, "")}-hls/master.m3u8`;
+export function hlsKeyFor(inputKey: string, version?: string) {
+  const suffix = version ? `-hls-${version}` : "-hls";
+  return `${inputKey.replace(/\.[^./]+$/, "")}${suffix}/master.m3u8`;
 }
 
 async function hasAudio(inputKey: string) {
@@ -89,12 +90,14 @@ async function hasAudio(inputKey: string) {
   return result.stdout.trim().length > 0;
 }
 
-/** Transcodes to a 360/540/720 HLS ladder with 2s segments for fast start and adaptive bitrate. */
+/**
+ * Transcodes to a 360/540/720 HLS ladder with 2s segments for fast start and adaptive bitrate.
+ * Each run writes a fresh directory so a ladder that is still being served is never deleted.
+ */
 export async function transcodeToHls(inputKey: string) {
-  const masterKey = hlsKeyFor(inputKey);
+  const masterKey = hlsKeyFor(inputKey, Date.now().toString(36));
   const outDir = path.dirname(resolveMediaPath(masterKey));
   const audio = await hasAudio(inputKey);
-  await fs.rm(outDir, { recursive: true, force: true });
   await Promise.all(
     HLS_LADDER.map((_, index) => fs.mkdir(path.join(outDir, `v${index}`), { recursive: true })),
   );
