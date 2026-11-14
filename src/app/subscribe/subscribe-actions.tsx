@@ -119,7 +119,7 @@ export default function SubscribeActions({
     const razorpay = new window.Razorpay!({
       key: checkout.keyId,
       subscription_id: checkout.razorpaySubscriptionId,
-      name: "Reels",
+      name: "Intube Drama",
       description: checkout.description,
       prefill: checkout.prefill,
       theme: { color: "#e11d48" },

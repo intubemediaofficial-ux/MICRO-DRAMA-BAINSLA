@@ -1,4 +1,4 @@
-# Intube Reels – native Android app
+# Intube Drama – native Android app
 
 Kotlin + Jetpack Compose + Media3/ExoPlayer (no WebView). Talks to the website APIs
 (`/api/mobile/*`, `/api/episodes/:id/playback`, `/api/auth/*`) with the same session cookie.

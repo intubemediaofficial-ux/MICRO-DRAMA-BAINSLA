@@ -1,4 +1,4 @@
-# MicroDrama Bainsla
+# Intube Drama
 
 A mobile-first vertical micro-drama OTT platform built with Next.js 15, Prisma, PostgreSQL, and Tailwind CSS.
 

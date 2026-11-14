@@ -14,7 +14,7 @@ export default async function HomePage() {
     <div className="pb-20">
       <header className="flex items-center justify-between p-5">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.3em] text-rose-400">MICRODRAMA</p>
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-rose-400">INTUBE DRAMA</p>
           <h1 className="text-2xl font-black">Your next obsession.</h1>
         </div>
         <Link

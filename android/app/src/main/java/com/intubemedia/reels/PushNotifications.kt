@@ -80,7 +80,7 @@ object PushNotifications {
         )
         val notification = NotificationCompat.Builder(context, "updates")
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(message.data["title"] ?: message.notification?.title ?: "Intube Reels")
+            .setContentTitle(message.data["title"] ?: message.notification?.title ?: "Intube Drama")
             .setContentText(message.data["body"] ?: message.notification?.body.orEmpty())
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)

@@ -20,13 +20,14 @@ export async function generateMetadata({
   if (!episode) notFound();
   const image = new URL(episode.series.posterUrl, SITE_ORIGIN).toString();
   return {
-    title: `${episode.series.title} · Episode ${episode.number} | Intube Drama`,
+    title: `${episode.series.title} · Episode ${episode.number}`,
     description: episode.title,
     alternates: { canonical: `${SITE_ORIGIN}/watch/${encodeURIComponent(episode.id)}` },
     openGraph: {
       title: `${episode.series.title} · Episode ${episode.number}`,
       description: episode.title,
       images: [image],
+      siteName: "Intube Drama",
     },
   };
 }

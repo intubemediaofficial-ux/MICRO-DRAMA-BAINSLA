@@ -21,10 +21,15 @@ export async function generateMetadata({
   const { series } = detail;
   const image = new URL(series.posterUrl, SITE_ORIGIN).toString();
   return {
-    title: `${series.title} | Intube Drama`,
+    title: series.title,
     description: series.synopsis,
     alternates: { canonical: `${SITE_ORIGIN}/series/${encodeURIComponent(series.slug)}` },
-    openGraph: { title: series.title, description: series.synopsis, images: [image] },
+    openGraph: {
+      title: series.title,
+      description: series.synopsis,
+      images: [image],
+      siteName: "Intube Drama",
+    },
   };
 }
 import TeaserPlayer from "./teaser-player";

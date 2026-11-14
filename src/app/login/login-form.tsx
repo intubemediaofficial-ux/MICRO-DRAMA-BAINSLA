@@ -146,7 +146,7 @@ export default function LoginForm({
         />
       )}
       <button className="w-full rounded-xl bg-rose-500 p-4 font-bold">
-        {mode === "password" ? "Sign in" : requested ? "Enter MicroDrama" : "Send OTP"}
+        {mode === "password" ? "Sign in" : requested ? "Enter Intube Drama" : "Send OTP"}
       </button>
       {googleClientId ? (
         <div className="space-y-3 border-t border-white/10 pt-4">

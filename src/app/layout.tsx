@@ -6,8 +6,17 @@ import { hasActiveSubscription } from "@/server/entitlements";
 import SiteFooter from "@/components/site-footer";
 
 export const metadata: Metadata = {
-  title: "MicroDrama",
+  title: {
+    default: "Intube Drama",
+    template: "%s | Intube Drama",
+  },
   description: "Vertical stories. One more episode.",
+  openGraph: {
+    title: "Intube Drama",
+    description: "Vertical stories. One more episode.",
+    siteName: "Intube Drama",
+    type: "website",
+  },
 };
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const session = await getSession();

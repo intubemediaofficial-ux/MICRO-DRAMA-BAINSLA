@@ -12,7 +12,7 @@ const schema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   CRON_SECRET: z.string().min(8).default("local-cron-secret"),
   BREVO_API_KEY: z.string().optional(),
-  MAIL_FROM: z.string().default("MicroDrama <intubemediaofficial@gmail.com>"),
+  MAIL_FROM: z.string().default("Intube Drama <intubemediaofficial@gmail.com>"),
 });
 export const env = schema.parse({
   DATABASE_URL: process.env.DATABASE_URL,

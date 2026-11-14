@@ -63,7 +63,7 @@ export default function AdminShell({
         >
           <div className="mb-8 flex items-center justify-between px-2">
             <div>
-              <p className="text-sm font-black tracking-[0.18em] text-rose-400">MICRODRAMA</p>
+              <p className="text-sm font-black tracking-[0.18em] text-rose-400">INTUBE DRAMA</p>
               <p className="mt-1 text-xs text-zinc-500">Admin workspace</p>
             </div>
             <button type="button" onClick={() => setOpen(false)} className="text-zinc-500 md:hidden">

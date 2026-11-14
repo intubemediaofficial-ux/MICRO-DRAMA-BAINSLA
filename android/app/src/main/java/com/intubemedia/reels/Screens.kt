@@ -121,7 +121,7 @@ fun HomeScreen(openSeries: (String) -> Unit, play: (String, String, Int) -> Unit
         data != null -> LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Text(
-                    "Intube Reels",
+                    "Intube Drama",
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Black,
                     fontSize = 24.sp,
@@ -489,7 +489,7 @@ fun AccountScreen(
                             modifier = Modifier.padding(top = 4.dp),
                         )
                         Button(
-                            onClick = { shareText(context, "Join Intube Reels", user.referralLink) },
+                            onClick = { shareText(context, "Join Intube Drama", user.referralLink) },
                             modifier = Modifier.padding(top = 8.dp),
                         ) { Text("Invite") }
                     }
