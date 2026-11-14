@@ -29,6 +29,7 @@ type CheckoutOptions = {
 };
 
 const CHECKOUT_SCRIPT = "https://checkout.razorpay.com/v1/checkout.js";
+let checkoutScriptPromise: Promise<boolean> | null = null;
 
 function checkoutConstructor() {
   return window.Razorpay as unknown as
@@ -38,24 +39,30 @@ function checkoutConstructor() {
 
 function loadCheckoutScript() {
   if (checkoutConstructor()) return Promise.resolve(true);
-  return new Promise<boolean>((resolve) => {
-    const existing = document.querySelector<HTMLScriptElement>(
-      `script[src="${CHECKOUT_SCRIPT}"]`,
-    );
-    if (existing) {
-      existing.addEventListener("load", () => resolve(Boolean(checkoutConstructor())), {
-        once: true,
-      });
-      existing.addEventListener("error", () => resolve(false), { once: true });
-      return;
+  if (checkoutScriptPromise) return checkoutScriptPromise;
+  checkoutScriptPromise = new Promise<boolean>((resolve) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${CHECKOUT_SCRIPT}"]`);
+    const script = existing ?? document.createElement("script");
+    const finish = (loaded: boolean) => {
+      script.removeEventListener("load", onLoad);
+      script.removeEventListener("error", onError);
+      if (!loaded) {
+        script.remove();
+        checkoutScriptPromise = null;
+      }
+      resolve(loaded);
+    };
+    const onLoad = () => finish(Boolean(checkoutConstructor()));
+    const onError = () => finish(false);
+    script.addEventListener("load", onLoad, { once: true });
+    script.addEventListener("error", onError, { once: true });
+    if (!existing) {
+      script.src = CHECKOUT_SCRIPT;
+      script.async = true;
+      document.body.appendChild(script);
     }
-    const script = document.createElement("script");
-    script.src = CHECKOUT_SCRIPT;
-    script.async = true;
-    script.onload = () => resolve(Boolean(checkoutConstructor()));
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
   });
+  return checkoutScriptPromise;
 }
 
 export default function CoinPackCheckout({ bundles }: { bundles: CoinBundle[] }) {
