@@ -97,11 +97,21 @@ fun PlayerScreen(
     val onFirstPlayback = {
         if (!firstPlaybackStarted) {
             firstPlaybackStarted = true
-            if (Build.VERSION.SDK_INT >= 33 && !AppPreferences.notificationPermissionRequested) {
-                AppPreferences.notificationPermissionRequested = true
-                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
+        }
+    }
+    LaunchedEffect(firstPlaybackStarted, PushNotifications.initializedFromConfig) {
+        if (
+            firstPlaybackStarted &&
+            PushNotifications.initializedFromConfig &&
+            Build.VERSION.SDK_INT >= 33 &&
+            !AppPreferences.notificationPermissionRequested
+        ) {
+            AppPreferences.notificationPermissionRequested = true
+            if (
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
     }

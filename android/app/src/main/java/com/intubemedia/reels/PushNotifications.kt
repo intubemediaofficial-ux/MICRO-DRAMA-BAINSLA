@@ -8,6 +8,9 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.content.pm.PackageManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -19,19 +22,26 @@ import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.launch
 
 object PushNotifications {
+    var initializedFromConfig by mutableStateOf(false)
+        private set
+
     fun configure(context: android.content.Context, config: FirebaseConfig) {
-        if (FirebaseApp.getApps(context).isEmpty()) {
-            FirebaseApp.initializeApp(
-                context,
-                FirebaseOptions.Builder()
-                    .setApplicationId(config.appId)
-                    .setApiKey(config.apiKey)
-                    .setProjectId(config.projectId)
-                    .setGcmSenderId(config.senderId)
-                    .build(),
-            )
-        }
-        registerCurrentToken()
+        val options = FirebaseOptions.Builder()
+            .setApplicationId(config.appId)
+            .setApiKey(config.apiKey)
+            .setProjectId(config.projectId)
+            .setGcmSenderId(config.senderId)
+            .build()
+        val app = runCatching { FirebaseApp.getInstance() }
+            .getOrNull()
+            ?: runCatching { FirebaseApp.initializeApp(context, options) }.getOrNull()
+        initializedFromConfig = app?.options?.let {
+            it.applicationId == config.appId &&
+                it.apiKey == config.apiKey &&
+                it.projectId == config.projectId &&
+                it.gcmSenderId == config.senderId
+        } == true
+        if (initializedFromConfig) registerCurrentToken()
     }
 
     fun registerCurrentToken() {
