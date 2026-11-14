@@ -66,6 +66,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.google.android.gms.ads.AdRequest
@@ -80,6 +81,22 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.launch
+
+private object PlayerCoordinator {
+    private val lock = Any()
+    private val players = mutableSetOf<ExoPlayer>()
+
+    fun register(player: ExoPlayer) = synchronized(lock) { players.add(player) }
+
+    fun unregister(player: ExoPlayer) {
+        synchronized(lock) { players.remove(player) }
+    }
+
+    fun releasePreloadedPlayers(except: ExoPlayer) {
+        val preloaded = synchronized(lock) { players.filter { it !== except } }
+        preloaded.forEach { runCatching { it.stop() } }
+    }
+}
 
 /** Full-screen vertical feed of a series; neighbouring episodes are prepared so a swipe starts instantly. */
 @Composable
@@ -223,6 +240,8 @@ private fun VideoView(
     var buffering by remember { mutableStateOf(true) }
     var paused by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
+    var decoderRetryCount by remember(episode.id) { mutableIntStateOf(0) }
+    var prepared by remember(episode.id) { mutableStateOf(false) }
     var playbackStarted by remember(episode.id) { mutableStateOf(false) }
     val sentMilestones = remember(episode.id) { mutableSetOf<Int>() }
     var progress by remember { mutableFloatStateOf(0f) }
@@ -231,6 +250,7 @@ private fun VideoView(
     val subtitleChoices = listOf("off") + ready.subtitles.map { it.lang }
     val player = remember(ready.url) {
         MediaCache.newPlayer(context).apply {
+            PlayerCoordinator.register(this)
             setMediaItem(MediaCache.mediaItem(ready))
             val selectedLanguage = subtitleLanguage
             trackSelectionParameters = trackSelectionParameters.buildUpon()
@@ -241,9 +261,9 @@ private fun VideoView(
             if (resumeSec > 0) seekTo(resumeSec * 1000L)
             if (startPositionSec > 0) onStartPositionConsumed()
             playWhenReady = false
-            prepare()
         }
     }
+    val isActive by rememberUpdatedState(active)
     DisposableEffect(player) {
         var completedPlayback = false
         val listener = object : Player.Listener {
@@ -269,6 +289,22 @@ private fun VideoView(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                if (error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED) {
+                    if (!isActive) {
+                        player.stop()
+                        return
+                    }
+                    if (decoderRetryCount == 0) {
+                        decoderRetryCount++
+                        failed = false
+                        buffering = true
+                        PlayerCoordinator.releasePreloadedPlayers(player)
+                        player.stop()
+                        player.prepare()
+                        prepared = true
+                        return
+                    }
+                }
                 failed = true
             }
 
@@ -280,7 +316,10 @@ private fun VideoView(
             }
         }
         player.addListener(listener)
+        player.prepare()
+        prepared = true
         onDispose {
+            PlayerCoordinator.unregister(player)
             if (player.currentPosition > 0 && !completedPlayback) {
                 val position = (player.currentPosition / 1000).toInt()
                 AppScope.launch { Api.saveProgress(episode.id, position, false) }
@@ -289,7 +328,10 @@ private fun VideoView(
             player.release()
         }
     }
-    LaunchedEffect(active, paused) { player.playWhenReady = active && !paused }
+    LaunchedEffect(active, paused, prepared) {
+        if (active && prepared && player.playbackState == Player.STATE_IDLE) player.prepare()
+        player.playWhenReady = active && !paused
+    }
     LaunchedEffect(active) {
         while (active) {
             delay(500)

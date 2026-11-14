@@ -16,6 +16,7 @@ import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import java.io.File
@@ -78,6 +79,7 @@ object MediaCache {
             .setBufferDurationsMs(4_000, 20_000, 500, 1_500)
             .build()
         return ExoPlayer.Builder(context)
+            .setRenderersFactory(DefaultRenderersFactory(context).setEnableDecoderFallback(true))
             .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .build()
