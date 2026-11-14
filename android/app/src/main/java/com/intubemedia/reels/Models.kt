@@ -1,6 +1,9 @@
 package com.intubemedia.reels
 
 import android.net.Uri
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -13,8 +16,46 @@ data class SeriesCard(
     val firstEpisodeId: String?,
 )
 
+data class ContinueWatchingItem(
+    val series: SeriesCard,
+    val episodeId: String,
+    val episodeNumber: Int,
+    val positionSec: Int,
+    val durationSec: Int,
+)
+
 data class Rail(val title: String, val items: List<SeriesCard>)
-data class HomeFeed(val hero: List<SeriesCard>, val rails: List<Rail>)
+data class HomeFeed(
+    val hero: List<SeriesCard>,
+    val rails: List<Rail>,
+    val continueWatching: List<ContinueWatchingItem> = emptyList(),
+)
+
+data class FirebaseConfig(
+    val appId: String,
+    val apiKey: String,
+    val projectId: String,
+    val senderId: String,
+)
+
+data class MobileConfig(
+    val paymentsEnabled: Boolean = false,
+    val adsEnabled: Boolean = false,
+    val admobRewardedUnitId: String? = null,
+    val googleWebClientId: String? = null,
+    val firebase: FirebaseConfig? = null,
+    val referralBonusCoins: Int = 50,
+    val checkinRewards: List<Int> = listOf(5, 8, 12, 16, 22, 30, 50),
+)
+
+object MobileConfigState {
+    var current by mutableStateOf(MobileConfig())
+        private set
+
+    internal fun update(config: MobileConfig) {
+        current = config
+    }
+}
 
 data class EpisodeItem(
     val id: String,
@@ -35,6 +76,8 @@ data class SeriesDetail(
     val posterUrl: String?,
     val genres: List<String>,
     val episodes: List<EpisodeItem>,
+    val id: String? = null,
+    val inWatchlist: Boolean? = null,
 )
 
 data class HistoryItem(
@@ -52,17 +95,37 @@ data class Profile(
     val vipActive: Boolean,
     val planName: String?,
     val accessEndsAt: String?,
+    val referralCode: String? = null,
+    val referralLink: String? = null,
+    val referralBonusCoins: Int? = null,
+)
+
+data class CheckinStatus(
+    val checkedInToday: Boolean,
+    val streak: Int,
+    val nextReward: Int,
+    val rewards: List<Int>,
 )
 
 sealed interface Playback {
-    data class Ready(val url: String, val isHls: Boolean, val resumeSec: Int) : Playback
+    data class Subtitle(val lang: String, val url: String)
+    data class Ready(
+        val url: String,
+        val isHls: Boolean,
+        val resumeSec: Int,
+        val subtitles: List<Subtitle> = emptyList(),
+        val seriesSlug: String? = null,
+    ) : Playback
     data class Locked(val needsLogin: Boolean, val coinPrice: Int) : Playback
     data class Failed(val message: String) : Playback
 }
 
-private fun JSONArray.objects() = (0 until length()).map { getJSONObject(it) }
+private fun JSONArray?.objects() = this?.let { array ->
+    (0 until array.length()).mapNotNull { index -> runCatching { array.getJSONObject(index) }.getOrNull() }
+} ?: emptyList()
 private fun JSONArray?.strings() = this?.let { array -> (0 until array.length()).map { array.getString(it) } } ?: emptyList()
-private fun JSONObject.str(name: String) = if (isNull(name)) null else optString(name)
+private fun JSONArray?.ints() = this?.let { array -> (0 until array.length()).map { array.optInt(it) } } ?: emptyList()
+private fun JSONObject.str(name: String) = if (isNull(name)) null else optString(name).takeIf { it.isNotBlank() }
 
 private fun card(json: JSONObject) = SeriesCard(
     slug = json.getString("slug"),
@@ -74,12 +137,61 @@ private fun card(json: JSONObject) = SeriesCard(
 )
 
 object Api {
+    @Volatile
+    private var cachedConfig: MobileConfig? = null
+
+    suspend fun config(refresh: Boolean = false): MobileConfig {
+        if (!refresh) cachedConfig?.let { return it }
+        val config = runCatching {
+            val json = Net.get("/api/mobile/config")
+            val firebaseJson = json.optJSONObject("firebase")
+            val firebase = firebaseJson?.let {
+                val appId = it.str("appId")
+                val apiKey = it.str("apiKey")
+                val projectId = it.str("projectId")
+                val senderId = it.str("senderId")
+                if (appId != null && apiKey != null && projectId != null && senderId != null) {
+                    FirebaseConfig(appId, apiKey, projectId, senderId)
+                } else {
+                    null
+                }
+            }
+            MobileConfig(
+                paymentsEnabled = json.optBoolean("paymentsEnabled"),
+                adsEnabled = json.optBoolean("adsEnabled"),
+                admobRewardedUnitId = json.str("admobRewardedUnitId"),
+                googleWebClientId = json.str("googleWebClientId"),
+                firebase = firebase,
+                referralBonusCoins = json.optInt("referralBonusCoins", 50),
+                checkinRewards = json.optJSONArray("checkinRewards").ints().ifEmpty {
+                    MobileConfig().checkinRewards
+                },
+            )
+        }.getOrDefault(MobileConfig())
+        cachedConfig = config
+        MobileConfigState.update(config)
+        return config
+    }
+
     suspend fun home(): HomeFeed {
         val json = Net.get("/api/mobile/home")
         return HomeFeed(
-            hero = json.getJSONArray("hero").objects().map(::card),
-            rails = json.getJSONArray("rails").objects().map { rail ->
-                Rail(rail.getString("title"), rail.getJSONArray("items").objects().map(::card))
+            hero = json.optJSONArray("hero").objects().map(::card),
+            rails = json.optJSONArray("rails").objects().map { rail ->
+                Rail(
+                    rail.optString("title"),
+                    rail.optJSONArray("items").objects().map(::card),
+                )
+            },
+            continueWatching = json.optJSONArray("continueWatching").objects().mapNotNull { item ->
+                val episodeId = item.str("episodeId") ?: return@mapNotNull null
+                ContinueWatchingItem(
+                    series = card(item),
+                    episodeId = episodeId,
+                    episodeNumber = item.optInt("episodeNumber"),
+                    positionSec = item.optInt("positionSec"),
+                    durationSec = item.optInt("durationSec"),
+                )
             },
         )
     }
@@ -105,6 +217,12 @@ object Api {
                     )
                 }
             },
+            id = json.str("id"),
+            inWatchlist = if (json.has("inWatchlist") && !json.isNull("inWatchlist")) {
+                json.optBoolean("inWatchlist")
+            } else {
+                null
+            },
         )
     }
 
@@ -123,6 +241,9 @@ object Api {
             vipActive = json.optBoolean("vipActive"),
             planName = subscription?.str("planName"),
             accessEndsAt = subscription?.str("accessEndsAt"),
+            referralCode = user.str("referralCode") ?: json.str("referralCode"),
+            referralLink = json.str("referralLink"),
+            referralBonusCoins = if (json.has("referralBonusCoins")) json.optInt("referralBonusCoins") else null,
         )
     } catch (error: ApiException) {
         if (error.status == 401) null else throw error
@@ -143,7 +264,17 @@ object Api {
         val url = json.getString("playbackUrl")
         val isHls = json.optBoolean("isHls")
         MediaCache.register(url, episodeId, isHls)
-        Playback.Ready(Net.absolute(url)!!, isHls, json.optInt("resumePositionSec"))
+        Playback.Ready(
+            Net.absolute(url)!!,
+            isHls,
+            json.optInt("resumePositionSec"),
+            json.optJSONArray("subtitles").objects().mapNotNull { subtitle ->
+                val lang = subtitle.str("lang") ?: return@mapNotNull null
+                val subtitleUrl = Net.absolute(subtitle.str("url")) ?: return@mapNotNull null
+                Playback.Subtitle(lang, subtitleUrl)
+            },
+            json.str("seriesSlug"),
+        )
     } catch (error: ApiException) {
         when (error.status) {
             401 -> Playback.Locked(needsLogin = true, coinPrice = 0)

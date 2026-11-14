@@ -5,12 +5,14 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import kotlinx.coroutines.launch
 
 class ReelsApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         Net.init(this)
         MediaCache.init(this)
+        AppScope.launch { Api.config(refresh = true) }
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
