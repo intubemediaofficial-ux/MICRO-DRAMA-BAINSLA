@@ -18,6 +18,6 @@ export const publicSeriesSql = Prisma.sql`s."isPublished" = true AND EXISTS (SEL
 export async function findPublicEpisode(id: string) {
   return prisma.episode.findFirst({
     where: { id, ...publicEpisodeWhere, series: { isPublished: true } },
-    include: { series: true, subtitles: { select: { lang: true } } },
+    include: { series: true, subtitles: { select: { lang: true, srtPath: true } } },
   });
 }
