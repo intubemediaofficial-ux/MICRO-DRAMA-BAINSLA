@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { resolveMediaPath } from "./media";
@@ -62,6 +63,99 @@ async function run(command: string, args: string[], timeout = DEFAULT_TIMEOUT_MS
   }
 }
 
+const HLS_LADDER = [
+  { shortSide: 360, maxrate: "600k", bufsize: "1200k" },
+  { shortSide: 540, maxrate: "1200k", bufsize: "2400k" },
+  { shortSide: 720, maxrate: "2200k", bufsize: "4400k" },
+];
+const HLS_TIMEOUT_MS = 20 * 60_000;
+
+export function hlsKeyFor(inputKey: string) {
+  return `${inputKey.replace(/\.[^./]+$/, "")}-hls/master.m3u8`;
+}
+
+async function hasAudio(inputKey: string) {
+  const result = await run("ffprobe", [
+    "-v",
+    "error",
+    "-select_streams",
+    "a",
+    "-show_entries",
+    "stream=index",
+    "-of",
+    "csv=p=0",
+    resolveMediaPath(inputKey),
+  ]);
+  return result.stdout.trim().length > 0;
+}
+
+/** Transcodes to a 360/540/720 HLS ladder with 2s segments for fast start and adaptive bitrate. */
+export async function transcodeToHls(inputKey: string) {
+  const masterKey = hlsKeyFor(inputKey);
+  const outDir = path.dirname(resolveMediaPath(masterKey));
+  const audio = await hasAudio(inputKey);
+  await fs.rm(outDir, { recursive: true, force: true });
+  await Promise.all(
+    HLS_LADDER.map((_, index) => fs.mkdir(path.join(outDir, `v${index}`), { recursive: true })),
+  );
+  const split = HLS_LADDER.map((_, index) => `[s${index}]`).join("");
+  const scales = HLS_LADDER.map(
+    ({ shortSide }, index) =>
+      `[s${index}]scale='if(gt(iw,ih),-2,${shortSide})':'if(gt(iw,ih),${shortSide},-2)'[v${index}]`,
+  ).join(";");
+  const args = [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-y",
+    "-i",
+    resolveMediaPath(inputKey),
+    "-filter_complex",
+    `[0:v]split=${HLS_LADDER.length}${split};${scales}`,
+  ];
+  HLS_LADDER.forEach(({ maxrate, bufsize }, index) => {
+    args.push("-map", `[v${index}]`);
+    if (audio) args.push("-map", "0:a:0");
+    args.push(`-maxrate:v:${index}`, maxrate, `-bufsize:v:${index}`, bufsize);
+  });
+  args.push(
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-profile:v",
+    "main",
+    "-crf",
+    "23",
+    "-pix_fmt",
+    "yuv420p",
+    "-force_key_frames",
+    "expr:gte(t,n_forced*2)",
+    "-sc_threshold",
+    "0",
+  );
+  if (audio) args.push("-c:a", "aac", "-b:a", "96k", "-ac", "2");
+  args.push(
+    "-f",
+    "hls",
+    "-hls_time",
+    "2",
+    "-hls_playlist_type",
+    "vod",
+    "-hls_flags",
+    "independent_segments",
+    "-hls_segment_filename",
+    path.join(outDir, "v%v", "seg-%03d.ts"),
+    "-master_pl_name",
+    "master.m3u8",
+    "-var_stream_map",
+    HLS_LADDER.map((_, index) => (audio ? `v:${index},a:${index}` : `v:${index}`)).join(" "),
+    path.join(outDir, "v%v", "index.m3u8"),
+  );
+  await run("ffmpeg", args, HLS_TIMEOUT_MS);
+  return masterKey;
+}
+
 export async function probeVideoDuration(inputKey: string) {
   const result = await run("ffprobe", [
     "-v",
@@ -98,9 +192,10 @@ export class FfmpegVideoProcessor implements VideoProcessor {
         "-y",
         output,
       ]);
+      const hlsPath = await transcodeToHls(inputKey).catch(() => inputKey);
       return {
         status: "READY",
-        hlsPath: inputKey,
+        hlsPath,
         thumbnailUrl: `/media/${path.posix.normalize(thumbnailKey)}`,
         durationSec,
       };

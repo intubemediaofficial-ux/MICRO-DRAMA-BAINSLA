@@ -66,7 +66,15 @@ function parseRange(value: string | null, size: number) {
   return { start, end: Math.min(end, size - 1) };
 }
 
-export async function serveMediaFile(request: Request, key: string) {
+export function isProtectedEpisodeMedia(key: string) {
+  return normalizeMediaKey(key).startsWith("episodes/") && /\.(mp4|webm|m3u8|ts|m4s)$/i.test(key);
+}
+
+export async function serveMediaFile(
+  request: Request,
+  key: string,
+  cacheControl = "private, max-age=60",
+) {
   let file: string;
   try {
     file = resolveMediaPath(key);
@@ -76,6 +84,17 @@ export async function serveMediaFile(request: Request, key: string) {
   try {
     const stat = await fs.stat(file);
     if (!stat.isFile()) throw new Error("Not a file");
+    if (env.MEDIA_ACCEL_PREFIX) {
+      // nginx serves the bytes (sendfile + ranges) after the app has authorised the request.
+      const relative = path.relative(mediaRoot(), file).split(path.sep).map(encodeURIComponent);
+      return new NextResponse(null, {
+        headers: {
+          "x-accel-redirect": `${env.MEDIA_ACCEL_PREFIX.replace(/\/$/, "")}/${relative.join("/")}`,
+          "content-type": mediaContentType(key),
+          "cache-control": cacheControl,
+        },
+      });
+    }
     const range = parseRange(request.headers.get("range"), stat.size);
     if (range === "invalid") {
       return new NextResponse(null, {
@@ -90,7 +109,7 @@ export async function serveMediaFile(request: Request, key: string) {
       "content-type": mediaContentType(key),
       "accept-ranges": "bytes",
       "content-length": String(end - start + 1),
-      "cache-control": "private, max-age=60",
+      "cache-control": cacheControl,
     });
     if (range) {
       headers.set("content-range", `bytes ${start}-${end}/${stat.size}`);

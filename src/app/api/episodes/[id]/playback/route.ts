@@ -6,6 +6,8 @@ import { resolveEpisodeEntitlement } from "@/server/entitlements";
 import { resolveCurrency } from "@/server/currency";
 import { getSubscriptionOffers, hasUsedTrial } from "@/server/subscriptions";
 import { getResumePositionForEpisode } from "@/server/watch-history";
+
+const STREAM_TTL_SECONDS = 1_800;
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   const { id } = await params;
@@ -19,14 +21,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     });
     if (!episode) return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
     return NextResponse.json({
-      playbackUrl: `/api/stream/${createStreamToken(GUEST_USER_ID, id)}`,
+      playbackUrl: `/api/stream/${createStreamToken(GUEST_USER_ID, id, STREAM_TTL_SECONDS)}`,
       isHls: episode.hlsPath.endsWith(".m3u8"),
       watermark: "",
       subtitles: episode.subtitles.map((subtitle) => ({
         lang: subtitle.lang,
         url: `/api/episodes/${id}/subtitles/${subtitle.lang}`,
       })),
-      expiresIn: 300,
+      expiresIn: STREAM_TTL_SECONDS,
       entitlement: entitlement.reason,
       resumePositionSec: 0,
     });
@@ -62,7 +64,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     where: { id: session.userId },
     select: { phone: true },
   });
-  const token = createStreamToken(session.userId, id);
+  const token = createStreamToken(session.userId, id, STREAM_TTL_SECONDS);
   const resumePositionSec = await getResumePositionForEpisode(
     session.userId,
     id,
@@ -76,7 +78,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       lang: subtitle.lang,
       url: `/api/episodes/${id}/subtitles/${subtitle.lang}`,
     })),
-    expiresIn: 300,
+    expiresIn: STREAM_TTL_SECONDS,
     entitlement: entitlement.reason,
     resumePositionSec,
   });
