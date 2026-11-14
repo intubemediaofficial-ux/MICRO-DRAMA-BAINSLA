@@ -212,6 +212,8 @@ private fun VideoView(
     var buffering by remember { mutableStateOf(true) }
     var paused by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
+    var playbackStarted by remember(episode.id) { mutableStateOf(false) }
+    val sentMilestones = remember(episode.id) { mutableSetOf<Int>() }
     var progress by remember { mutableFloatStateOf(0f) }
     var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_ZOOM) }
     var subtitleLanguage by remember(episode.id) { mutableStateOf(AppPreferences.subtitleLanguage) }
@@ -234,13 +236,20 @@ private fun VideoView(
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (isPlaying) onFirstPlayback()
+                if (isPlaying) {
+                    onFirstPlayback()
+                    if (!playbackStarted) {
+                        playbackStarted = true
+                        Analytics.track("play_start", episodeId = episode.id)
+                    }
+                }
             }
 
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
                 if (state == Player.STATE_ENDED) {
                     val durationSec = (player.duration / 1000).toInt()
+                    Analytics.track("play_complete", episodeId = episode.id, positionSec = durationSec)
                     AppScope.launch { Api.saveProgress(episode.id, durationSec, true) }
                     onEnded()
                 }
@@ -271,7 +280,15 @@ private fun VideoView(
     LaunchedEffect(active) {
         while (active) {
             delay(500)
-            if (player.duration > 0) progress = player.currentPosition.toFloat() / player.duration
+            if (player.duration > 0) {
+                progress = player.currentPosition.toFloat() / player.duration
+                val positionSec = (player.currentPosition / 1000).toInt()
+                listOf(25, 50, 75).forEach { milestone ->
+                    if (progress >= milestone / 100f && sentMilestones.add(milestone)) {
+                        Analytics.track("play_$milestone", episodeId = episode.id, positionSec = positionSec)
+                    }
+                }
+            }
             if ((player.currentPosition / 500) % 20 == 0L && player.isPlaying) {
                 Api.saveProgress(episode.id, (player.currentPosition / 1000).toInt(), false)
             }
@@ -357,6 +374,7 @@ private fun LockedView(
     openWeb: (String) -> Unit,
     onUnlocked: () -> Unit,
 ) {
+    LaunchedEffect(episode.id) { Analytics.track("unlock_prompt", episodeId = episode.id) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
@@ -388,7 +406,10 @@ private fun LockedView(
                 },
             ) { Text("Unlock for ${state.coinPrice} coins") }
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { openWeb("/subscribe?episode=${episode.id}") }) { Text("Get VIP – watch everything", color = Color.White) }
+            OutlinedButton(onClick = {
+                Analytics.track("subscribe_click", episodeId = episode.id)
+                openWeb("/subscribe?episode=${episode.id}")
+            }) { Text("Get VIP – watch everything", color = Color.White) }
             if (adsEnabled) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
@@ -420,6 +441,7 @@ private fun LockedView(
                                             while (true) {
                                                 try {
                                                     Api.unlockWithAd(episode.id, token)
+                                                    Analytics.track("ad_reward", episodeId = episode.id)
                                                     onUnlocked()
                                                     break
                                                 } catch (error: ApiException) {

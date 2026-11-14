@@ -10,6 +10,7 @@ fun shareSeries(context: Context, title: String, slug: String) {
 }
 
 fun shareText(context: Context, title: String, text: String) {
+    Analytics.track("share", props = org.json.JSONObject().put("title", title))
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TITLE, title)

@@ -67,6 +67,11 @@ class MainActivity : ComponentActivity() {
         inboundLink = intent.data
     }
 
+    override fun onStop() {
+        super.onStop()
+        AppScope.launch { Analytics.flush() }
+    }
+
     private fun openWeb(path: String) {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.BASE_URL + path)))
     }

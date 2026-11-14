@@ -221,6 +221,9 @@ fun SeriesScreen(slug: String, play: (String, String, Int) -> Unit, onBack: () -
     LaunchedEffect(series?.slug, series?.inWatchlist) {
         inWatchlist = series?.inWatchlist
     }
+    LaunchedEffect(series?.id) {
+        series?.id?.let { Analytics.track("series_view", seriesId = it) }
+    }
     when {
         series != null -> LazyVerticalGrid(
             columns = GridCells.Fixed(5),

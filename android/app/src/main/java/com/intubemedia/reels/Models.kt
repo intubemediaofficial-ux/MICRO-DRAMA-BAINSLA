@@ -253,6 +253,10 @@ object Api {
         runCatching { Net.post("/api/mobile/push-token", JSONObject().put("token", token)) }
     }
 
+    suspend fun postEvents(body: JSONObject) {
+        Net.post("/api/events", body)
+    }
+
     suspend fun requestRewardToken(episodeId: String): Pair<String, String> {
         val json = Net.post("/api/ads/reward-token", JSONObject().put("episodeId", episodeId))
         return json.getString("token") to json.getString("adUnitId")

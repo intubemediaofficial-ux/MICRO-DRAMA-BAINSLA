@@ -1,6 +1,7 @@
 package com.intubemedia.reels
 
 import android.content.Context
+import java.util.UUID
 
 object AppPreferences {
     private lateinit var prefs: android.content.SharedPreferences
@@ -25,5 +26,10 @@ object AppPreferences {
         get() = prefs.getString("subtitleLanguage", "off") ?: "off"
         set(value) {
             prefs.edit().putString("subtitleLanguage", value).apply()
+        }
+
+    val deviceId: String
+        get() = prefs.getString("deviceId", null) ?: UUID.randomUUID().toString().also {
+            prefs.edit().putString("deviceId", it).apply()
         }
 }
