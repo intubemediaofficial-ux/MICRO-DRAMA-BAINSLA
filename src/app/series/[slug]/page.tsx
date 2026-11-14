@@ -2,7 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSession } from "@/server/auth";
+import { prisma } from "@/server/db";
 import { getSeriesDetail } from "@/server/series-detail";
+import WatchlistToggle from "../watchlist-toggle";
 import TeaserPlayer from "./teaser-player";
 import SeasonEpisodes from "./season-episodes";
 
@@ -12,6 +14,14 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
   const detail = await getSeriesDetail(slug, session?.userId ?? null);
   if (!detail) notFound();
   const { series, seasonGroups } = detail;
+  const inWatchlist = session
+    ? Boolean(
+        await prisma.watchlistItem.findUnique({
+          where: { userId_seriesId: { userId: session.userId, seriesId: series.id } },
+          select: { id: true },
+        }),
+      )
+    : false;
   return (
     <div className="pb-24">
       <Link href="/" className="fixed left-4 top-4 z-10 rounded-full bg-black/50 px-4 py-2">
@@ -40,6 +50,13 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
               #{tag}
             </span>
           ))}
+        </div>
+        <div className="mt-4">
+          <WatchlistToggle
+            seriesId={series.id}
+            initialInWatchlist={inWatchlist}
+            signedIn={Boolean(session)}
+          />
         </div>
         <div className="mt-5 flex flex-wrap gap-3 text-sm text-zinc-400">
           {(series.castMembers.length

@@ -6,6 +6,9 @@ export default function AccountNav() {
       <Link href="/account/watch-history" className="rounded-full bg-zinc-800 px-4 py-2">
         Watch History
       </Link>
+      <Link href="/account/my-list" className="rounded-full bg-zinc-800 px-4 py-2">
+        My List
+      </Link>
       <Link href="/account/subscription" className="rounded-full bg-zinc-800 px-4 py-2">
         My Subscription
       </Link>

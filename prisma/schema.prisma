@@ -124,6 +124,7 @@ model User {
   unlocks                         EpisodeUnlock[]
   purchases                       Purchase[]
   checkins                        DailyCheckin[]
+  watchlist                       WatchlistItem[]
   progress                        WatchProgress[]
   likes                           EpisodeLike[]
   couponRedemptions               CouponRedemption[]
@@ -158,6 +159,7 @@ model Series {
   campaigns        PushCampaign[]
   castMembers      CastMember[]
   homeRailItems    HomeRailItem[]
+  watchlist        WatchlistItem[]
 
   @@index([isPublished, createdAt])
   @@index([status])
@@ -307,6 +309,17 @@ model DailyCheckin {
 
   @@unique([userId, day])
   @@index([userId, day])
+}
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  seriesId  String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series    Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seriesId])
 }
 
 model WatchProgress {
