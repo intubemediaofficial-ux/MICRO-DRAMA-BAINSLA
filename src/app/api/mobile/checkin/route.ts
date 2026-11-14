@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordUserActivityDay } from "@/server/activity";
 import { getSession } from "@/server/auth";
 import { claimDailyCheckin, getDailyCheckinStatus } from "@/server/coins";
 
@@ -15,6 +16,7 @@ export async function POST() {
     const result = await claimDailyCheckin(session.userId);
     if (result.alreadyCheckedIn)
       return NextResponse.json({ error: { message: "Already checked in today" } }, { status: 409 });
+    void recordUserActivityDay(session.userId).catch(() => {});
     return NextResponse.json({
       coinsAwarded: result.coinsAwarded,
       streak: result.checkin.streak,

@@ -131,6 +131,7 @@ model User {
   notifications                   NotificationLog[]
   deviceTokens                   DeviceToken[]
   analyticsEvents                AnalyticsEvent[]
+  activityDays                   UserActivityDay[]
   subscriptions                   Subscription[]
   subscriptionEvents              SubscriptionEvent[]
   subscriptionDiscountRedemptions SubscriptionDiscountRedemption[]
@@ -446,6 +447,15 @@ model AnalyticsEvent {
 
   @@index([name, createdAt])
   @@index([episodeId])
+}
+
+model UserActivityDay {
+  userId String
+  day    DateTime @db.Date
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, day])
+  @@index([day])
 }
 
 model AdRewardNonce {

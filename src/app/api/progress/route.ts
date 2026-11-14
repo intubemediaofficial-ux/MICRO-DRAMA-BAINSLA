@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/server/auth";
+import { recordUserActivityDay } from "@/server/activity";
 import { prisma } from "@/server/db";
 import { findPublicEpisode } from "@/server/publishing";
 const input = z.object({
@@ -15,6 +16,7 @@ export async function POST(request: Request) {
     const data = input.parse(await request.json());
     if (!(await findPublicEpisode(data.episodeId)))
       return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
+    void recordUserActivityDay(session.userId).catch(() => {});
     const progress = await prisma.watchProgress.upsert({
       where: { userId_episodeId: { userId: session.userId, episodeId: data.episodeId } },
       update: {

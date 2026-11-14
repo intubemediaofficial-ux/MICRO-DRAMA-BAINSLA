@@ -25,6 +25,8 @@ describe("engagement retention cohorts", () => {
     const metrics = await getEngagementMetrics();
     const query = mocks.queryRaw.mock.calls[0][0] as { sql: string[] };
     const source = query.sql.join(" ");
+    expect(source).toContain(`FROM "UserActivityDay"`);
+    expect(source).not.toContain(`FROM "WatchProgress"`);
     expect(source).toContain(`"createdAt" <= NOW() - INTERVAL '1 day'`);
     expect(source).toContain(`"createdAt" <= NOW() - INTERVAL '7 days'`);
     expect(metrics).toMatchObject({

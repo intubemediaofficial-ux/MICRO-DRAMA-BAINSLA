@@ -38,9 +38,9 @@ export async function getEngagementMetrics() {
     }[]
   >(Prisma.sql`
     WITH activity AS (
-      SELECT "userId", "createdAt"::date AS day FROM "AnalyticsEvent" WHERE "userId" IS NOT NULL
+      SELECT "userId", "day" AS day FROM "UserActivityDay"
       UNION
-      SELECT "userId", "updatedAt"::date AS day FROM "WatchProgress"
+      SELECT "userId", "createdAt"::date AS day FROM "AnalyticsEvent" WHERE "userId" IS NOT NULL
     ), cohorts AS (
       SELECT id, "createdAt"::date AS day
       FROM "User"
