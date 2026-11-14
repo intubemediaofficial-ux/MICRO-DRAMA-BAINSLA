@@ -34,6 +34,7 @@ object PushNotifications {
     fun registerCurrentToken() {
         val app = runCatching { FirebaseApp.getInstance() }.getOrNull() ?: return
         FirebaseMessaging.getInstance(app).token.addOnSuccessListener { token ->
+            AppPreferences.pushToken = token
             AppScope.launch { Api.registerPushToken(token) }
         }
     }
@@ -78,6 +79,7 @@ object PushNotifications {
 class ReelsMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
+        AppPreferences.pushToken = token
         AppScope.launch { Api.registerPushToken(token) }
     }
 

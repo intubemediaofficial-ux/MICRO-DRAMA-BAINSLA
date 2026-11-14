@@ -22,6 +22,7 @@ import { prisma } from "../src/server/db";
 import { POST as unlockPost } from "../src/app/api/unlocks/route";
 import { GET as playbackGet } from "../src/app/api/episodes/[id]/playback/route";
 import { POST as adTokenPost } from "../src/app/api/ads/reward-token/route";
+import { POST as pushTokenPost } from "../src/app/api/mobile/push-token/route";
 import { invalidateSettingsCache, setSettings } from "../src/server/settings";
 
 const suffix = crypto.randomUUID();
@@ -200,6 +201,30 @@ describe("protected playback and reward flows", () => {
     await prisma.adRewardNonce.delete({ where: { nonce } });
     await prisma.episodeUnlock.deleteMany({ where: { episodeId: { in: extra.map((item) => item.id) } } });
     await prisma.episode.deleteMany({ where: { id: { in: [...extra.map((item) => item.id), candidate.id] } } });
+  });
+
+  it("unlinks a device token when it is re-registered anonymously", async () => {
+    const token = `push-token-${crypto.randomUUID()}`;
+    const authenticated = await pushTokenPost(
+      new Request("http://localhost", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(authenticated.status).toBe(200);
+    expect((await prisma.deviceToken.findUniqueOrThrow({ where: { token } })).userId).toBe(userId);
+    cookieState.token = "";
+    const anonymous = await pushTokenPost(
+      new Request("http://localhost", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(anonymous.status).toBe(200);
+    expect((await prisma.deviceToken.findUniqueOrThrow({ where: { token } })).userId).toBeNull();
+    await prisma.deviceToken.delete({ where: { token } });
   });
 });
 

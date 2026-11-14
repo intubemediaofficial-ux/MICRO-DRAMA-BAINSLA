@@ -32,4 +32,10 @@ object AppPreferences {
         get() = prefs.getString("deviceId", null) ?: UUID.randomUUID().toString().also {
             prefs.edit().putString("deviceId", it).apply()
         }
+
+    var pushToken: String?
+        get() = prefs.getString("pushToken", null)
+        set(value) {
+            prefs.edit().putString("pushToken", value).apply()
+        }
 }

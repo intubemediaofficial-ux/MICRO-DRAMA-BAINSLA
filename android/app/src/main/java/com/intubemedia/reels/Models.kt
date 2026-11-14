@@ -373,7 +373,11 @@ object Api {
     }
 
     suspend fun logout() {
-        runCatching { Net.post("/api/auth/logout") }
+        runCatching {
+            val body = JSONObject()
+            AppPreferences.pushToken?.let { body.put("pushToken", it) }
+            Net.post("/api/auth/logout", body)
+        }
         Net.clearSession()
     }
 }

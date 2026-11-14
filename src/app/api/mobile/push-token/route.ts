@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       create: { token, ...(session ? { userId: session.userId } : {}) },
       update: {
         lastSeenAt: new Date(),
-        ...(session ? { userId: session.userId } : {}),
+        userId: session?.userId ?? null,
       },
     });
     return NextResponse.json({ ok: true });
