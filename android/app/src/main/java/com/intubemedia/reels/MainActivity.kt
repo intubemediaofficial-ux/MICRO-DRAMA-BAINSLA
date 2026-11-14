@@ -110,8 +110,17 @@ private fun ReelsNav(openWeb: (String) -> Unit) {
     }
 }
 
-private fun NavHostController.switchTab(route: String) = navigate(route) {
-    popUpTo("home") { saveState = true }
-    launchSingleTop = true
-    restoreState = true
+private fun NavHostController.switchTab(route: String) {
+    if (route == "home") {
+        navigate("home") {
+            popUpTo("home") { inclusive = false }
+            launchSingleTop = true
+        }
+    } else {
+        navigate(route) {
+            popUpTo("home") { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
 }
