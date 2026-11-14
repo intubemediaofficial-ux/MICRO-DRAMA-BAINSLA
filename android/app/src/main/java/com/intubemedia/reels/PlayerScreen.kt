@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -123,7 +124,8 @@ private fun EpisodePage(
     Box(Modifier.fillMaxSize()) {
         when (val state = playback) {
             null -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-            is Playback.Ready -> VideoView(episode, state, attempt, active, onEnded) { attempt++ }
+            // Keyed so a retry rebuilds the player together with all of its error/progress state.
+            is Playback.Ready -> key(state.url, attempt) { VideoView(episode, state, active, onEnded) { attempt++ } }
             is Playback.Locked -> LockedView(state, episode, onLogin, openWeb) { attempt++ }
             is Playback.Failed -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(state.message, color = Color.White)
@@ -146,7 +148,6 @@ private fun EpisodePage(
 private fun VideoView(
     episode: EpisodeItem,
     ready: Playback.Ready,
-    attempt: Int,
     active: Boolean,
     onEnded: () -> Unit,
     onRetry: () -> Unit,
@@ -157,7 +158,7 @@ private fun VideoView(
     var failed by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
     var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_ZOOM) }
-    val player = remember(ready.url, attempt) {
+    val player = remember(ready.url) {
         MediaCache.newPlayer(context).apply {
             setMediaItem(MediaCache.mediaItem(ready))
             if (ready.resumeSec > 0) seekTo(ready.resumeSec * 1000L)
