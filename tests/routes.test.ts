@@ -138,6 +138,69 @@ describe("protected playback and reward flows", () => {
     expect(first.status).toBe(200);
     expect(second.status).toBe(403);
   });
+
+  it("enforces the daily ad limit before consuming a verified token", async () => {
+    const episode = await prisma.episode.findUniqueOrThrow({
+      where: { id: episodeId },
+      select: { seriesId: true },
+    });
+    const current = await prisma.episodeUnlock.count({
+      where: { userId, source: "AD", createdAt: { gte: new Date(new Date().setUTCHours(0, 0, 0, 0)) } },
+    });
+    const extra = await Promise.all(
+      Array.from({ length: 10 - current }, (_, index) =>
+        prisma.episode.create({
+          data: {
+            seriesId: episode.seriesId,
+            number: 100 + index,
+            title: `Limit ${index}`,
+            durationSec: 10,
+            hlsPath: `episodes/limit-${index}.m3u8`,
+            thumbnailUrl: "",
+            coinPrice: 10,
+            publishedAt: new Date(),
+          },
+        }),
+      ),
+    );
+    await prisma.episodeUnlock.createMany({
+      data: extra.map((item) => ({ userId, episodeId: item.id, source: "AD" })),
+    });
+    const candidate = await prisma.episode.create({
+      data: {
+        seriesId: episode.seriesId,
+        number: 200,
+        title: "Over limit",
+        durationSec: 10,
+        hlsPath: "episodes/over-limit.m3u8",
+        thumbnailUrl: "",
+        coinPrice: 10,
+        publishedAt: new Date(),
+      },
+    });
+    const tokenResponse = await adTokenPost(
+      new Request("http://localhost", {
+        method: "POST",
+        body: JSON.stringify({ episodeId: candidate.id }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const token = (await tokenResponse.json()).token as string;
+    const nonce = Buffer.from(token.split(".")[0], "base64url").toString().split(".")[2];
+    await prisma.adRewardNonce.update({ where: { nonce }, data: { verifiedAt: new Date() } });
+    const response = await unlockPost(
+      new Request("http://localhost", {
+        method: "POST",
+        body: JSON.stringify({ episodeId: candidate.id, source: "ad", adToken: token }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(response.status).toBe(429);
+    expect((await prisma.adRewardNonce.findUniqueOrThrow({ where: { nonce } })).usedAt).toBeNull();
+    await prisma.adRewardNonce.delete({ where: { nonce } });
+    await prisma.episodeUnlock.deleteMany({ where: { episodeId: { in: extra.map((item) => item.id) } } });
+    await prisma.episode.deleteMany({ where: { id: { in: [...extra.map((item) => item.id), candidate.id] } } });
+  });
 });
 
 describe("signup referral and check-in continuation", () => {

@@ -24,6 +24,13 @@ export async function POST(request: Request) {
       const token = data.adToken ? verifyAdToken(data.adToken) : null;
       if (!token || token.userId !== session.userId || token.episodeId !== data.episodeId)
         return NextResponse.json({ error: { message: "Invalid ad completion" } }, { status: 403 });
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      const unlocksToday = await prisma.episodeUnlock.count({
+        where: { userId: session.userId, source: "AD", createdAt: { gte: today } },
+      });
+      if (unlocksToday >= 10)
+        return NextResponse.json({ error: { message: "Daily ad unlock limit reached" } }, { status: 429 });
       const nonce = await prisma.adRewardNonce.findUnique({ where: { nonce: token.nonce } });
       if (!nonce || nonce.usedAt || nonce.expiresAt < new Date())
         return NextResponse.json(
