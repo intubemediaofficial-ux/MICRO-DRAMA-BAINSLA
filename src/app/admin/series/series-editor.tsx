@@ -32,6 +32,9 @@ type Episode = {
   sku?: string | null;
   subtitles?: { id: string; lang: string; srtPath: string }[];
 };
+type EpisodeActionResult =
+  | { episode?: Episode; episodes?: Episode[]; skippedWithoutVideo?: string[] }
+  | Episode;
 type NewEpisodeDraft = {
   seasonId: string;
   number: number;
@@ -441,11 +444,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
         return null;
       }
       toast(message);
-      return (await response.json()) as {
-        episode?: Episode;
-        episodes?: Episode[];
-        skippedWithoutVideo?: string[];
-      };
+      return (await response.json()) as EpisodeActionResult;
     } finally {
       setPendingAction(null);
     }
@@ -459,14 +458,19 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
       message,
       "bulk",
     );
-    if (result?.episodes) {
+    if (result && "episodes" in result && result.episodes) {
       setEpisodes((current) =>
         current.map((item) => result.episodes?.find((next) => next.id === item.id) ?? item),
       );
       setSelected([]);
     }
-    if ("publishedAt" in body && body.publishedAt !== null)
-      toast(`${result?.skippedWithoutVideo?.length ?? 0} episodes skipped because they have no video.`, "info");
+    if ("publishedAt" in body && body.publishedAt !== null) {
+      const skippedCount =
+        result && "skippedWithoutVideo" in result
+          ? (result.skippedWithoutVideo?.length ?? 0)
+          : 0;
+      toast(`${skippedCount} episodes skipped because they have no video.`, "info");
+    }
   }
   async function renumberSelected() {
     if (!selected.length) return toast("Select episodes to renumber.", "error");
@@ -484,7 +488,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
       `${chosen.length} episodes renumbered.`,
       "bulk",
     );
-    if (result?.episodes) {
+    if (result && "episodes" in result && result.episodes) {
       setEpisodes((current) =>
         current
           .map((item) => result.episodes?.find((next) => next.id === item.id) ?? item)
@@ -528,10 +532,16 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
       },
       "Episode saved.",
     );
-    if (result?.episode) {
-      setEpisodeDraft(result.episode);
+    const updated =
+      result && "episode" in result
+        ? result.episode
+        : result && "id" in result
+          ? result
+          : null;
+    if (updated) {
+      setEpisodeDraft(updated);
       setEpisodes((current) =>
-        current.map((item) => (item.id === result.episode?.id ? result.episode : item)),
+        current.map((item) => (item.id === updated.id ? updated : item)),
       );
     }
   }
