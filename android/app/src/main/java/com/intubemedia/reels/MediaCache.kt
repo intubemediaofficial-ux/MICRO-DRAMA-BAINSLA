@@ -23,14 +23,15 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 500 MB on-disk video cache. Stream URLs carry a short-lived token, so cache keys are derived
- * from the media path (HLS segments) or the episode id (MP4) to survive token refreshes.
+ * from the media path to survive token refreshes and media replacements.
  * Playlists are never cached because they embed tokenised segment URLs.
  */
 object MediaCache {
     private const val MAX_BYTES = 500L * 1024 * 1024
     private lateinit var cache: SimpleCache
     private lateinit var upstream: DataSource.Factory
-    private val tokens = ConcurrentHashMap<String, Pair<String, Boolean>>()
+    private data class MediaInfo(val episodeId: String, val isHls: Boolean, val mediaPath: String?)
+    private val tokens = ConcurrentHashMap<String, MediaInfo>()
 
     fun init(context: Context) {
         cache = SimpleCache(
@@ -41,19 +42,22 @@ object MediaCache {
         upstream = OkHttpDataSource.Factory(Net.client)
     }
 
-    fun register(playbackPath: String, episodeId: String, isHls: Boolean) {
-        Uri.parse(playbackPath).lastPathSegment?.let { tokens[it] = episodeId to isHls }
+    fun register(playbackPath: String, episodeId: String, isHls: Boolean, mediaPath: String?) {
+        Uri.parse(playbackPath).lastPathSegment?.let { tokens[it] = MediaInfo(episodeId, isHls, mediaPath) }
     }
 
     private fun isPlaylist(uri: Uri): Boolean {
         val path = uri.getQueryParameter("path")
-        return if (path != null) path.endsWith(".m3u8") else tokens[uri.lastPathSegment]?.second ?: true
+        return if (path != null) path.endsWith(".m3u8") else tokens[uri.lastPathSegment]?.isHls ?: true
     }
 
     private val cacheKeys = CacheKeyFactory { spec ->
         val uri = spec.uri
         uri.getQueryParameter("path")?.let { "media:$it" }
-            ?: tokens[uri.lastPathSegment]?.first?.let { "episode:$it" }
+            ?: tokens[uri.lastPathSegment]?.let { info ->
+                if (info.isHls) "episode:${info.episodeId}"
+                else "media:${info.mediaPath ?: "episode:${info.episodeId}"}"
+            }
             ?: uri.toString()
     }
 

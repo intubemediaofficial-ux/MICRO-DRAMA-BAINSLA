@@ -23,6 +23,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       );
     return NextResponse.json({
       seriesSlug: episode.series.slug,
+      mediaPath: episode.hlsPath,
       playbackUrl: `/api/stream/${createStreamToken(GUEST_USER_ID, id, STREAM_TTL_SECONDS)}`,
       isHls: episode.hlsPath.endsWith(".m3u8"),
       watermark: "",
@@ -72,6 +73,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   );
   return NextResponse.json({
     seriesSlug: episode.series.slug,
+    mediaPath: episode.hlsPath,
     playbackUrl: `/api/stream/${token}`,
     isHls: episode.hlsPath.endsWith(".m3u8"),
     watermark: watermark(user.phone, session.userId),

@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   resolveCurrency: vi.fn(),
   getSubscriptionOffers: vi.fn(),
   hasUsedTrial: vi.fn(),
+  getResumePositionForEpisode: vi.fn(),
+  user: vi.fn(),
 }));
 
 vi.mock("@/server/auth", () => ({ getSession: mocks.getSession }));
@@ -17,7 +19,10 @@ vi.mock("@/server/subscriptions", () => ({
   getSubscriptionOffers: mocks.getSubscriptionOffers,
   hasUsedTrial: mocks.hasUsedTrial,
 }));
-vi.mock("@/server/db", () => ({ prisma: { user: { findUniqueOrThrow: vi.fn() } } }));
+vi.mock("@/server/watch-history", () => ({
+  getResumePositionForEpisode: mocks.getResumePositionForEpisode,
+}));
+vi.mock("@/server/db", () => ({ prisma: { user: { findUniqueOrThrow: mocks.user } } }));
 
 import { GET } from "@/app/api/episodes/[id]/playback/route";
 
@@ -36,6 +41,8 @@ describe("playback deep links", () => {
     mocks.resolveCurrency.mockResolvedValue("USD");
     mocks.getSubscriptionOffers.mockResolvedValue([]);
     mocks.hasUsedTrial.mockResolvedValue(false);
+    mocks.getResumePositionForEpisode.mockResolvedValue(0);
+    mocks.user.mockResolvedValue({ phone: null });
   });
 
   it("includes the series slug when an episode is locked", async () => {
@@ -44,5 +51,14 @@ describe("playback deep links", () => {
     });
     expect(response.status).toBe(403);
     expect((await response.json()).seriesSlug).toBe("sample-series");
+  });
+
+  it("returns the stable media path for cache keying", async () => {
+    mocks.resolveEpisodeEntitlement.mockResolvedValue({ entitled: true, reason: "FREE" });
+    const response = await GET(new Request("http://localhost/api/episodes/episode-1/playback"), {
+      params: Promise.resolve({ id: "episode-1" }),
+    });
+    expect(response.status).toBe(200);
+    expect((await response.json()).mediaPath).toBe("sample.mp4");
   });
 });

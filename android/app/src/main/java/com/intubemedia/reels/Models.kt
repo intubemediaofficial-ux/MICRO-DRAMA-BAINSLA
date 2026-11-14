@@ -118,6 +118,7 @@ sealed interface Playback {
         val resumeSec: Int,
         val subtitles: List<Subtitle> = emptyList(),
         val seriesSlug: String? = null,
+        val mediaPath: String? = null,
     ) : Playback
     data class Locked(val needsLogin: Boolean, val coinPrice: Int) : Playback
     data class Failed(val message: String) : Playback
@@ -309,7 +310,8 @@ object Api {
         val json = Net.get("/api/episodes/$episodeId/playback")
         val url = json.getString("playbackUrl")
         val isHls = json.optBoolean("isHls")
-        MediaCache.register(url, episodeId, isHls)
+        val mediaPath = json.str("mediaPath")
+        MediaCache.register(url, episodeId, isHls, mediaPath)
         Playback.Ready(
             Net.absolute(url)!!,
             isHls,
@@ -325,6 +327,7 @@ object Api {
                 )
             },
             json.str("seriesSlug"),
+            mediaPath,
         )
     } catch (error: ApiException) {
         when (error.status) {
