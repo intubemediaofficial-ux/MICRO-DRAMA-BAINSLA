@@ -539,9 +539,16 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
           ? result
           : null;
     if (updated) {
-      setEpisodeDraft(updated);
+      setEpisodeDraft((current) => ({
+        ...updated,
+        subtitles: updated.subtitles ?? current?.subtitles ?? [],
+      }));
       setEpisodes((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
+        current.map((item) =>
+          item.id === updated.id
+            ? { ...updated, subtitles: updated.subtitles ?? item.subtitles }
+            : item,
+        ),
       );
     }
   }
