@@ -4,6 +4,8 @@ import { resolveCurrency } from "@/server/currency";
 import { prisma } from "@/server/db";
 import { paymentsEnabled } from "@/server/subscription-providers";
 import { getSubscriptionOffers, getUserSubscription, hasUsedTrial } from "@/server/subscriptions";
+import { getSettings } from "@/server/settings";
+import { env } from "@/server/config";
 
 export async function GET(request: Request) {
   const session = await getSession();
@@ -15,13 +17,21 @@ export async function GET(request: Request) {
   const [user, subscription, offers, trialUsed] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.userId },
-      select: { id: true, email: true, phone: true, role: true, coinBalance: true },
+      select: {
+        id: true,
+        email: true,
+        phone: true,
+        role: true,
+        coinBalance: true,
+        referralCode: true,
+      },
     }),
     getUserSubscription(session.userId),
     getSubscriptionOffers(currency),
     hasUsedTrial(session.userId),
   ]);
   if (!user) return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
+  const settings = await getSettings();
   const now = new Date();
   const accessEnds =
     subscription?.status === "TRIALING" ? subscription.trialEndsAt : subscription?.currentPeriodEnd;
@@ -46,6 +56,9 @@ export async function GET(request: Request) {
       : null,
     trialUsed,
     paymentsEnabled: paymentsAvailable,
+    referralCode: user.referralCode,
+    referralLink: `${env.NEXT_PUBLIC_APP_URL}/?ref=${encodeURIComponent(user.referralCode)}`,
+    referralBonusCoins: settings.REFERRAL_BONUS_COINS,
     offers: offers.map(({ plan, price }) => ({
       code: plan.code,
       name: plan.name,

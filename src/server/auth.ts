@@ -1,9 +1,13 @@
+import { Prisma } from "@prisma/client";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { credit } from "./coins";
 import { env } from "./config";
 import { prisma } from "./db";
+import { getSettings } from "./settings";
 
 const COOKIE = "microdrama_session";
+const REFERRAL_COOKIE = "ref";
 const key = () => new TextEncoder().encode(env.SESSION_SECRET);
 export type Session = { userId: string; role: "USER" | "ADMIN" };
 
@@ -51,31 +55,72 @@ export async function requireAdmin(): Promise<Session> {
   if (session.role !== "ADMIN") throw new Error("FORBIDDEN");
   return session;
 }
+export async function consumeReferralCode(explicit?: string) {
+  const cookieStore = await cookies();
+  const stored = cookieStore.get(REFERRAL_COOKIE)?.value;
+  if (stored) cookieStore.delete(REFERRAL_COOKIE);
+  const code = explicit?.trim() || stored?.trim();
+  return code && /^[a-z\d_-]{2,64}$/i.test(code) ? code.toUpperCase() : undefined;
+}
+
+export async function clearReferralCookie() {
+  (await cookies()).delete(REFERRAL_COOKIE);
+}
+
 export async function findOrCreateUser(identifier: string, referralCode?: string) {
   const isEmail = identifier.includes("@");
-  const existing = await prisma.user.findFirst({
-    where: isEmail ? { email: identifier } : { phone: identifier },
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.user.findFirst({
+      where: isEmail ? { email: identifier } : { phone: identifier },
+    });
+    if (existing) {
+      if (existing.isDisabled) throw new Error("ACCOUNT_DISABLED");
+      return existing;
+    }
+
+    let referrerId: string | undefined;
+    const candidate = referralCode
+      ? await tx.user.findUnique({
+          where: { referralCode },
+          select: { id: true, email: true, phone: true, isDisabled: true },
+        })
+      : null;
+    if (
+      candidate &&
+      !candidate.isDisabled &&
+      candidate.email !== identifier &&
+      candidate.phone !== identifier
+    ) {
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "User" WHERE id = ${candidate.id} FOR UPDATE`);
+      const referrer = await tx.user.findUnique({
+        where: { id: candidate.id },
+        select: { id: true, isDisabled: true },
+      });
+      if (referrer && !referrer.isDisabled) referrerId = referrer.id;
+    }
+
+    const user = await tx.user.create({
+      data: {
+        ...(isEmail ? { email: identifier } : { phone: identifier }),
+        referralCode: `MD${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+        ...(referrerId ? { referredById: referrerId } : {}),
+      },
+    });
+    if (referrerId) {
+      const recentRewards = await tx.coinTransaction.count({
+        where: {
+          userId: referrerId,
+          type: "REFERRAL_BONUS",
+          refType: "referral",
+          createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) },
+        },
+      });
+      const bonus = (await getSettings()).REFERRAL_BONUS_COINS;
+      if (recentRewards < 20 && bonus > 0) {
+        await credit(user.id, bonus, "REFERRAL_BONUS", { type: "referral", id: referrerId }, tx);
+        await credit(referrerId, bonus, "REFERRAL_BONUS", { type: "referral", id: user.id }, tx);
+      }
+    }
+    return user;
   });
-  if (existing) {
-    if (existing.isDisabled) throw new Error("ACCOUNT_DISABLED");
-    if (referralCode) throw new Error("REFERRAL_ALREADY_CLAIMED");
-    return existing;
-  }
-  const referrer = referralCode ? await prisma.user.findUnique({ where: { referralCode } }) : null;
-  if (referrer && (referrer.email === identifier || referrer.phone === identifier))
-    throw new Error("INVALID_REFERRAL");
-  const user = await prisma.user.create({
-    data: {
-      ...(isEmail ? { email: identifier } : { phone: identifier }),
-      referralCode: `MD${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
-      referredById: referrer?.id,
-    },
-  });
-  if (referrer) {
-    // Signup referral credits are kept in the same ledger choke point.
-    const { credit } = await import("./coins");
-    await credit(referrer.id, 25, "REFERRAL_BONUS", { type: "signup", id: user.id });
-    await credit(user.id, 25, "REFERRAL_BONUS", { type: "signup", id: referrer.id });
-  }
-  return user;
 }

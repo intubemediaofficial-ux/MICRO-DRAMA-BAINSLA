@@ -119,15 +119,19 @@ describe("protected playback and reward flows", () => {
 });
 
 describe("signup referral and check-in continuation", () => {
-  it("rejects applying a referral code twice", async () => {
+  it("does not grant a second referral reward on existing-user login", async () => {
     const referrer = await prisma.user.create({
       data: { email: `referrer-${suffix}@test.local`, referralCode: `RF${suffix.slice(0, 8)}` },
     });
     const identifier = `referred-${suffix}@test.local`;
-    await findOrCreateUser(identifier, referrer.referralCode);
-    await expect(findOrCreateUser(identifier, referrer.referralCode)).rejects.toThrow(
-      "REFERRAL_ALREADY_CLAIMED",
-    );
+    const created = await findOrCreateUser(identifier, referrer.referralCode);
+    const existing = await findOrCreateUser(identifier, referrer.referralCode);
+    expect(existing.id).toBe(created.id);
+    expect(
+      await prisma.coinTransaction.count({
+        where: { userId: referrer.id, type: "REFERRAL_BONUS", refId: created.id },
+      }),
+    ).toBe(1);
     await prisma.user.deleteMany({
       where: { email: { in: [referrer.email!, identifier] } },
     });

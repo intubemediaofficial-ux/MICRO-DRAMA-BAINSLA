@@ -121,9 +121,15 @@ export async function adjustCoins(userId: string, delta: number, reason: string,
   });
 }
 
-export async function credit(userId: string, delta: number, type: LedgerType, ref?: Ref) {
+export async function credit(
+  userId: string,
+  delta: number,
+  type: LedgerType,
+  ref?: Ref,
+  transaction?: Prisma.TransactionClient,
+) {
   if (delta <= 0) throw new Error("CREDIT_MUST_BE_POSITIVE");
-  return prisma.$transaction(async (tx) => {
+  const apply = async (tx: Prisma.TransactionClient) => {
     const updated = await tx.user.updateMany({
       where: { id: userId },
       data: { coinBalance: { increment: delta } },
@@ -143,7 +149,8 @@ export async function credit(userId: string, delta: number, type: LedgerType, re
         refId: ref?.id,
       },
     });
-  });
+  };
+  return transaction ? apply(transaction) : prisma.$transaction(apply);
 }
 export async function debit(userId: string, cost: number, type: LedgerType, ref?: Ref) {
   if (cost <= 0) throw new Error("DEBIT_MUST_BE_POSITIVE");
