@@ -350,7 +350,6 @@ private fun VideoView(
         }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val isActive by rememberUpdatedState(active)
     DisposableEffect(lifecycle, player) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) player.pause()
