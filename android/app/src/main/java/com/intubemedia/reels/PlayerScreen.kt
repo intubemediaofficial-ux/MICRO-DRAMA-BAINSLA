@@ -291,7 +291,7 @@ private fun LockedView(
                 },
             ) { Text("Unlock for ${state.coinPrice} coins") }
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { openWeb("/subscribe") }) { Text("Get VIP – watch everything", color = Color.White) }
+            OutlinedButton(onClick = { openWeb("/subscribe?episode=${episode.id}") }) { Text("Get VIP – watch everything", color = Color.White) }
         }
         message?.let {
             Spacer(Modifier.height(12.dp))
