@@ -54,8 +54,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val Muted = Color.White.copy(alpha = 0.65f)
@@ -227,23 +227,14 @@ fun SeriesScreen(slug: String, play: (String, String) -> Unit, onBack: () -> Uni
 
 @Composable
 fun SearchScreen(openSeries: (String) -> Unit) {
-    var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<SeriesCard>>(emptyList()) }
-    var searching by remember { mutableStateOf(false) }
-    LaunchedEffect(query) {
-        if (query.isBlank()) {
-            results = emptyList()
-            return@LaunchedEffect
-        }
-        delay(300)
-        searching = true
-        results = runCatching { Api.search(query.trim()) }.getOrDefault(emptyList())
-        searching = false
-    }
+    val searchViewModel: SearchViewModel = viewModel()
+    val query = searchViewModel.query
+    val results = searchViewModel.results
+    val searching = searchViewModel.searching
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(16.dp)) {
         OutlinedTextField(
             value = query,
-            onValueChange = { query = it.take(80) },
+            onValueChange = searchViewModel::onQueryChange,
             placeholder = { Text("Search dramas, genres, cast") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
