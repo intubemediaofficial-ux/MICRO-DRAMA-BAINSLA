@@ -44,12 +44,19 @@ object Analytics {
         queue.addLast(Event(name, seriesId, episodeId, positionSec, props))
     }
 
+    private fun requeueAtFront(events: List<Event>) = synchronized(this) {
+        events.asReversed().forEach(queue::addFirst)
+        while (queue.size > 200) queue.removeLast()
+    }
+
     suspend fun flush() = mutex.withLock {
         val batch = synchronized(this) {
             if (queue.isEmpty()) return@withLock
             buildList { while (queue.isNotEmpty()) add(queue.removeFirst()) }
         }
-        batch.chunked(50).forEach { events ->
+        val chunks = batch.chunked(50)
+        for (index in chunks.indices) {
+            val events = chunks[index]
             val body = JSONObject()
                 .put("deviceId", AppPreferences.deviceId)
                 .put("events", JSONArray().apply {
@@ -62,7 +69,10 @@ object Analytics {
                         })
                     }
                 })
-            runCatching { Net.post("/api/events", body) }
+            if (runCatching { Net.post("/api/events", body) }.isFailure) {
+                requeueAtFront(chunks.drop(index).flatten())
+                return@withLock
+            }
         }
     }
 }
