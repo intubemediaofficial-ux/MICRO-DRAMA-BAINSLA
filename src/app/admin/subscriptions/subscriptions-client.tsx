@@ -440,7 +440,7 @@ export default function AdminSubscriptionsClient({
               type: "PERCENT",
               value: 20,
               maxRedemptions: 100,
-              planIds: plans.map((plan) => plan.id),
+              planIds: currentPlans.map((plan) => plan.id),
             }, `Discount ${code} created — 20%.`, "discount");
           }}
           pending={pending === "discount"}
