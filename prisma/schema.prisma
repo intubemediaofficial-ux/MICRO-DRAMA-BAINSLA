@@ -434,6 +434,7 @@ model AdRewardNonce {
   episodeId String
   expiresAt DateTime
   usedAt    DateTime?
+  verifiedAt DateTime?
 
   @@index([userId, episodeId])
 }

@@ -22,10 +22,12 @@ import { prisma } from "../src/server/db";
 import { POST as unlockPost } from "../src/app/api/unlocks/route";
 import { GET as playbackGet } from "../src/app/api/episodes/[id]/playback/route";
 import { POST as adTokenPost } from "../src/app/api/ads/reward-token/route";
+import { invalidateSettingsCache, setSettings } from "../src/server/settings";
 
 const suffix = crypto.randomUUID();
 let userId = "";
 let episodeId = "";
+let savedAdSettings: Awaited<ReturnType<typeof prisma.appSetting.findMany>> = [];
 
 describe("protected playback and reward flows", () => {
   beforeAll(async () => {
@@ -33,6 +35,13 @@ describe("protected playback and reward flows", () => {
       data: { email: `routes-${suffix}@test.local`, referralCode: `RT${suffix.slice(0, 8)}` },
     });
     userId = user.id;
+    savedAdSettings = await prisma.appSetting.findMany({
+      where: { key: { in: ["ADS_ENABLED", "ADMOB_REWARDED_UNIT_ID"] } },
+    });
+    await setSettings(
+      { ADS_ENABLED: true, ADMOB_REWARDED_UNIT_ID: "test-rewarded-unit" },
+      userId,
+    );
     await credit(userId, 20, "ADMIN_ADJUST", { type: "test", id: userId });
     const series = await prisma.series.create({
       data: {
@@ -65,6 +74,11 @@ describe("protected playback and reward flows", () => {
     await issueSession({ userId, role: "USER" });
   });
   afterAll(async () => {
+    await prisma.appSetting.deleteMany({
+      where: { key: { in: ["ADS_ENABLED", "ADMOB_REWARDED_UNIT_ID"] } },
+    });
+    if (savedAdSettings.length) await prisma.appSetting.createMany({ data: savedAdSettings });
+    invalidateSettingsCache();
     await prisma.user.delete({ where: { id: userId } });
     await prisma.series.deleteMany({ where: { slug: `routes-${suffix}` } });
   });
@@ -99,6 +113,14 @@ describe("protected playback and reward flows", () => {
     );
     expect(tokenResponse.status).toBe(200);
     const token = (await tokenResponse.json()).token as string;
+    const [, , nonce] = Buffer.from(
+      token.split(".")[0],
+      "base64url",
+    ).toString().split(".");
+    await prisma.adRewardNonce.update({
+      where: { nonce },
+      data: { verifiedAt: new Date() },
+    });
     const first = await unlockPost(
       new Request("http://localhost", {
         method: "POST",

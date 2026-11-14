@@ -30,8 +30,10 @@ export async function POST(request: Request) {
           { error: { message: "Ad token already used or expired" } },
           { status: 403 },
         );
+      if (!nonce.verifiedAt)
+        return NextResponse.json({ error: { message: "Ad not verified yet" } }, { status: 403 });
       const claimed = await prisma.adRewardNonce.updateMany({
-        where: { nonce: token.nonce, usedAt: null },
+        where: { nonce: token.nonce, usedAt: null, verifiedAt: { not: null }, expiresAt: { gt: new Date() } },
         data: { usedAt: new Date() },
       });
       if (!claimed.count)

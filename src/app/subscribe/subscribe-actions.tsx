@@ -168,38 +168,6 @@ export default function SubscribeActions({
     return ((await response.json()) as { error?: { message?: string } }).error?.message ?? fallback;
   }
 
-  async function unlockWithAd() {
-    setPending("ad");
-    setMessage("");
-    const tokenResponse = await fetch("/api/ads/reward-token", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ episodeId }),
-    });
-    if (!tokenResponse.ok) {
-      setMessage(await getErrorMessage(tokenResponse, "Could not start the rewarded ad."));
-      setPending(null);
-      return;
-    }
-    const { token } = (await tokenResponse.json()) as { token?: string };
-    if (!token) {
-      setMessage("Could not start the rewarded ad.");
-      setPending(null);
-      return;
-    }
-    const response = await fetch("/api/unlocks", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ episodeId, source: "ad", adToken: token }),
-    });
-    if (response.ok) {
-      router.replace(`/watch/${episodeId}`);
-      return;
-    }
-    setMessage(await getErrorMessage(response, "Unlock failed"));
-    setPending(null);
-  }
-
   return (
     <div className="mt-6 space-y-3">
       {!paymentsAvailable && (
@@ -254,14 +222,6 @@ export default function SubscribeActions({
           Unlock this episode for {coinPrice} coins
         </button>
       )}
-      <button
-        type="button"
-        disabled={pending !== null}
-        onClick={() => void unlockWithAd()}
-        className="w-full rounded-2xl border border-zinc-600 px-5 py-4 text-left font-semibold text-zinc-200 disabled:opacity-60"
-      >
-        Watch a short ad to unlock this episode
-      </button>
       {message && <p className="rounded-xl bg-rose-950/60 p-3 text-sm text-rose-200">{message}</p>}
     </div>
   );
