@@ -1,0 +1,1 @@
+ALTER TYPE "PurchaseProvider" ADD VALUE 'RAZORPAY';

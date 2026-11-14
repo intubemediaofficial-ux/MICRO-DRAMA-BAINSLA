@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { razorpayConfigured } from "@/server/razorpay";
+import CoinPackCheckout from "./coin-pack-checkout";
 export default async function WalletPage() {
   const session = await getSession();
   const user = session
@@ -13,6 +15,7 @@ export default async function WalletPage() {
     where: { isActive: true },
     orderBy: { sortOrder: "asc" },
   });
+  const coinPacksEnabled = user ? await razorpayConfigured() : false;
   return (
     <div className="p-5 pb-24">
       <Link href="/" className="text-zinc-400">
@@ -41,25 +44,21 @@ export default async function WalletPage() {
             </form>
           </div>
           <h2 className="mt-8 text-xl font-bold">Top up</h2>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            {bundles.map((bundle) => (
-              <form
-                action="/api/purchases"
-                method="post"
-                key={bundle.id}
-                className="rounded-2xl bg-zinc-900 p-4"
-              >
-                <input type="hidden" name="bundleId" value={bundle.id} />
-                <p className="text-2xl font-black">🪙 {bundle.coins + bundle.bonusCoins}</p>
-                <p className="text-sm text-zinc-400">
-                  ₹{(bundle.priceMinor / 100).toFixed(0)} · Dev checkout
-                </p>
-                <button className="mt-4 rounded-full bg-rose-500 px-4 py-2 text-sm font-bold">
-                  Buy coins
-                </button>
-              </form>
-            ))}
-          </div>
+          {coinPacksEnabled ? (
+            <CoinPackCheckout
+              bundles={bundles.map(({ id, coins, bonusCoins, priceMinor, currency }) => ({
+                id,
+                coins,
+                bonusCoins,
+                priceMinor,
+                currency,
+              }))}
+            />
+          ) : (
+            <p className="mt-3 rounded-2xl bg-zinc-900 p-4 text-sm font-semibold text-zinc-400">
+              Coin packs open soon.
+            </p>
+          )}
           <h2 className="mt-8 text-xl font-bold">Recent activity</h2>
           <div className="mt-3 space-y-2">
             {user.transactions.map((tx) => (

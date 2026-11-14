@@ -8,7 +8,17 @@ vi.hoisted(() => {
   process.env.RAZORPAY_KEY_ID = "rzp_test_key";
   process.env.RAZORPAY_KEY_SECRET = "rzp_test_secret";
   process.env.RAZORPAY_WEBHOOK_SECRET = "rzp_webhook_secret";
+  process.env.PAYMENTS_ENABLED = "true";
 });
+
+vi.mock("@/server/settings", () => ({
+  getSettings: async () => ({
+    RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || undefined,
+    RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || undefined,
+    RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET || undefined,
+    PAYMENTS_ENABLED: process.env.PAYMENTS_ENABLED === "true",
+  }),
+}));
 
 import { prisma } from "../src/server/db";
 import {
@@ -81,6 +91,7 @@ describe("razorpay subscriptions", () => {
     delete process.env.RAZORPAY_KEY_ID;
     delete process.env.RAZORPAY_KEY_SECRET;
     delete process.env.RAZORPAY_WEBHOOK_SECRET;
+    delete process.env.PAYMENTS_ENABLED;
   });
 
   it("starts a trial checkout, confirms it and renews from webhooks", async () => {
@@ -144,8 +155,10 @@ describe("razorpay subscriptions", () => {
       },
     };
     const body = JSON.stringify(charged);
-    expect(() => verifyRazorpayWebhook(body, "wrong")).toThrow("INVALID_WEBHOOK_SIGNATURE");
-    const event = verifyRazorpayWebhook(
+    await expect(verifyRazorpayWebhook(body, "wrong")).rejects.toThrow(
+      "INVALID_WEBHOOK_SIGNATURE",
+    );
+    const event = await verifyRazorpayWebhook(
       body,
       createHmac("sha256", "rzp_webhook_secret").update(body).digest("hex"),
     );

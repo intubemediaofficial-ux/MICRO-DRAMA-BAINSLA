@@ -149,7 +149,7 @@ async function startSubscription(
   deviceFingerprint: string | undefined,
   now: Date,
 ) {
-  if (!paymentsEnabled()) throw new Error("PAYMENTS_UNAVAILABLE");
+  if (!(await paymentsEnabled())) throw new Error("PAYMENTS_UNAVAILABLE");
   const plan = await findPlan(planCode);
   if (!plan) throw new Error("PLAN_NOT_FOUND");
   const price = choosePlanPrice(plan, currency);

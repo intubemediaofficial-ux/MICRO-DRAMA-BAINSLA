@@ -33,7 +33,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
   const entitlement = await resolveEpisodeEntitlement(session.userId, id);
   if (!entitlement.entitled) {
-    const offers = await getSubscriptionOffers(resolveCurrency(_request.headers));
+    const offers = await getSubscriptionOffers(await resolveCurrency(_request.headers));
     const offer = offers.find((item) => item.plan.trialDays > 0) ?? offers[0] ?? null;
     const trialAlreadyUsed = await hasUsedTrial(session.userId);
     return NextResponse.json(

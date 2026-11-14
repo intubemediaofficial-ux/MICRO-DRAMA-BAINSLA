@@ -38,6 +38,7 @@ enum PurchaseProvider {
   UPI
   CARD
   PAYPAL
+  RAZORPAY
 }
 
 enum PurchaseStatus {
@@ -590,4 +591,12 @@ model OtpChallenge {
   createdAt  DateTime  @default(now())
 
   @@index([identifier, createdAt])
+}
+
+model AppSetting {
+  key         String   @id
+  value       String
+  isSecret    Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+  updatedById String?
 }

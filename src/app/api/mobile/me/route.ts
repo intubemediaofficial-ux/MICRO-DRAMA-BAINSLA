@@ -8,13 +8,17 @@ import { getSubscriptionOffers, getUserSubscription, hasUsedTrial } from "@/serv
 export async function GET(request: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
+  const [currency, paymentsAvailable] = await Promise.all([
+    resolveCurrency(request.headers),
+    paymentsEnabled(),
+  ]);
   const [user, subscription, offers, trialUsed] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.userId },
       select: { id: true, email: true, phone: true, role: true, coinBalance: true },
     }),
     getUserSubscription(session.userId),
-    getSubscriptionOffers(resolveCurrency(request.headers)),
+    getSubscriptionOffers(currency),
     hasUsedTrial(session.userId),
   ]);
   if (!user) return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
@@ -41,7 +45,7 @@ export async function GET(request: Request) {
         }
       : null,
     trialUsed,
-    paymentsEnabled: paymentsEnabled(),
+    paymentsEnabled: paymentsAvailable,
     offers: offers.map(({ plan, price }) => ({
       code: plan.code,
       name: plan.name,
