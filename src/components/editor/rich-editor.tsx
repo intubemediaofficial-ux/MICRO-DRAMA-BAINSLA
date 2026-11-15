@@ -99,7 +99,7 @@ export default function RichEditor({
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3, 4] }, link: false, underline: false }),
+      StarterKit.configure({ heading: { levels: [1, 2, 3, 4] }, link: false }),
       CmsLink,
       TextAlign.configure({ types: ["heading", "paragraph"], alignments: ["left", "center", "right", "justify"] }),
       TextStyle,

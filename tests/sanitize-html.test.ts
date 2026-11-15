@@ -14,9 +14,10 @@ describe("CMS HTML sanitization", () => {
 
   it("keeps editor tables, justified text, safe YouTube embeds, and CMS columns", () => {
     const html = sanitizeContentHtml(
-      '<p style="text-align: justify">Text</p><table><tr><td colspan="2">Cell</td></tr></table><div data-type="columns" class="cms-columns cms-columns-2"><div class="cms-column">A</div></div><iframe src="https://www.youtube-nocookie.com/embed/abc" allowfullscreen></iframe>',
+      '<p style="text-align: justify">Text</p><u>Underlined</u><table><tr><td colspan="2">Cell</td></tr></table><div data-type="columns" class="cms-columns cms-columns-2"><div class="cms-column">A</div></div><iframe src="https://www.youtube-nocookie.com/embed/abc" allowfullscreen></iframe>',
     );
     expect(html).toContain("text-align:justify");
+    expect(html).toContain("<u>Underlined</u>");
     expect(html).toContain('colspan="2"');
     expect(html).toContain("cms-columns-2");
     expect(html).toContain("youtube-nocookie.com/embed/abc");
