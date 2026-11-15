@@ -111,27 +111,27 @@ export default function ContentEditor({
     setSaved(false);
   }
 
-  async function save(status: ContentData["status"]) {
+  async function save(overrides: Partial<ContentData> = {}) {
     setBusy(true);
     setError("");
     setSaved(false);
     try {
-      const currentId = data.id || id;
-      const scheduledAt = data.publishedAt ? new Date(data.publishedAt) : null;
-      const publishedAt = status === "DRAFT"
+      const content = { ...data, ...overrides };
+      const currentId = content.id || id;
+      const scheduledAt = content.publishedAt ? new Date(content.publishedAt) : null;
+      const publishedAt = content.status === "DRAFT"
         ? null
-        : status === "SCHEDULED"
+        : content.status === "SCHEDULED"
           ? scheduledAt && !Number.isNaN(scheduledAt.getTime()) ? scheduledAt.toISOString() : null
           : scheduledAt && !Number.isNaN(scheduledAt.getTime()) && scheduledAt.getTime() <= Date.now()
             ? scheduledAt.toISOString()
             : new Date().toISOString();
       const payload = {
-        ...data,
-        status,
+        ...content,
         publishedAt,
-        excerpt: data.excerpt || null,
-        featuredImage: data.featuredImage || null,
-        categoryId: data.categoryId || null,
+        excerpt: content.excerpt || null,
+        featuredImage: content.featuredImage || null,
+        categoryId: content.categoryId || null,
         customizeBuiltIn: kind === "page" && Boolean(customize),
       };
       const url = currentId ? `${endpoint}/${currentId}` : endpoint;
@@ -227,8 +227,8 @@ export default function ContentEditor({
             )}
             {currentId && data.status === "PUBLISHED" && <p className="text-xs text-zinc-400">Published {data.publishedAt ? new Date(data.publishedAt).toLocaleString() : ""}</p>}
             <div className="flex flex-wrap gap-2">
-              <button type="button" disabled={busy} onClick={() => void save("DRAFT")} className="rounded-lg bg-zinc-700 px-3 py-2 text-sm font-semibold disabled:opacity-50">Save draft</button>
-              <button type="button" disabled={busy || (data.status === "SCHEDULED" && !data.publishedAt)} onClick={() => void save(data.status)} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-bold disabled:opacity-50">
+              <button type="button" disabled={busy} onClick={() => void save({ status: "DRAFT" })} className="rounded-lg bg-zinc-700 px-3 py-2 text-sm font-semibold disabled:opacity-50">Save draft</button>
+              <button type="button" disabled={busy || (data.status === "SCHEDULED" && !data.publishedAt)} onClick={() => void save(data.status === "SCHEDULED" ? {} : { status: "PUBLISHED" })} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-bold disabled:opacity-50">
                 {busy ? "Saving…" : data.status === "SCHEDULED" ? "Schedule" : currentId && data.status === "PUBLISHED" ? "Update" : "Publish"}
               </button>
             </div>
