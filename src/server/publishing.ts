@@ -17,6 +17,10 @@ export function publicContentWhere(now = new Date()) {
   };
 }
 
+export function canPreviewContent(preview: boolean, role?: string | null) {
+  return preview && role === "ADMIN";
+}
+
 export const publicSeriesWhere = {
   isPublished: true,
   episodes: { some: publicEpisodeWhere },

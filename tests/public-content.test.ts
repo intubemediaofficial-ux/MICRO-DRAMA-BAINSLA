@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { publicContentWhere } from "@/server/publishing";
+import { canPreviewContent, publicContentWhere } from "@/server/publishing";
 
 describe("public content visibility", () => {
   it("includes published content and scheduled content at or before now", () => {
@@ -10,5 +10,11 @@ describe("public content visibility", () => {
         { status: "SCHEDULED", publishedAt: { lte: now } },
       ],
     });
+  });
+
+  it("allows preview lookup only for admins with the preview flag", () => {
+    expect(canPreviewContent(true, "ADMIN")).toBe(true);
+    expect(canPreviewContent(true, "USER")).toBe(false);
+    expect(canPreviewContent(false, "ADMIN")).toBe(false);
   });
 });

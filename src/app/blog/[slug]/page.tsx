@@ -6,10 +6,11 @@ import BlogPostCard from "@/components/blog/post-card";
 import CmsHtml from "@/components/cms-html";
 import { JsonLd } from "@/components/json-ld";
 import { SeoFieldsSchema } from "@/lib/seo";
+import { getSession } from "@/server/auth";
 import { resolveRedirect } from "@/server/cms";
 import { findPublicBlogPost, parseSeoFields } from "@/server/blog-content";
 import { prisma } from "@/server/db";
-import { publicContentWhere } from "@/server/publishing";
+import { canPreviewContent, publicContentWhere } from "@/server/publishing";
 import { buildMetadata, SITE_ORIGIN } from "@/server/seo";
 import { getSeoGlobal } from "@/server/site-config";
 import { articleSchema, breadcrumbList, faqPageSchema, schemaTypeFor } from "@/server/structured-data";
@@ -19,9 +20,24 @@ function redirectTo(target: { toPath: string; permanent: boolean }) {
   redirect(target.toPath as Route);
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const post = await findPublicBlogPost(decodeURIComponent(slug));
+async function findPost(slug: string, preview: boolean) {
+  const session = preview ? await getSession() : null;
+  const canPreview = canPreviewContent(preview, session?.role);
+  const post = canPreview
+    ? await prisma.blogPost.findUnique({ where: { slug }, include: { category: true } })
+    : await findPublicBlogPost(slug);
+  return { post, canPreview };
+}
+
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ preview?: string }>;
+}) {
+  const [{ slug: rawSlug }, query] = await Promise.all([params, searchParams]);
+  const { post, canPreview } = await findPost(decodeURIComponent(rawSlug), query.preview === "1");
   if (!post) return {};
   const seo = parseSeoFields(post.seo);
   return buildMetadata({
@@ -30,17 +46,23 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: post.title,
     excerpt: post.excerpt,
     image: post.featuredImage,
-    seo,
+    seo: canPreview ? { ...seo, noindex: true } : seo,
     publishedAt: post.publishedAt,
     modifiedAt: post.updatedAt,
     vars: { category: post.category?.name },
   });
 }
 
-export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug: rawSlug } = await params;
+export default async function BlogPostPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ preview?: string }>;
+}) {
+  const [{ slug: rawSlug }, query] = await Promise.all([params, searchParams]);
   const slug = decodeURIComponent(rawSlug);
-  const post = await findPublicBlogPost(slug);
+  const { post, canPreview } = await findPost(slug, query.preview === "1");
   if (!post) {
     const target = await resolveRedirect(`/blog/${slug}`).catch(() => null);
     if (target) redirectTo(target);
@@ -110,6 +132,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       <p className="mt-3 text-sm text-zinc-500">
         {post.publishedAt?.toLocaleDateString("en-US", { dateStyle: "long" })} · {post.readingMinutes} min read
       </p>
+      {canPreview && post.status !== "PUBLISHED" && <p className="mt-3 rounded-lg bg-amber-400/10 p-3 text-sm text-amber-200">Draft preview</p>}
       <div className="my-6 flex gap-4 text-sm">
         <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post.title)}&url=${encodeURIComponent(url)}`} target="_blank" rel="noopener noreferrer" className="text-rose-300">Share on X</a>
         <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`} target="_blank" rel="noopener noreferrer" className="text-rose-300">Share on Facebook</a>

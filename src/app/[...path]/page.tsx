@@ -8,7 +8,7 @@ import { getSession } from "@/server/auth";
 import { resolveRedirect } from "@/server/cms";
 import { prisma } from "@/server/db";
 import { findPublicContentPage } from "@/server/public-cms";
-import { publicContentWhere } from "@/server/publishing";
+import { canPreviewContent, publicContentWhere } from "@/server/publishing";
 import { buildMetadata, SITE_ORIGIN } from "@/server/seo";
 import { getSeoGlobal } from "@/server/site-config";
 import {
@@ -23,7 +23,7 @@ import {
 
 async function findPage(slug: string, preview: boolean) {
   const session = preview ? await getSession() : null;
-  const canPreview = preview && session?.role === "ADMIN";
+  const canPreview = canPreviewContent(preview, session?.role);
   if (canPreview) return prisma.contentPage.findUnique({ where: { slug } });
   return findPublicContentPage(slug);
 }
