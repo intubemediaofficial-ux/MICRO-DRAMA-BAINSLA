@@ -4,7 +4,7 @@ import { z } from "zod";
 import { adminSession } from "@/server/admin";
 import { storage } from "@/server/storage";
 
-const kind = z.enum(["poster", "teaser", "cast"]);
+const kind = z.enum(["poster", "teaser", "cast", "content"]);
 
 export async function POST(request: Request) {
   try {
@@ -14,6 +14,13 @@ export async function POST(request: Request) {
     const category = kind.parse(form.get("category") ?? "poster");
     if (!(file instanceof File) || file.size === 0)
       return NextResponse.json({ error: { message: "Choose a file to upload." } }, { status: 400 });
+    if (category === "content") {
+      const imageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
+      if (!imageTypes.has(file.type))
+        return NextResponse.json({ error: { message: "Choose a supported image file." } }, { status: 400 });
+      if (file.size > 10 * 1024 * 1024)
+        return NextResponse.json({ error: { message: "Images must be smaller than 10 MB." } }, { status: 400 });
+    }
     if (file.size > 200 * 1024 * 1024)
       return NextResponse.json({ error: { message: "Files must be smaller than 200 MB." } }, { status: 400 });
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");

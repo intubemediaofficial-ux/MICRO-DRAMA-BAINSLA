@@ -69,7 +69,7 @@ CREATE TABLE "Redirect" (
     "fromPath" TEXT NOT NULL,
     "toPath" TEXT NOT NULL,
     "permanent" BOOLEAN NOT NULL DEFAULT true,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "active" BOOLEAN NOT NULL DEFAULT true,
     "hits" INTEGER NOT NULL DEFAULT 0,
     "lastHitAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -8,6 +8,15 @@ export const publicEpisodeWhere = {
   hlsPath: { notIn: PLACEHOLDER_VIDEO_PATHS },
 } satisfies Prisma.EpisodeWhereInput;
 
+export function publicContentWhere(now = new Date()) {
+  return {
+    OR: [
+      { status: "PUBLISHED" as const },
+      { status: "SCHEDULED" as const, publishedAt: { lte: now } },
+    ],
+  };
+}
+
 export const publicSeriesWhere = {
   isPublished: true,
   episodes: { some: publicEpisodeWhere },

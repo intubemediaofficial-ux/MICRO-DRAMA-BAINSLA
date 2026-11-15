@@ -4,6 +4,7 @@ import { z } from "zod";
 import { adminSession } from "@/server/admin";
 import { prisma } from "@/server/db";
 import { hasPlayableVideo } from "@/lib/publishing";
+import { sanitizedSeo } from "@/server/cms-content";
 import {
   duplicateSkuMessage,
   episodeNumberConflictMessage,
@@ -27,6 +28,7 @@ const input = z.object({
         publishedAt: z.coerce.date().nullable().optional(),
         originalFilename: z.string().max(255).nullable().optional(),
         sku: z.string().trim().max(120).transform((value) => value || null).nullable().optional(),
+        seo: z.unknown().nullable().optional(),
       }),
     )
     .min(1)
@@ -72,18 +74,21 @@ export async function POST(request: Request) {
     let episodes;
     try {
       episodes = await prisma.$transaction(
-        data.episodes.map((episode) =>
-          prisma.episode.create({
+        data.episodes.map((episode) => {
+          const seo = sanitizedSeo(episode.seo);
+          const { seo: _seo, ...episodeData } = episode;
+          return prisma.episode.create({
             data: {
-              ...episode,
+              ...episodeData,
+              ...(seo !== undefined ? { seo } : {}),
               publishedAt: hasPlayableVideo(episode) ? (episode.publishedAt ?? null) : null,
               seriesId: data.seriesId,
               seasonId: season.id,
               thumbnailUrl: episode.thumbnailUrl ?? series.posterUrl,
               thumbnailSource: "LEGACY",
             },
-          }),
-        ),
+          });
+        }),
       );
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

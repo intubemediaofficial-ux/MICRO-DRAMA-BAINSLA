@@ -725,7 +725,7 @@ model Redirect {
   fromPath  String    @unique
   toPath    String
   permanent Boolean   @default(true)
-  isActive  Boolean   @default(true)
+  active    Boolean   @default(true)
   hits      Int       @default(0)
   lastHitAt DateTime?
   createdAt DateTime  @default(now())
