@@ -25,7 +25,7 @@ type ContentData = {
   readingMinutes?: number;
 };
 const empty: ContentData = {
-  title: "", slug: "", excerpt: "", contentHtml: "", contentJson: null,
+  title: "", slug: "", excerpt: "", contentHtml: "", contentJson: { type: "doc", content: [{ type: "paragraph" }] },
   featuredImage: "", status: "DRAFT", publishedAt: "", seo: {}, template: "default", tags: [], categoryId: "",
 };
 
