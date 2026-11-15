@@ -11,7 +11,7 @@ export default function ContentList({ kind }: { kind: "page" | "post" }) {
   const base = kind === "page" ? "/api/admin/pages" : "/api/admin/blog/posts";
   useEffect(() => {
     let active = true;
-    void fetch(`${base}?search=${encodeURIComponent(search)}`).then((response) => response.json()).then((result) => {
+    void fetch(`${base}?q=${encodeURIComponent(search)}`).then((response) => response.json()).then((result) => {
       if (active) {
         setItems(kind === "page" ? result.pages || [] : result.posts || []);
         if (kind === "page") setBuiltIns(result.builtIns || []);

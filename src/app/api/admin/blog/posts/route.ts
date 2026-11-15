@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { analyzeSeo, readingMinutes } from "@/lib/seo-analysis";
 import { SeoFieldsSchema } from "@/lib/seo";
+import { cmsSearchWhere } from "@/lib/cms-search";
 import { adminSession } from "@/server/admin";
 import { saveSlugRedirect } from "@/server/cms";
 import {
@@ -45,11 +46,11 @@ export async function GET(request: Request) {
   try {
     await adminSession();
     const url = new URL(request.url);
-    const query = url.searchParams.get("q")?.trim();
+    const query = url.searchParams.get("q");
     const status = url.searchParams.get("status");
     const posts = await prisma.blogPost.findMany({
       where: {
-        ...(query ? { OR: [{ title: { contains: query, mode: "insensitive" } }, { slug: { contains: query, mode: "insensitive" } }] } : {}),
+        ...cmsSearchWhere(query),
         ...(status && ["DRAFT", "PUBLISHED", "SCHEDULED"].includes(status)
           ? { status: status as "DRAFT" | "PUBLISHED" | "SCHEDULED" }
           : {}),

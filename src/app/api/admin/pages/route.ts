@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { cmsSearchWhere, matchesCmsSearch } from "@/lib/cms-search";
 import { analyzeSeo } from "@/lib/seo-analysis";
 import { SeoFieldsSchema } from "@/lib/seo";
 import { BUILTIN_PAGES } from "@/lib/builtin-pages";
@@ -44,13 +45,19 @@ function errorResponse(error: unknown, fallback: string) {
   return NextResponse.json({ error: { message: status === 500 ? fallback : message } }, { status });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await adminSession();
-    const pages = await prisma.contentPage.findMany({ orderBy: { updatedAt: "desc" } });
+    const query = new URL(request.url).searchParams.get("q");
+    const pages = await prisma.contentPage.findMany({
+      where: cmsSearchWhere(query),
+      orderBy: { updatedAt: "desc" },
+    });
     return NextResponse.json({
       pages: pages.map((page) => ({ ...page, seoScore: seoScore(page) })),
-      builtIns: Object.entries(BUILTIN_PAGES).map(([slug, page]) => ({ slug, ...page })),
+      builtIns: Object.entries(BUILTIN_PAGES)
+        .filter(([slug, page]) => matchesCmsSearch(query, slug, page.title))
+        .map(([slug, page]) => ({ slug, ...page })),
     });
   } catch (error) {
     return errorResponse(error, "Page lookup failed");
