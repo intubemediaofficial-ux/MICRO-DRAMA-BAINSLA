@@ -48,6 +48,7 @@ export default function ContentEditor({
   const router = useRouter();
   const [data, setData] = useState<ContentData>(empty);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [tagsInput, setTagsInput] = useState("");
   const [busy, setBusy] = useState(Boolean(id || customize));
   const editorKey = id ?? customize ?? "new";
   const [loadedId, setLoadedId] = useState<string | null>(() => id || customize ? null : editorKey);
@@ -73,19 +74,22 @@ export default function ContentEditor({
           const result = await response.json();
           if (!response.ok) throw new Error(result.error?.message || "Unable to load content");
           const content = result.page || result.post;
-          if (active) setData({
-            ...empty,
-            ...content,
-            id: content.id,
-            excerpt: content.excerpt || "",
-            featuredImage: content.featuredImage || "",
-            contentJson: content.contentJson as JSONContent | null,
-            publishedAt: localDateTime(content.publishedAt),
-            seo: (content.seo || {}) as SeoFields,
-            template: content.template || "default",
-            tags: content.tags || [],
-            categoryId: content.categoryId || "",
-          });
+          if (active) {
+            setData({
+              ...empty,
+              ...content,
+              id: content.id,
+              excerpt: content.excerpt || "",
+              featuredImage: content.featuredImage || "",
+              contentJson: content.contentJson as JSONContent | null,
+              publishedAt: localDateTime(content.publishedAt),
+              seo: (content.seo || {}) as SeoFields,
+              template: content.template || "default",
+              tags: content.tags || [],
+              categoryId: content.categoryId || "",
+            });
+            setTagsInput((content.tags || []).join(", "));
+          }
         } else if (customize) {
           const response = await fetch("/api/admin/pages");
           const result = await response.json();
@@ -259,12 +263,16 @@ export default function ContentEditor({
           ) : (
             <>
               <label className="block text-sm">Category<select className="mt-1 w-full rounded-lg bg-zinc-900 p-2" value={data.categoryId} onChange={(event) => change("categoryId", event.target.value)}><option value="">Uncategorized</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-              <label className="block text-sm">Tags (comma separated)<input className="mt-1 w-full rounded-lg bg-zinc-900 p-2" value={data.tags.join(", ")} onChange={(event) => change("tags", event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean))} /></label>
+              <label className="block text-sm">Tags (comma separated)<input className="mt-1 w-full rounded-lg bg-zinc-900 p-2" value={tagsInput} onChange={(event) => {
+                const value = event.target.value;
+                setTagsInput(value);
+                change("tags", value.split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 30));
+              }} /></label>
             </>
           )}
         </aside>
       </div>
-      <SeoPanel kind={kind} title={data.title} slug={data.slug} description={data.excerpt} html={data.contentHtml} seo={data.seo} onChange={(seo) => change("seo", seo)} />
+      <SeoPanel key={loadedId ?? editorKey} kind={kind} title={data.title} slug={data.slug} description={data.excerpt} html={data.contentHtml} seo={data.seo} onChange={(seo) => change("seo", seo)} />
     </div>
   );
 }

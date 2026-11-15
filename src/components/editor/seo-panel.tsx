@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { analyzeSeo, seoPreviewPath, type SeoContentKind } from "@/lib/seo-analysis";
 import { renderTitleTemplate, type SeoFields } from "@/lib/seo";
 
@@ -25,6 +25,15 @@ export default function SeoPanel({
 }) {
   const [tab, setTab] = useState<(typeof tabs)[number]>("General");
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
+  const [keywordsText, setKeywordsText] = useState(() => seo.keywords?.join(", ") || "");
+  const lastAppliedKeywords = useRef(seo.keywords?.join(", ") || "");
+  const serializedKeywords = seo.keywords?.join(", ") || "";
+  useEffect(() => {
+    if (serializedKeywords !== lastAppliedKeywords.current) {
+      lastAppliedKeywords.current = serializedKeywords;
+      setKeywordsText(serializedKeywords);
+    }
+  }, [serializedKeywords]);
   const patch = (value: Partial<SeoFields>) => onChange({ ...seo, ...value });
   const titleVariables = { title, sitename: "Intube Drama", sep: "|" };
   const renderedTitle = renderTitleTemplate(
@@ -97,7 +106,13 @@ export default function SeoPanel({
               <input className={`${field} mt-1`} value={seo.focusKeyword || ""} onChange={(event) => patch({ focusKeyword: event.target.value })} />
             </label>
             <label className="block text-sm">Keywords (comma separated)
-              <input className={`${field} mt-1`} value={seo.keywords?.join(", ") || ""} onChange={(event) => patch({ keywords: event.target.value.split(",").map((part) => part.trim()).filter(Boolean).slice(0, 20) })} />
+              <input className={`${field} mt-1`} value={keywordsText} onChange={(event) => {
+                const value = event.target.value;
+                const keywords = value.split(",").map((part) => part.trim()).filter(Boolean).slice(0, 20);
+                setKeywordsText(value);
+                lastAppliedKeywords.current = keywords.join(", ");
+                patch({ keywords });
+              }} />
             </label>
           </div>
           <div>
