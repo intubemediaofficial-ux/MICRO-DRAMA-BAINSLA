@@ -17,6 +17,12 @@ enum SeriesStatus {
   COMPLETED
 }
 
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  SCHEDULED
+}
+
 enum LedgerType {
   PURCHASE
   EPISODE_UNLOCK
@@ -164,6 +170,7 @@ model Series {
   castMembers      CastMember[]
   homeRailItems    HomeRailItem[]
   watchlist        WatchlistItem[]
+  seo              Json?
 
   @@index([isPublished, createdAt])
   @@index([status])
@@ -232,8 +239,10 @@ model Episode {
   progress     WatchProgress[]
   analyticsEvents AnalyticsEvent[]
   likes        EpisodeLike[]
+  seo          Json?
 
   @@unique([seriesId, number])
+  @@index([seasonId])
   @@index([seriesId])
   @@index([publishedAt])
 }
@@ -658,4 +667,74 @@ model AppSetting {
   isSecret    Boolean  @default(false)
   updatedAt   DateTime @updatedAt
   updatedById String?
+}
+
+model ContentPage {
+  id            String        @id @default(cuid())
+  slug          String        @unique
+  title         String
+  contentJson   Json          @default("{}")
+  contentHtml   String        @default("")
+  excerpt       String?
+  featuredImage String?
+  template      String        @default("default")
+  status        ContentStatus @default(DRAFT)
+  publishedAt   DateTime?
+  seo           Json?
+  authorId      String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([status, publishedAt])
+}
+
+model BlogPost {
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  title          String
+  contentJson    Json          @default("{}")
+  contentHtml    String        @default("")
+  excerpt        String?
+  featuredImage  String?
+  status         ContentStatus @default(DRAFT)
+  publishedAt    DateTime?
+  seo            Json?
+  authorId       String?
+  categoryId     String?
+  tags           String[]      @default([])
+  readingMinutes Int           @default(1)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  category       BlogCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([status, publishedAt])
+  @@index([categoryId])
+}
+
+model BlogCategory {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  name        String
+  description String?
+  seo         Json?
+  posts       BlogPost[]
+}
+
+model Redirect {
+  id        String    @id @default(cuid())
+  fromPath  String    @unique
+  toPath    String
+  permanent Boolean   @default(true)
+  isActive  Boolean   @default(true)
+  hits      Int       @default(0)
+  lastHitAt DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model NotFoundLog {
+  id         String   @id @default(cuid())
+  path       String   @unique @db.VarChar(300)
+  hits       Int      @default(1)
+  referrer   String?
+  lastSeenAt DateTime @default(now())
 }
