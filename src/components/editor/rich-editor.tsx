@@ -249,7 +249,17 @@ export default function RichEditor({
         {button(codeMode ? "Visual editor" : "Code editor", toggleCode)}
       </div>
       {codeMode
-        ? <textarea value={html} onChange={(event) => setHtml(event.target.value)} className="min-h-[420px] w-full resize-y bg-zinc-950 p-5 font-mono text-sm outline-none" aria-label="HTML editor" />
+        ? <textarea
+            value={html}
+            onChange={(event) => {
+              const nextHtml = event.target.value;
+              setHtml(nextHtml);
+              editor!.commands.setContent(nextHtml, { emitUpdate: false });
+              onChange({ json: editor!.getJSON(), html: editor!.getHTML(), text: editor!.getText() });
+            }}
+            className="min-h-[420px] w-full resize-y bg-zinc-950 p-5 font-mono text-sm outline-none"
+            aria-label="HTML editor"
+          />
         : <EditorContent editor={editor} className="min-h-[420px] px-5 py-4 [&_.ProseMirror]:min-h-[380px] [&_.ProseMirror]:outline-none [&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left [&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0 [&_.ProseMirror_p.is-editor-empty:first-child::before]:text-zinc-600 [&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]" />}
       <div className="border-t border-white/10 px-4 py-2 text-xs text-zinc-500">
         {editor.storage.characterCount.words()} words · {editor.storage.characterCount.characters()} characters
