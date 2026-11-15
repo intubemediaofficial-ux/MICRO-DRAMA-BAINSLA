@@ -190,10 +190,12 @@ export default function SiteConfigEditor({ kind }: { kind: "seo" | "theme" }) {
 
   if (!config) return <p role={error ? "alert" : undefined} className="p-6 text-zinc-400">{error || "Loading settings…"}</p>;
 
-  const homeOrder = [...new Set([
-    ...config.home.sectionOrder,
-    ...sectionKeys.filter((key) => !config.home.sectionOrder.includes(key)),
-  ])] as string[];
+  const homeSections: string[] = kind === "theme" && Array.isArray(config.home?.sectionOrder)
+    ? config.home.sectionOrder
+    : [];
+  const homeOrder = kind === "theme"
+    ? [...new Set([...homeSections, ...sectionKeys.filter((key) => !homeSections.includes(key))])]
+    : [];
   return (
     <main className="space-y-5 p-5">
       <header className="flex flex-wrap items-center gap-3">
