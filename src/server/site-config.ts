@@ -236,7 +236,8 @@ function readDocument<T>(schema: z.ZodType<T>, defaults: T, stored: unknown): T 
 
 function mergePatch(current: unknown, patch: unknown): unknown {
   if (!isRecord(current) || !isRecord(patch)) return patch === undefined ? current : patch;
-  return Object.fromEntries(Object.keys(current).map((key) => [
+  const keys = new Set([...Object.keys(current), ...Object.keys(patch)]);
+  return Object.fromEntries([...keys].map((key) => [
     key,
     patch[key] === undefined ? current[key] : mergePatch(current[key], patch[key]),
   ]));

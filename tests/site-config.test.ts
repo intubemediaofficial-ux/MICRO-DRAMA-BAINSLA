@@ -1,8 +1,31 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const storedSettings = vi.hoisted(() => new Map<string, string>());
+
+vi.mock("@/server/db", () => ({
+  prisma: {
+    appSetting: {
+      findUnique: vi.fn(async ({ where }: { where: { key: string } }) => {
+        const value = storedSettings.get(where.key);
+        return value === undefined ? null : { value };
+      }),
+      upsert: vi.fn(async ({ where, create, update }: {
+        where: { key: string };
+        create: { value: string };
+        update: { value: string };
+      }) => {
+        storedSettings.set(where.key, create.value ?? update.value);
+      }),
+    },
+  },
+}));
+
 import {
+  getSeoGlobal,
   mergeSiteConfig,
   SEO_GLOBAL_DEFAULTS,
   SeoGlobalSchema,
+  saveSeoGlobal,
   THEME_DEFAULTS,
   ThemeSchema,
 } from "@/server/site-config";
@@ -35,5 +58,17 @@ describe("site configuration defaults", () => {
       ...THEME_DEFAULTS,
       customCss: ".banner { color: red; }<script>alert(1)</script>",
     }).customCss).not.toContain("<");
+  });
+
+  it("stores and reads optional analytics IDs absent from the defaults", async () => {
+    storedSettings.clear();
+    await saveSeoGlobal({ analytics: { ga4Id: "G-EXAMPLE123" } }, "admin-test");
+
+    expect(JSON.parse(storedSettings.get("SEO_GLOBAL")!)).toMatchObject({
+      analytics: { ga4Id: "G-EXAMPLE123" },
+    });
+    expect(await getSeoGlobal()).toMatchObject({
+      analytics: { ga4Id: "G-EXAMPLE123" },
+    });
   });
 });
