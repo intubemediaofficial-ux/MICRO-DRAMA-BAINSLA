@@ -245,7 +245,7 @@ object Api {
 
     suspend fun setWatchlist(seriesId: String, saved: Boolean) {
         val body = JSONObject().put("seriesId", seriesId)
-        if (saved) Net.delete("/api/watchlist", body) else Net.post("/api/watchlist", body)
+        if (saved) Net.post("/api/watchlist", body) else Net.delete("/api/watchlist", body)
     }
 
     suspend fun checkinStatus(): CheckinStatus {
