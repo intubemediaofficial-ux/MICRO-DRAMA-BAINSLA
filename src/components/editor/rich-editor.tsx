@@ -123,6 +123,11 @@ export default function RichEditor({
       attributes: { class: "cms-content" },
     },
     content: initialContent ?? { type: "doc", content: [{ type: "paragraph" }] },
+    onCreate: ({ editor: created }) => onChange({
+      json: created.getJSON(),
+      html: created.getHTML(),
+      text: created.getText(),
+    }),
     onUpdate: ({ editor: updated }) => onChange({
       json: updated.getJSON(),
       html: updated.getHTML(),

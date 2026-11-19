@@ -95,7 +95,7 @@ export default function ContentEditor({
           const result = await response.json();
           const builtIn = result.builtIns?.find((page: { slug: string }) => page.slug === customize);
           if (!builtIn) throw new Error("Built-in page not found");
-          if (active) setData({ ...empty, title: builtIn.title, slug: builtIn.slug, contentHtml: builtIn.html });
+          if (active) setData({ ...empty, title: builtIn.title, slug: builtIn.slug, contentHtml: builtIn.html, contentJson: null });
         }
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : "Unable to load content");
