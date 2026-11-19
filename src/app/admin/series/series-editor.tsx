@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { hasPlayableVideo } from "@/lib/publishing";
+import type { SeoFields } from "@/lib/seo";
+import SeoPanel from "@/components/editor/seo-panel";
 import {
   Button,
   Confirm,
@@ -30,6 +32,7 @@ type Episode = {
   processingError?: string | null;
   originalFilename?: string | null;
   sku?: string | null;
+  seo?: SeoFields | null;
   subtitles?: { id: string; lang: string; srtPath: string }[];
 };
 type EpisodeActionResult =
@@ -85,6 +88,7 @@ type SeriesData = {
   castMembers: Cast[];
   seasons: Season[];
   episodes: Episode[];
+  seo?: SeoFields | null;
 };
 
 function slugify(value: string) {
@@ -241,6 +245,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   const [slug, setSlug] = useState(initial?.slug ?? "");
   const [slugEdited, setSlugEdited] = useState(Boolean(initial?.slug));
   const [synopsis, setSynopsis] = useState(initial?.synopsis ?? "");
+  const [seo, setSeo] = useState<SeoFields>(initial?.seo ?? {});
   const [posterUrl, setPosterUrl] = useState(initial?.posterUrl ?? "");
   const [teaserUrl, setTeaserUrl] = useState(initial?.teaserUrl ?? "");
   const [genres, setGenres] = useState(initial?.genres ?? []);
@@ -301,6 +306,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
       slug: slug || slugify(title),
       title,
       synopsis,
+      seo,
       posterUrl,
       teaserUrl,
       genres,
@@ -529,6 +535,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
         ...(hasPlayableVideo(episodeDraft) ? { publishedAt: episodeDraft.publishedAt } : {}),
         originalFilename: episodeDraft.originalFilename,
         sku: episodeDraft.sku,
+        seo: episodeDraft.seo ?? {},
       },
       "Episode saved.",
     );
@@ -990,6 +997,15 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
             </span>
           </label>
         </div>
+        <SeoPanel
+          kind="series"
+          title={title}
+          slug={slug}
+          description={synopsis}
+          html={`<p>${synopsis}</p>`}
+          seo={seo}
+          onChange={setSeo}
+        />
         <div className="mt-5 flex justify-end">
           <Button onClick={() => void saveSeries()} pending={saving}>
             {id ? "Save details" : "Create series"}
@@ -1762,6 +1778,15 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
                       )}
                     </label>
                   </div>
+                  <SeoPanel
+                    kind="episode"
+                    title={episodeDraft.title}
+                    slug={episodeDraft.id}
+                    description={episodeDraft.title}
+                    html=""
+                    seo={episodeDraft.seo ?? {}}
+                    onChange={(nextSeo) => setEpisodeDraft({ ...episodeDraft, seo: nextSeo })}
+                  />
                   <Button onClick={() => void saveEpisode()}>Save episode</Button>
                 </div>
                 <div className="space-y-4">

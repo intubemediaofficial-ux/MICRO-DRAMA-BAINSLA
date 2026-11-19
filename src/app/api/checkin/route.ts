@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordUserActivityDay } from "@/server/activity";
 import { getSession } from "@/server/auth";
 import { dailyCheckin } from "@/server/coins";
 export async function POST() {
@@ -9,6 +10,7 @@ export async function POST() {
     );
   try {
     const result = await dailyCheckin(session.userId);
+    void recordUserActivityDay(session.userId).catch(() => {});
     return NextResponse.json({ ok: true, streak: result.streak });
   } catch {
     return NextResponse.json({ error: { message: "Check-in failed" } }, { status: 400 });

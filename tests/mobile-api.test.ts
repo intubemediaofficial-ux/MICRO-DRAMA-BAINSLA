@@ -29,6 +29,8 @@ import { POST as logoutPost } from "../src/app/api/auth/logout/route";
 const suffix = crypto.randomUUID().slice(0, 8);
 const slug = `mobile-${suffix}`;
 let userId = "";
+let planId = "";
+let subscriptionId = "";
 
 describe("mobile api", () => {
   beforeAll(async () => {
@@ -64,6 +66,9 @@ describe("mobile api", () => {
     });
   });
   afterAll(async () => {
+    if (subscriptionId)
+      await prisma.subscription.deleteMany({ where: { id: subscriptionId } });
+    if (planId) await prisma.plan.deleteMany({ where: { id: planId } });
     await prisma.episode.deleteMany({ where: { series: { slug } } });
     await prisma.series.deleteMany({ where: { slug } });
     await prisma.user.deleteMany({ where: { id: userId } });
@@ -72,6 +77,7 @@ describe("mobile api", () => {
   it("serves home rails, series detail with access, search and account", async () => {
     const home = await (await homeGet()).json();
     expect(Array.isArray(home.rails)).toBe(true);
+    expect(home.continueWatching).toEqual([]);
 
     const params = { params: Promise.resolve({ slug }) };
     const detail = await (await seriesGet(new Request("http://x"), params)).json();
@@ -86,7 +92,66 @@ describe("mobile api", () => {
     await issueSession({ userId, role: "USER" });
     const me = await (await meGet(new Request("http://x"))).json();
     expect(me).toMatchObject({ user: { id: userId }, vipActive: false, subscription: null });
-    await logoutPost();
+    const episodesForResume = await prisma.episode.findMany({
+      where: { series: { slug } },
+      orderBy: { number: "asc" },
+    });
+    await prisma.watchProgress.createMany({
+      data: [
+        { userId, episodeId: episodesForResume[0].id, positionSec: 30, completed: true },
+        { userId, episodeId: episodesForResume[1].id, positionSec: 17, completed: false },
+      ],
+    });
+    const resumed = await (await seriesGet(new Request("http://x"), params)).json();
+    expect(resumed.seasons[0].episodes[0]).toMatchObject({ completed: true, positionSec: 30 });
+    expect(resumed.seasons[0].episodes[1]).toMatchObject({ completed: false, positionSec: 17 });
+    await prisma.watchProgress.deleteMany({ where: { userId, episodeId: { in: episodesForResume.map((item) => item.id) } } });
+    await logoutPost(new Request("http://localhost", { method: "POST" }));
     expect(cookieState.token).toBe("");
+  });
+
+  it("includes subscription cancellation details in the mobile profile", async () => {
+    const plan = await prisma.plan.create({
+      data: {
+        code: `MOBILE_ME_${suffix}`,
+        name: "Mobile profile test",
+        interval: "MONTHLY",
+        trialDays: 7,
+        prices: {
+          create: {
+            currency: "INR",
+            amountMinor: 1_000,
+            trialAmountMinor: 100,
+            countryCodes: [],
+          },
+        },
+      },
+      include: { prices: true },
+    });
+    planId = plan.id;
+    const now = new Date();
+    const subscription = await prisma.subscription.create({
+      data: {
+        userId,
+        planId,
+        priceId: plan.prices[0].id,
+        status: "ACTIVE",
+        trialEndsAt: now,
+        currentPeriodStart: now,
+        currentPeriodEnd: new Date(now.getTime() + 30 * 86_400_000),
+        provider: "DEV",
+        currency: "INR",
+      },
+    });
+    subscriptionId = subscription.id;
+    await issueSession({ userId, role: "USER" });
+
+    const me = await (await meGet(new Request("http://x"))).json();
+
+    expect(me.subscription).toMatchObject({
+      id: subscriptionId,
+      status: "ACTIVE",
+      cancelAtPeriodEnd: false,
+    });
   });
 });

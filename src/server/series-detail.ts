@@ -16,7 +16,7 @@ export async function getSeriesDetail(slug: string, userId: string | null) {
     },
   });
   if (!series?.isPublished || !series.episodes.length) return null;
-  const [entitlementByEpisodeId, watchedIds] = await Promise.all([
+  const [entitlementByEpisodeId, watchedIds, progressRows] = await Promise.all([
     resolveSeriesEpisodeEntitlements(userId, series.episodes, series.freeEpisodeCount),
     userId
       ? getWatchedEpisodeIds(
@@ -24,7 +24,17 @@ export async function getSeriesDetail(slug: string, userId: string | null) {
           series.episodes.map((episode) => episode.id),
         )
       : Promise.resolve(new Set<string>()),
+    userId
+      ? prisma.watchProgress.findMany({
+          where: { userId, episodeId: { in: series.episodes.map((episode) => episode.id) } },
+          orderBy: { updatedAt: "desc" },
+          select: { episodeId: true, positionSec: true, completed: true, updatedAt: true },
+        })
+      : Promise.resolve([]),
   ]);
+  const progressByEpisodeId = new Map(
+    progressRows.map((progress) => [progress.episodeId, progress]),
+  );
   const toEpisodeView = (episode: (typeof series.episodes)[number]) => ({
     id: episode.id,
     number: episode.number,
@@ -34,6 +44,9 @@ export async function getSeriesDetail(slug: string, userId: string | null) {
     isFree: episode.isFree,
     coinPrice: episode.coinPrice,
     watched: watchedIds.has(episode.id),
+    completed: progressByEpisodeId.get(episode.id)?.completed ?? false,
+    positionSec: progressByEpisodeId.get(episode.id)?.positionSec ?? 0,
+    progressUpdatedAt: progressByEpisodeId.get(episode.id)?.updatedAt ?? null,
     access: entitlementByEpisodeId.get(episode.id)?.reason ?? "LOCKED",
   });
   const assignedEpisodeIds = new Set(

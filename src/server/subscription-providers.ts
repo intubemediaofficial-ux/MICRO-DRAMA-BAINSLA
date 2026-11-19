@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "./config";
+import { getSettings } from "./settings";
 
 export type CheckoutInput = {
   userId: string;
@@ -136,11 +137,10 @@ export function devPaymentsAllowed() {
 }
 
 /** False in production when no real payment provider is configured, so plans can't be bought for free. */
-export function paymentsEnabled() {
-  return (
-    Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET) ||
-    Boolean(env.STRIPE_SECRET_KEY) ||
-    devPaymentsAllowed()
+export async function paymentsEnabled() {
+  const settings = await getSettings();
+  return Boolean(
+    settings.PAYMENTS_ENABLED && settings.RAZORPAY_KEY_ID && settings.RAZORPAY_KEY_SECRET,
   );
 }
 

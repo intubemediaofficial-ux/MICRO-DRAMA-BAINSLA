@@ -1,11 +1,37 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { resolveSeriesEpisodeEntitlements } from "@/server/entitlements";
 import { getWatchedEpisodeIds } from "@/server/discovery";
 import { findPublicEpisode, publicEpisodeWhere } from "@/server/publishing";
+import { SeoFieldsSchema } from "@/lib/seo";
+import { JsonLd } from "@/components/json-ld";
+import { buildMetadata, SITE_ORIGIN } from "@/server/seo";
+import { getSeoGlobal } from "@/server/site-config";
+import { breadcrumbList, faqPageSchema, schemaTypeFor, tvEpisodeSchema } from "@/server/structured-data";
 import WatchClient from "./watch-client";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ episodeId: string }>;
+}): Promise<Metadata> {
+  const { episodeId } = await params;
+  const episode = await findPublicEpisode(episodeId);
+  if (!episode) return {};
+  return buildMetadata({
+    kind: "episode",
+    path: `/watch/${encodeURIComponent(episode.id)}`,
+    title: episode.title,
+    excerpt: episode.title,
+    image: episode.thumbnailUrl || episode.series.posterUrl,
+    seo: episode.seo,
+    vars: { series: episode.series.title, episode: episode.number },
+    publishedAt: episode.publishedAt,
+  });
+}
 
 export default async function WatchPage({ params }: { params: Promise<{ episodeId: string }> }) {
   const { episodeId } = await params;
@@ -27,6 +53,31 @@ export default async function WatchPage({ params }: { params: Promise<{ episodeI
     },
   });
   if (!episode) notFound();
+  const [global] = await Promise.all([getSeoGlobal()]);
+  const seoResult = SeoFieldsSchema.safeParse(episode.seo);
+  const seo = seoResult.success ? seoResult.data : {};
+  const schemaType = schemaTypeFor("episode", seo.schemaType);
+  const episodeUrl = `${SITE_ORIGIN}/watch/${encodeURIComponent(episode.id)}`;
+  const breadcrumbs = breadcrumbList([
+    { name: global.siteName, url: `${SITE_ORIGIN}/` },
+    { name: episode.series.title, url: `${SITE_ORIGIN}/series/${encodeURIComponent(episode.series.slug)}` },
+    { name: seo.breadcrumbTitle || `Episode ${episode.number}`, url: episodeUrl },
+  ]);
+  const entitySchema = schemaType === "None"
+    ? null
+    : schemaType === "FAQPage" && seo.faq?.length
+      ? faqPageSchema(seo.faq)
+      : tvEpisodeSchema({
+          name: episode.title,
+          description: seo.description || episode.title,
+          url: episodeUrl,
+          episodeNumber: episode.number,
+          seriesName: episode.series.title,
+          seriesUrl: `${SITE_ORIGIN}/series/${encodeURIComponent(episode.series.slug)}`,
+          thumbnailUrl: episode.thumbnailUrl || episode.series.posterUrl,
+          durationSec: episode.durationSec,
+          publishedAt: episode.publishedAt,
+        });
   const seriesEpisodes = episode.series.episodes;
   const episodeIndex = seriesEpisodes.findIndex((item) => item.id === episode.id);
   const episodeIds = seriesEpisodes.map((item) => item.id);
@@ -53,6 +104,8 @@ export default async function WatchPage({ params }: { params: Promise<{ episodeI
   }));
   return (
     <div className="min-h-screen bg-black pb-16">
+      <JsonLd data={breadcrumbs} />
+      {entitySchema && <JsonLd data={entitySchema} />}
       <Link
         href={`/series/${episode.series.slug}`}
         className="fixed left-4 top-4 z-20 rounded-full bg-black/60 px-4 py-2"

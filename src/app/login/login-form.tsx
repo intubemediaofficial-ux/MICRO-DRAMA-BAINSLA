@@ -1,12 +1,76 @@
 "use client";
-import { useState } from "react";
-export default function LoginForm({ redirectTo = "/" }: { redirectTo?: string }) {
+import { useEffect, useRef, useState } from "react";
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (options: {
+            client_id: string;
+            callback: (response: { credential: string }) => void;
+          }) => void;
+          renderButton: (
+            element: HTMLElement,
+            options: { theme: string; size: string; width: number },
+          ) => void;
+        };
+      };
+    };
+  }
+}
+
+export default function LoginForm({
+  redirectTo = "/",
+  googleClientId,
+}: {
+  redirectTo?: string;
+  googleClientId?: string;
+}) {
   const [identifier, setIdentifier] = useState("");
   const [code, setCode] = useState("");
   const [requested, setRequested] = useState(false);
   const [mode, setMode] = useState<"otp" | "password">("password");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const googleButton = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!googleClientId || !googleButton.current) return;
+    const render = () => {
+      if (!window.google || !googleButton.current) return;
+      googleButton.current.replaceChildren();
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async ({ credential }) => {
+          const response = await fetch("/api/auth/google", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ idToken: credential }),
+          });
+          const data = await response.json();
+          if (response.ok) location.href = redirectTo;
+          else setMessage(data.error?.message ?? "Google sign-in failed");
+        },
+      });
+      window.google.accounts.id.renderButton(googleButton.current, {
+        theme: "outline",
+        size: "large",
+        width: Math.min(340, googleButton.current.clientWidth || 340),
+      });
+    };
+    const src = "https://accounts.google.com/gsi/client";
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${src}"]`);
+    if (window.google) render();
+    else if (existing) existing.addEventListener("load", render, { once: true });
+    else {
+      const script = document.createElement("script");
+      script.src = src;
+      script.async = true;
+      script.defer = true;
+      script.onload = render;
+      document.head.appendChild(script);
+    }
+  }, [googleClientId, redirectTo]);
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (mode === "password") {
@@ -82,8 +146,14 @@ export default function LoginForm({ redirectTo = "/" }: { redirectTo?: string })
         />
       )}
       <button className="w-full rounded-xl bg-rose-500 p-4 font-bold">
-        {mode === "password" ? "Sign in" : requested ? "Enter MicroDrama" : "Send OTP"}
+        {mode === "password" ? "Sign in" : requested ? "Enter Intube Drama" : "Send OTP"}
       </button>
+      {googleClientId ? (
+        <div className="space-y-3 border-t border-white/10 pt-4">
+          <p className="text-center text-xs text-zinc-500">or continue with Google</p>
+          <div ref={googleButton} className="flex justify-center" />
+        </div>
+      ) : null}
       {message && <p className="text-sm text-zinc-400">{message}</p>}
     </form>
   );

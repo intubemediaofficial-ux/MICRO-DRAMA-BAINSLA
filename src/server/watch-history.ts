@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import { hasPlayableVideo } from "@/lib/publishing";
+import { publicEpisodeWhere } from "./publishing";
 
 export const WATCH_HISTORY_LIMIT = 50;
 const WATCH_HISTORY_SCAN_LIMIT = 100;
@@ -133,4 +134,85 @@ export async function getResumePositionForEpisode(
     },
   });
   return row ? resumePosition(row.positionSec, durationSec, row.completed) : 0;
+}
+
+export async function continueWatching(userId: string, limit = 10) {
+  const rows = await prisma.watchProgress.findMany({
+    where: {
+      userId,
+      episode: { ...publicEpisodeWhere, series: { isPublished: true } },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      updatedAt: true,
+      positionSec: true,
+      completed: true,
+      episode: {
+        select: {
+          id: true,
+          number: true,
+          durationSec: true,
+          series: {
+            select: {
+              id: true,
+              slug: true,
+              title: true,
+              synopsis: true,
+              posterUrl: true,
+              genres: true,
+              episodes: {
+                where: publicEpisodeWhere,
+                orderBy: { number: "asc" },
+                take: 1,
+                select: { id: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  const latestBySeries = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    if (!latestBySeries.has(row.episode.series.id))
+      latestBySeries.set(row.episode.series.id, row);
+  }
+
+  const result = [];
+  for (const row of latestBySeries.values()) {
+    let episodeId = row.episode.id;
+    let episodeNumber = row.episode.number;
+    let durationSec = row.episode.durationSec;
+    let positionSec = row.completed ? 0 : row.positionSec;
+    if (row.completed) {
+      const next = await prisma.episode.findFirst({
+        where: {
+          seriesId: row.episode.series.id,
+          number: { gt: row.episode.number },
+          ...publicEpisodeWhere,
+        },
+        orderBy: { number: "asc" },
+        select: { id: true, number: true, durationSec: true },
+      });
+      if (!next) continue;
+      episodeId = next.id;
+      episodeNumber = next.number;
+      durationSec = next.durationSec;
+    }
+    result.push({
+      id: row.episode.series.id,
+      slug: row.episode.series.slug,
+      title: row.episode.series.title,
+      synopsis: row.episode.series.synopsis,
+      posterUrl: row.episode.series.posterUrl,
+      genres: row.episode.series.genres,
+      firstEpisodeId: row.episode.series.episodes[0]?.id ?? null,
+      episodeId,
+      episodeNumber,
+      positionSec,
+      durationSec,
+    });
+    if (result.length >= Math.max(0, limit)) break;
+  }
+  return result;
 }

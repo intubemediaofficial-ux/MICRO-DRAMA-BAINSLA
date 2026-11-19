@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
 import { prisma } from "@/server/db";
+import { isFcmConfigured, sendFcmNotifications } from "@/server/fcm";
 
 const input = z.object({
   seriesId: z.string(),
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
     const stale = [...latestByUser.entries()].filter(
       ([, episodeNumber]) => episodeNumber < maxEpisode,
     );
+    const configured = await isFcmConfigured();
     const messageFor = (episodeNumber: number) =>
       `Find out what happens next in Episode ${episodeNumber + 1}!`;
     const logs = await prisma.$transaction(
@@ -43,12 +45,32 @@ export async function POST(request: Request) {
             seriesId: data.seriesId,
             episodeNumber: episodeNumber + 1,
             message: messageFor(episodeNumber),
-            dryRun: data.dryRun,
+            dryRun: data.dryRun || !configured,
           },
         }),
       ),
     );
-    return NextResponse.json({ dryRun: data.dryRun, matchedUsers: stale.length, logs });
+    let sendResult = { configured: false, sent: 0, failed: 0 };
+    if (configured && !data.dryRun) {
+      const tokens = await prisma.deviceToken.findMany({
+        where: { userId: { in: stale.map(([userId]) => userId) } },
+        select: { token: true },
+      });
+      sendResult = await sendFcmNotifications(
+        tokens.map((item) => item.token),
+        {
+          title: series.title,
+          body: `Find out what happens next in Episode ${maxEpisode}!`,
+          data: { seriesSlug: series.slug },
+        },
+      );
+    }
+    return NextResponse.json({
+      dryRun: data.dryRun || !sendResult.configured,
+      matchedUsers: stale.length,
+      logs,
+      ...sendResult,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Push campaign failed";
     return NextResponse.json(

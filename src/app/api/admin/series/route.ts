@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
+import { saveSlugRedirect } from "@/server/cms";
+import { sanitizedSeo } from "@/server/cms-content";
 import { prisma } from "@/server/db";
 import { publicEpisodeWhere } from "@/server/publishing";
 
 const seriesInput = z.object({
-  slug: z.string().min(1),
+  slug: z.string().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   title: z.string().min(1),
   synopsis: z.string(),
   posterUrl: z.string(),
@@ -17,14 +19,19 @@ const seriesInput = z.object({
   defaultCoinPrice: z.number().int().positive(),
   isPublished: z.boolean(),
   status: z.enum(["ONGOING", "COMPLETED"]).default("ONGOING"),
+  seo: z.unknown().nullable().optional(),
 });
 
 export async function POST(request: Request) {
   try {
     await adminSession();
     const data = seriesInput.parse(await request.json());
+    const seo = sanitizedSeo(data.seo);
+    const { seo: _seo, ...seriesData } = data;
     const series = await prisma.$transaction(async (tx) => {
-      const created = await tx.series.create({ data: { ...data, isPublished: false } });
+      const created = await tx.series.create({
+        data: { ...seriesData, isPublished: false, ...(seo !== undefined ? { seo } : {}) },
+      });
       await tx.season.create({
         data: { seriesId: created.id, number: 1, title: "Season 1", sortOrder: 0 },
       });
@@ -48,7 +55,7 @@ export async function PATCH(request: Request) {
       .parse(await request.json());
     const existing = await prisma.series.findUnique({
       where: { id: payload.id },
-      select: { isPublished: true },
+      select: { isPublished: true, slug: true },
     });
     if (payload.data.isPublished === true && !existing?.isPublished) {
       const episode = await prisma.episode.findFirst({
@@ -65,9 +72,18 @@ export async function PATCH(request: Request) {
           { status: 400 },
         );
     }
-    return NextResponse.json(
-      await prisma.series.update({ where: { id: payload.id }, data: payload.data }),
-    );
+    const seo = payload.data.seo === undefined ? undefined : sanitizedSeo(payload.data.seo);
+    const { seo: _seo, ...seriesData } = payload.data;
+    const updated = await prisma.$transaction(async (tx) => {
+      const series = await tx.series.update({
+        where: { id: payload.id },
+        data: { ...seriesData, ...(seo !== undefined ? { seo } : {}) },
+      });
+      if (payload.data.slug && payload.data.slug !== existing?.slug && existing?.isPublished)
+        await saveSlugRedirect(tx, `/series/${existing.slug}`, `/series/${payload.data.slug}`);
+      return series;
+    });
+    return NextResponse.json(updated);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid series";
     return NextResponse.json(

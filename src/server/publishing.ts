@@ -8,6 +8,19 @@ export const publicEpisodeWhere = {
   hlsPath: { notIn: PLACEHOLDER_VIDEO_PATHS },
 } satisfies Prisma.EpisodeWhereInput;
 
+export function publicContentWhere(now = new Date()) {
+  return {
+    OR: [
+      { status: "PUBLISHED" as const },
+      { status: "SCHEDULED" as const, publishedAt: { lte: now } },
+    ],
+  };
+}
+
+export function canPreviewContent(preview: boolean, role?: string | null) {
+  return preview && role === "ADMIN";
+}
+
 export const publicSeriesWhere = {
   isPublished: true,
   episodes: { some: publicEpisodeWhere },
@@ -18,6 +31,6 @@ export const publicSeriesSql = Prisma.sql`s."isPublished" = true AND EXISTS (SEL
 export async function findPublicEpisode(id: string) {
   return prisma.episode.findFirst({
     where: { id, ...publicEpisodeWhere, series: { isPublished: true } },
-    include: { series: true, subtitles: { select: { lang: true } } },
+    include: { series: true, subtitles: { select: { lang: true, srtPath: true } } },
   });
 }
