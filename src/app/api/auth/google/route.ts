@@ -5,7 +5,10 @@ import { verifyGoogleIdToken } from "@/server/google-auth";
 import { rateLimit } from "@/server/rate-limit";
 import { getSettings } from "@/server/settings";
 
-const input = z.object({ idToken: z.string().min(1).max(10_000) });
+const input = z.object({
+  idToken: z.string().min(1).max(10_000),
+  referralCode: z.string().trim().max(64).optional(),
+});
 
 export async function POST(request: Request) {
   const ip = request.headers.get("x-forwarded-for") ?? "unknown";
@@ -15,9 +18,9 @@ export async function POST(request: Request) {
   if (!settings.GOOGLE_OAUTH_WEB_CLIENT_ID)
     return NextResponse.json({ error: { message: "Google sign-in is not configured" } }, { status: 503 });
   try {
-    const { idToken } = input.parse(await request.json());
+    const { idToken, referralCode: explicitReferralCode } = input.parse(await request.json());
     const identity = await verifyGoogleIdToken(idToken, settings.GOOGLE_OAUTH_WEB_CLIENT_ID);
-    const referralCode = await consumeReferralCode();
+    const referralCode = await consumeReferralCode(explicitReferralCode);
     const user = await findOrCreateUser(identity.email, referralCode, identity.name);
     await issueSession({ userId: user.id, role: user.role });
     return NextResponse.json({ ok: true });
