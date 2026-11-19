@@ -31,7 +31,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (processed.status === "FAILED") {
       const episode = await prisma.episode.update({
         where: { id },
-        data: { processingStatus: "FAILED", processingError: processed.error },
+        data: { processingStatus: "FAILED", processingError: processed.error, publishedAt: null },
       });
       return NextResponse.json({ episode, processing: processed }, { status: 202 });
     }

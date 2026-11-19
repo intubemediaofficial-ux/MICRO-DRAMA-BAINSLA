@@ -1,5 +1,6 @@
 import { Prisma, SubscriptionInterval, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "./db";
+import { priorTrialClaimWhere } from "./trial-claim-privacy";
 import { discountedAmount, choosePlanPrice } from "./currency";
 import { paymentsEnabled, subscriptionProvider } from "./subscription-providers";
 import { cancelRazorpaySubscription } from "./razorpay";
@@ -130,8 +131,8 @@ export async function hasUsedTrial(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
   if (!user?.email) return false;
   return Boolean(
-    await prisma.trialClaim.findUnique({
-      where: { email: user.email.trim().toLowerCase() },
+    await prisma.trialClaim.findFirst({
+      where: priorTrialClaimWhere(user.email),
       select: { id: true },
     }),
   );
@@ -149,7 +150,7 @@ async function startSubscription(
   deviceFingerprint: string | undefined,
   now: Date,
 ) {
-  if (!paymentsEnabled()) throw new Error("PAYMENTS_UNAVAILABLE");
+  if (!(await paymentsEnabled())) throw new Error("PAYMENTS_UNAVAILABLE");
   const plan = await findPlan(planCode);
   if (!plan) throw new Error("PLAN_NOT_FOUND");
   const price = choosePlanPrice(plan, currency);
@@ -175,6 +176,7 @@ async function startSubscription(
   if (!emailUser?.email) throw new Error("TRIAL_EMAIL_REQUIRED");
   const email = emailUser.email.trim().toLowerCase();
   const normalizedDeviceFingerprint = deviceFingerprint?.trim() || undefined;
+  const priorClaimWhere = priorTrialClaimWhere(email, normalizedDeviceFingerprint);
 
   let claimed:
     | { existing: NonNullable<Awaited<ReturnType<typeof activeForUser>>> }
@@ -182,16 +184,7 @@ async function startSubscription(
   try {
     claimed = await prisma.$transaction(async (tx) => {
       if (mode === "TRIAL") {
-        const priorClaim = await tx.trialClaim.findFirst({
-          where: {
-            OR: [
-              { email },
-              ...(normalizedDeviceFingerprint
-                ? [{ deviceFingerprint: normalizedDeviceFingerprint }]
-                : []),
-            ],
-          },
-        });
+        const priorClaim = await tx.trialClaim.findFirst({ where: priorClaimWhere });
         if (priorClaim) throw new Error("TRIAL_ALREADY_USED");
       }
       const existing = await tx.subscription.findFirst({
@@ -244,14 +237,7 @@ async function startSubscription(
       if (mode === "TRIAL") {
         const [priorClaim, existing] = await Promise.all([
           prisma.trialClaim.findFirst({
-            where: {
-              OR: [
-                { email },
-                ...(normalizedDeviceFingerprint
-                  ? [{ deviceFingerprint: normalizedDeviceFingerprint }]
-                  : []),
-              ],
-            },
+            where: priorClaimWhere,
             select: { id: true },
           }),
           activeForUser(userId),

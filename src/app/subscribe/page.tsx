@@ -28,7 +28,9 @@ export default async function SubscribePage({
   const entitlement = await resolveEpisodeEntitlement(session?.userId ?? null, episode.id);
   if (entitlement.entitled) redirect(`/watch/${episode.id}`);
 
-  const offers = await getSubscriptionOffers(resolveCurrency(new Headers(await headers())));
+  const offers = await getSubscriptionOffers(
+    await resolveCurrency(new Headers(await headers())),
+  );
   const trialOffer =
     offers.find((offer) => offer.plan.trialDays > 0) ?? null;
   const trialAlreadyUsed = session ? await hasUsedTrial(session.userId) : false;
@@ -75,7 +77,7 @@ export default async function SubscribePage({
                   }
                 : null
             }
-            paymentsAvailable={paymentsEnabled()}
+            paymentsAvailable={await paymentsEnabled()}
             trialAlreadyUsed={trialAlreadyUsed}
             coinPrice={episode.coinPrice}
           />

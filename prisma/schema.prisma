@@ -17,6 +17,12 @@ enum SeriesStatus {
   COMPLETED
 }
 
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  SCHEDULED
+}
+
 enum LedgerType {
   PURCHASE
   EPISODE_UNLOCK
@@ -38,6 +44,7 @@ enum PurchaseProvider {
   UPI
   CARD
   PAYPAL
+  RAZORPAY
 }
 
 enum PurchaseStatus {
@@ -123,10 +130,14 @@ model User {
   unlocks                         EpisodeUnlock[]
   purchases                       Purchase[]
   checkins                        DailyCheckin[]
+  watchlist                       WatchlistItem[]
   progress                        WatchProgress[]
   likes                           EpisodeLike[]
   couponRedemptions               CouponRedemption[]
   notifications                   NotificationLog[]
+  deviceTokens                   DeviceToken[]
+  analyticsEvents                AnalyticsEvent[]
+  activityDays                   UserActivityDay[]
   subscriptions                   Subscription[]
   subscriptionEvents              SubscriptionEvent[]
   subscriptionDiscountRedemptions SubscriptionDiscountRedemption[]
@@ -153,10 +164,13 @@ model Series {
   createdAt        DateTime       @default(now())
   episodes         Episode[]
   seasons          Season[]
+  analyticsEvents  AnalyticsEvent[]
   banners          Banner[]
   campaigns        PushCampaign[]
   castMembers      CastMember[]
   homeRailItems    HomeRailItem[]
+  watchlist        WatchlistItem[]
+  seo              Json?
 
   @@index([isPublished, createdAt])
   @@index([status])
@@ -223,9 +237,12 @@ model Episode {
   subtitles    Subtitle[]
   unlocks      EpisodeUnlock[]
   progress     WatchProgress[]
+  analyticsEvents AnalyticsEvent[]
   likes        EpisodeLike[]
+  seo          Json?
 
   @@unique([seriesId, number])
+  @@index([seasonId])
   @@index([seriesId])
   @@index([publishedAt])
 }
@@ -306,6 +323,17 @@ model DailyCheckin {
 
   @@unique([userId, day])
   @@index([userId, day])
+}
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  seriesId  String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series    Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seriesId])
 }
 
 model WatchProgress {
@@ -399,6 +427,46 @@ model NotificationLog {
   @@index([userId, seriesId, sentAt])
 }
 
+model DeviceToken {
+  id         String   @id @default(cuid())
+  token      String   @unique
+  userId     String?
+  platform   String   @default("android")
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([lastSeenAt])
+}
+
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  name        String
+  userId      String?
+  deviceId    String?
+  seriesId    String?
+  episodeId   String?
+  positionSec Int?
+  props       Json?
+  createdAt   DateTime @default(now())
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  series      Series?  @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  episode     Episode? @relation(fields: [episodeId], references: [id], onDelete: SetNull)
+
+  @@index([name, createdAt])
+  @@index([episodeId])
+}
+
+model UserActivityDay {
+  userId String
+  day    DateTime @db.Date
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, day])
+  @@index([day])
+}
+
 model AdRewardNonce {
   id        String    @id @default(cuid())
   nonce     String    @unique
@@ -406,6 +474,7 @@ model AdRewardNonce {
   episodeId String
   expiresAt DateTime
   usedAt    DateTime?
+  verifiedAt DateTime?
 
   @@index([userId, episodeId])
 }
@@ -590,4 +659,82 @@ model OtpChallenge {
   createdAt  DateTime  @default(now())
 
   @@index([identifier, createdAt])
+}
+
+model AppSetting {
+  key         String   @id
+  value       String
+  isSecret    Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+model ContentPage {
+  id            String        @id @default(cuid())
+  slug          String        @unique
+  title         String
+  contentJson   Json          @default("{}")
+  contentHtml   String        @default("")
+  excerpt       String?
+  featuredImage String?
+  template      String        @default("default")
+  status        ContentStatus @default(DRAFT)
+  publishedAt   DateTime?
+  seo           Json?
+  authorId      String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([status, publishedAt])
+}
+
+model BlogPost {
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  title          String
+  contentJson    Json          @default("{}")
+  contentHtml    String        @default("")
+  excerpt        String?
+  featuredImage  String?
+  status         ContentStatus @default(DRAFT)
+  publishedAt    DateTime?
+  seo            Json?
+  authorId       String?
+  categoryId     String?
+  tags           String[]      @default([])
+  readingMinutes Int           @default(1)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  category       BlogCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([status, publishedAt])
+  @@index([categoryId])
+}
+
+model BlogCategory {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  name        String
+  description String?
+  seo         Json?
+  posts       BlogPost[]
+}
+
+model Redirect {
+  id        String    @id @default(cuid())
+  fromPath  String    @unique
+  toPath    String
+  permanent Boolean   @default(true)
+  active    Boolean   @default(true)
+  hits      Int       @default(0)
+  lastHitAt DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model NotFoundLog {
+  id         String   @id @default(cuid())
+  path       String   @unique @db.VarChar(300)
+  hits       Int      @default(1)
+  referrer   String?
+  lastSeenAt DateTime @default(now())
 }

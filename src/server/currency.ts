@@ -1,6 +1,6 @@
 import type { PlanPrice } from "@prisma/client";
-import { env } from "./config";
 import { prisma } from "./db";
+import { getSettings } from "./settings";
 
 const COUNTRY_CURRENCY: Record<string, string> = {
   AE: "AED",
@@ -37,9 +37,15 @@ export function currencyForCountry(country: string | null) {
   return (country && COUNTRY_CURRENCY[country]) ?? "INR";
 }
 
-export function resolveCurrency(headers: Headers) {
+export async function resolveCurrency(headers: Headers) {
   // Razorpay subscriptions bill in INR, so show INR prices whenever it is the provider.
-  if (env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET) return "INR";
+  const settings = await getSettings();
+  if (
+    settings.PAYMENTS_ENABLED &&
+    settings.RAZORPAY_KEY_ID &&
+    settings.RAZORPAY_KEY_SECRET
+  )
+    return "INR";
   return currencyForCountry(detectCountry(headers));
 }
 

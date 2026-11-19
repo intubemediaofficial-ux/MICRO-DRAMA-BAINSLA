@@ -5,7 +5,7 @@ import { getSubscriptionOffer } from "@/server/subscriptions";
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const planCode = url.searchParams.get("plan") ?? "VIP_ANNUAL";
-  const currency = resolveCurrency(request.headers);
+  const currency = await resolveCurrency(request.headers);
   const offer = await getSubscriptionOffer(planCode, currency);
   if (!offer) return NextResponse.json({ error: { message: "Plan unavailable" } }, { status: 404 });
   return NextResponse.json({

@@ -24,5 +24,5 @@ export default async function EditSeriesPage({ params }: { params: Promise<{ id:
     },
   });
   if (!series) notFound();
-  return <div><Link href="/admin/series" className="text-sm text-zinc-400 hover:text-white">← Series library</Link><h1 className="mt-5 text-3xl font-black">{series.title}</h1><p className="mt-2 text-sm text-zinc-400">Edit metadata, media, cast, episodes and subtitles.</p><SeriesEditor initial={series} /></div>;
+  return <div><Link href="/admin/series" className="text-sm text-zinc-400 hover:text-white">← Series library</Link><h1 className="mt-5 text-3xl font-black">{series.title}</h1><p className="mt-2 text-sm text-zinc-400">Edit metadata, media, cast, episodes and subtitles.</p><SeriesEditor initial={series as unknown as Parameters<typeof SeriesEditor>[0]["initial"]} /></div>;
 }

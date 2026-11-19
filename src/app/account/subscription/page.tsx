@@ -21,7 +21,7 @@ export default async function SubscriptionPage() {
       </div>
     );
   const subscription = await getUserSubscription(session.userId);
-  const currency = resolveCurrency(new Headers(await headers()));
+  const currency = await resolveCurrency(new Headers(await headers()));
   const offers = await getSubscriptionOffers(currency);
   const offer =
     offers.find((item) => item.plan.trialDays > 0) ?? null;
@@ -67,7 +67,7 @@ export default async function SubscriptionPage() {
             </ul>
           )}
           <p className="mt-2 text-sm">Unlimited locked episodes, no ads and a VIP badge.</p>
-          {paymentsEnabled() ? (
+          {(await paymentsEnabled()) ? (
             <Link
               href="/"
               className="mt-5 inline-block rounded-full bg-zinc-950 px-5 py-3 font-bold text-white"

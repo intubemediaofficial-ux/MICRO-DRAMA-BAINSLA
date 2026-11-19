@@ -6,26 +6,31 @@ import { resolveEpisodeEntitlement } from "@/server/entitlements";
 import { resolveCurrency } from "@/server/currency";
 import { getSubscriptionOffers, hasUsedTrial } from "@/server/subscriptions";
 import { getResumePositionForEpisode } from "@/server/watch-history";
+import { findPublicEpisode } from "@/server/publishing";
 
 const STREAM_TTL_SECONDS = 1_800;
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   const { id } = await params;
+  const episode = await findPublicEpisode(id);
+  if (!episode) return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
   if (!session) {
     const entitlement = await resolveEpisodeEntitlement(null, id);
     if (!entitlement.entitled)
-      return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
-    const episode = await prisma.episode.findUnique({
-      where: { id },
-      select: { hlsPath: true, subtitles: { select: { lang: true } } },
-    });
-    if (!episode) return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
+      return NextResponse.json(
+        { error: { message: "Unauthorized" }, seriesSlug: episode.series.slug },
+        { status: 401 },
+      );
     return NextResponse.json({
+      seriesSlug: episode.series.slug,
+      mediaPath: episode.hlsPath,
       playbackUrl: `/api/stream/${createStreamToken(GUEST_USER_ID, id, STREAM_TTL_SECONDS)}`,
       isHls: episode.hlsPath.endsWith(".m3u8"),
       watermark: "",
       subtitles: episode.subtitles.map((subtitle) => ({
         lang: subtitle.lang,
+        label: subtitle.lang,
+        format: subtitle.srtPath.toLowerCase().endsWith(".vtt") ? "vtt" : "srt",
         url: `/api/episodes/${id}/subtitles/${subtitle.lang}`,
       })),
       expiresIn: STREAM_TTL_SECONDS,
@@ -33,19 +38,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       resumePositionSec: 0,
     });
   }
-  const episode = await prisma.episode.findUnique({
-    where: { id },
-    include: { series: true, subtitles: { select: { lang: true } } },
-  });
-  if (!episode) return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
   const entitlement = await resolveEpisodeEntitlement(session.userId, id);
   if (!entitlement.entitled) {
-    const offers = await getSubscriptionOffers(resolveCurrency(_request.headers));
+    const offers = await getSubscriptionOffers(await resolveCurrency(_request.headers));
     const offer = offers.find((item) => item.plan.trialDays > 0) ?? offers[0] ?? null;
     const trialAlreadyUsed = await hasUsedTrial(session.userId);
     return NextResponse.json(
       {
         locked: true,
+        seriesSlug: episode.series.slug,
         coinPrice: episode.coinPrice,
         subscriptionOffer: offer
           ? {
@@ -71,12 +72,16 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     episode.durationSec,
   );
   return NextResponse.json({
+    seriesSlug: episode.series.slug,
+    mediaPath: episode.hlsPath,
     playbackUrl: `/api/stream/${token}`,
     isHls: episode.hlsPath.endsWith(".m3u8"),
     watermark: watermark(user.phone, session.userId),
-    subtitles: episode.subtitles.map((subtitle) => ({
-      lang: subtitle.lang,
-      url: `/api/episodes/${id}/subtitles/${subtitle.lang}`,
+      subtitles: episode.subtitles.map((subtitle) => ({
+        lang: subtitle.lang,
+        label: subtitle.lang,
+        format: subtitle.srtPath.toLowerCase().endsWith(".vtt") ? "vtt" : "srt",
+        url: `/api/episodes/${id}/subtitles/${subtitle.lang}`,
     })),
     expiresIn: STREAM_TTL_SECONDS,
     entitlement: entitlement.reason,

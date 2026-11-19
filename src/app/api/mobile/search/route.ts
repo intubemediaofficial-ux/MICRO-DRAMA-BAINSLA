@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { seriesCard } from "@/server/mobile";
+import { publicEpisodeWhere, publicSeriesWhere } from "@/server/publishing";
 
 export async function GET(request: Request) {
   const q = new URL(request.url).searchParams.get("q")?.trim().slice(0, 80);
   const items = await prisma.series.findMany({
     where: {
-      isPublished: true,
+      ...publicSeriesWhere,
       ...(q
         ? {
             OR: [
@@ -19,7 +20,14 @@ export async function GET(request: Request) {
           }
         : {}),
     },
-    include: { episodes: { orderBy: { number: "asc" }, take: 1, select: { id: true } } },
+    include: {
+      episodes: {
+        where: publicEpisodeWhere,
+        orderBy: { number: "asc" },
+        take: 1,
+        select: { id: true },
+      },
+    },
     orderBy: { title: "asc" },
     take: 50,
   });

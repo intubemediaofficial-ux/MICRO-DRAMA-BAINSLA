@@ -1,17 +1,22 @@
 import LoginForm from "./login-form";
+import { getSettings } from "@/server/settings";
 export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ returnTo?: string }>;
 }) {
   const { returnTo } = await searchParams;
+  const settings = await getSettings();
   const redirectTo = returnTo?.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/";
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
       <div className="w-full max-w-md rounded-3xl bg-zinc-900 p-7">
-        <p className="text-xs font-bold uppercase tracking-widest text-rose-400">MICRODRAMA</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-rose-400">INTUBE DRAMA</p>
         <h1 className="mt-3 text-3xl font-black">Pick up where you left off.</h1>
-        <LoginForm redirectTo={redirectTo} />
+        <LoginForm
+          redirectTo={redirectTo}
+          googleClientId={settings.GOOGLE_OAUTH_WEB_CLIENT_ID}
+        />
       </div>
     </div>
   );

@@ -57,8 +57,8 @@ export async function verifyOtpChallenge(identifier: string, code: string) {
 function parseSender(from: string) {
   const match = from.match(/^\s*"?([^"<]*)"?\s*<([^>]+)>\s*$/);
   return match
-    ? { name: match[1].trim() || "MicroDrama", email: match[2].trim() }
-    : { name: "MicroDrama", email: from.trim() };
+    ? { name: match[1].trim() || "Intube Drama", email: match[2].trim() }
+    : { name: "Intube Drama", email: from.trim() };
 }
 
 async function sendOtpEmail(email: string, code: string) {
@@ -72,9 +72,9 @@ async function sendOtpEmail(email: string, code: string) {
     body: JSON.stringify({
       sender: parseSender(env.MAIL_FROM),
       to: [{ email }],
-      subject: `${code} is your MicroDrama login code`,
-      textContent: `Your MicroDrama login code is ${code}. It expires in 10 minutes. If you did not request it, ignore this email.`,
-      htmlContent: `<div style="font-family:Arial,sans-serif;max-width:420px;margin:auto;padding:24px;background:#09090b;color:#fafafa;border-radius:16px"><p style="color:#fb7185;font-weight:700;letter-spacing:4px;font-size:12px">MICRODRAMA</p><h2 style="margin:8px 0">Your login code</h2><p style="font-size:34px;font-weight:800;letter-spacing:8px;margin:16px 0">${code}</p><p style="color:#a1a1aa;font-size:14px">This code expires in 10 minutes. If you did not request it, you can ignore this email.</p></div>`,
+      subject: `${code} is your Intube Drama login code`,
+      textContent: `Your Intube Drama login code is ${code}. It expires in 10 minutes. If you did not request it, ignore this email.`,
+      htmlContent: `<div style="font-family:Arial,sans-serif;max-width:420px;margin:auto;padding:24px;background:#09090b;color:#fafafa;border-radius:16px"><p style="color:#fb7185;font-weight:700;letter-spacing:4px;font-size:12px">INTUBE DRAMA</p><h2 style="margin:8px 0">Your login code</h2><p style="font-size:34px;font-weight:800;letter-spacing:8px;margin:16px 0">${code}</p><p style="color:#a1a1aa;font-size:14px">This code expires in 10 minutes. If you did not request it, you can ignore this email.</p></div>`,
     }),
   });
   if (!response.ok) throw new Error("OTP_SEND_FAILED");

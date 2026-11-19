@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { findOrCreateUser, issueSession } from "@/server/auth";
+import { consumeReferralCode, findOrCreateUser, issueSession } from "@/server/auth";
 import { normalizeIdentifier, verifyOtp } from "@/server/otp";
 import { rateLimit } from "@/server/rate-limit";
 const input = z.object({
@@ -15,7 +15,11 @@ export async function POST(request: Request) {
     const data = input.parse(await request.json());
     if (!(await verifyOtp(data.identifier, data.code)))
       return NextResponse.json({ error: { message: "Invalid or expired OTP" } }, { status: 401 });
-    const user = await findOrCreateUser(normalizeIdentifier(data.identifier), data.referralCode);
+    const referralCode = await consumeReferralCode(data.referralCode);
+    const user = await findOrCreateUser(
+      normalizeIdentifier(data.identifier),
+      referralCode,
+    );
     await issueSession({ userId: user.id, role: user.role });
     return NextResponse.json({ ok: true });
   } catch (error) {

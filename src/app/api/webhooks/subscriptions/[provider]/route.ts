@@ -17,7 +17,7 @@ export async function POST(
   const payload = await request.text();
   if (provider === "razorpay") {
     try {
-      const event = verifyRazorpayWebhook(payload, request.headers.get("x-razorpay-signature"));
+      const event = await verifyRazorpayWebhook(payload, request.headers.get("x-razorpay-signature"));
       const eventId =
         request.headers.get("x-razorpay-event-id") ??
         createHash("sha256").update(payload).digest("hex");

@@ -3,11 +3,14 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
 import { prisma } from "@/server/db";
+import { hasPlayableVideo } from "@/lib/publishing";
+import { sanitizedSeo } from "@/server/cms-content";
 import {
   duplicateSkuMessage,
   episodeNumberConflictMessage,
   findEpisodeNumberCollision,
 } from "@/server/episode-validation";
+import { notifyNewPublicEpisode } from "@/server/episode-notifications";
 
 const input = z.object({
   seriesId: z.string(),
@@ -20,11 +23,12 @@ const input = z.object({
         coinPrice: z.number().int().positive(),
         isFree: z.boolean(),
         durationSec: z.number().int().positive().default(90),
-        hlsPath: z.string().default("sample.mp4"),
+        hlsPath: z.string().default(""),
         thumbnailUrl: z.string().optional(),
         publishedAt: z.coerce.date().nullable().optional(),
         originalFilename: z.string().max(255).nullable().optional(),
         sku: z.string().trim().max(120).transform((value) => value || null).nullable().optional(),
+        seo: z.unknown().nullable().optional(),
       }),
     )
     .min(1)
@@ -37,7 +41,7 @@ export async function POST(request: Request) {
     const data = input.parse(await request.json());
     const series = await prisma.series.findUnique({
       where: { id: data.seriesId },
-      select: { id: true, posterUrl: true },
+      select: { id: true, posterUrl: true, isPublished: true },
     });
     if (!series) return NextResponse.json({ error: { message: "Series not found" } }, { status: 404 });
     const season = data.seasonId
@@ -70,17 +74,21 @@ export async function POST(request: Request) {
     let episodes;
     try {
       episodes = await prisma.$transaction(
-        data.episodes.map((episode) =>
-          prisma.episode.create({
+        data.episodes.map((episode) => {
+          const seo = sanitizedSeo(episode.seo);
+          const { seo: _seo, ...episodeData } = episode;
+          return prisma.episode.create({
             data: {
-              ...episode,
+              ...episodeData,
+              ...(seo !== undefined ? { seo } : {}),
+              publishedAt: hasPlayableVideo(episode) ? (episode.publishedAt ?? null) : null,
               seriesId: data.seriesId,
               seasonId: season.id,
               thumbnailUrl: episode.thumbnailUrl ?? series.posterUrl,
               thumbnailSource: "LEGACY",
             },
-          }),
-        ),
+          });
+        }),
       );
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -98,7 +106,17 @@ export async function POST(request: Request) {
       }
       throw error;
     }
-    return NextResponse.json({ episodes }, { status: 201 });
+    if (series.isPublished)
+      for (const episode of episodes)
+        if (episode.publishedAt && hasPlayableVideo(episode))
+          void notifyNewPublicEpisode(episode.id).catch(() => {});
+    return NextResponse.json(
+      {
+        episodes,
+        draftedWithoutVideo: episodes.filter((episode) => !hasPlayableVideo(episode)).length,
+      },
+      { status: 201 },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Episode creation failed";
     return NextResponse.json(

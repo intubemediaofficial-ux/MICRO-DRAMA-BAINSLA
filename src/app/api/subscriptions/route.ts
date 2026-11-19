@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   if (!session) return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
   try {
     const data = input.parse(await request.json());
-    if (razorpayConfigured()) {
+    if (await razorpayConfigured()) {
       const checkout = await createRazorpayCheckout(
         session.userId,
         data.planCode,
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       );
       return NextResponse.json({ ok: true, checkout });
     }
-    const currency = resolveCurrency(request.headers);
+    const currency = await resolveCurrency(request.headers);
     const country = detectCountry(request.headers) ?? "IN";
     const subscription =
       data.mode !== "trial"

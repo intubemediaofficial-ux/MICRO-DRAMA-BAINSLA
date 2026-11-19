@@ -6,6 +6,9 @@ vi.hoisted(() => {
   process.env.STREAM_TOKEN_SECRET ??= "test-stream-secret-123456";
   process.env.OTP_DEV_CODE ??= "123456";
   process.env.CRON_SECRET ??= "test-cron-secret";
+  process.env.RAZORPAY_KEY_ID = "rzp_test_key";
+  process.env.RAZORPAY_KEY_SECRET = "rzp_test_secret";
+  process.env.PAYMENTS_ENABLED = "true";
 });
 
 import { prisma } from "../src/server/db";
