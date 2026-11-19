@@ -5,6 +5,7 @@ import { adminSession } from "@/server/admin";
 import { notifyNewPublicEpisode } from "@/server/episode-notifications";
 import { prisma } from "@/server/db";
 import { hasPlayableVideo } from "@/lib/publishing";
+import { sanitizedSeo } from "@/server/cms-content";
 import { duplicateSkuMessage, episodeNumberConflictMessage } from "@/server/episode-validation";
 
 const input = z.object({
@@ -19,6 +20,7 @@ const input = z.object({
   seasonId: z.string().nullable().optional(),
   originalFilename: z.string().max(255).nullable().optional(),
   sku: z.string().trim().max(120).transform((value) => value || null).nullable().optional(),
+  seo: z.unknown().nullable().optional(),
 });
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +28,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     await adminSession();
     const { id } = await params;
     const data = input.parse(await request.json());
+    const seo = data.seo === undefined ? undefined : sanitizedSeo(data.seo);
+    const { seo: _seo, ...episodeData } = data;
     const existing = await prisma.episode.findUnique({
       where: { id },
       select: { seriesId: true, hlsPath: true, processingStatus: true, publishedAt: true },
@@ -71,7 +75,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       const updated = await prisma.episode.update({
           where: { id },
           data: {
-            ...data,
+            ...episodeData,
+            ...(seo !== undefined ? { seo } : {}),
             ...(data.publishedAt === undefined &&
             existing.publishedAt !== null &&
             !hasPlayableVideo(merged)

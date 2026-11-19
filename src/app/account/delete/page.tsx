@@ -1,6 +1,16 @@
 import Link from "next/link";
 import { getSession } from "@/server/auth";
 import DeleteAccountButton from "./delete-account-button";
+import { buildMetadata } from "@/server/seo";
+
+export async function generateMetadata() {
+  return buildMetadata({
+    kind: "page",
+    path: "/account/delete",
+    title: "Delete your account",
+    excerpt: "Request deletion of your Intube Drama account and personal information.",
+  });
+}
 
 export default async function DeleteAccountPage() {
   const session = await getSession();
