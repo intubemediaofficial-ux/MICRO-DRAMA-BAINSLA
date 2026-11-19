@@ -2,7 +2,8 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { getSession } from "@/server/auth";
 import { resolveCurrency } from "@/server/currency";
-import { getSubscriptionOffer, getUserSubscription } from "@/server/subscriptions";
+import { getSubscriptionOffers, getUserSubscription, intervalLabel } from "@/server/subscriptions";
+import { paymentsEnabled } from "@/server/subscription-providers";
 import SubscriptionActions from "./actions";
 import PasswordChange from "./password-change";
 import AccountNav from "../account-nav";
@@ -21,7 +22,9 @@ export default async function SubscriptionPage() {
     );
   const subscription = await getUserSubscription(session.userId);
   const currency = resolveCurrency(new Headers(await headers()));
-  const offer = await getSubscriptionOffer("VIP_ANNUAL", currency);
+  const offers = await getSubscriptionOffers(currency);
+  const offer =
+    offers.find((item) => item.plan.trialDays > 0) ?? null;
   const money = (minor: number, code: string) =>
     new Intl.NumberFormat("en", { style: "currency", currency: code }).format(minor / 100);
   const trialRemaining =
@@ -49,16 +52,31 @@ export default async function SubscriptionPage() {
             <p className="mt-2">
               Start {offer.plan.trialDays}-day trial for{" "}
               {money(offer.price.trialAmountMinor, offer.price.currency)}, then{" "}
-              {money(offer.price.amountMinor, offer.price.currency)} annually.
+              {money(offer.price.amountMinor, offer.price.currency)}/
+              {intervalLabel(offer.plan.interval)}.
             </p>
           )}
+          {offers.length > 0 && (
+            <ul className="mt-3 space-y-1 text-sm font-semibold">
+              {offers.map((item) => (
+                <li key={item.plan.id}>
+                  {item.plan.name}: {money(item.price.amountMinor, item.price.currency)}/
+                  {intervalLabel(item.plan.interval)}
+                </li>
+              ))}
+            </ul>
+          )}
           <p className="mt-2 text-sm">Unlimited locked episodes, no ads and a VIP badge.</p>
-          <Link
-            href="/"
-            className="mt-5 inline-block rounded-full bg-zinc-950 px-5 py-3 font-bold text-white"
-          >
-            Start trial from an episode
-          </Link>
+          {paymentsEnabled() ? (
+            <Link
+              href="/"
+              className="mt-5 inline-block rounded-full bg-zinc-950 px-5 py-3 font-bold text-white"
+            >
+              Start trial from an episode
+            </Link>
+          ) : (
+            <p className="mt-5 font-bold">VIP subscriptions open soon.</p>
+          )}
         </section>
       ) : (
         <>
@@ -69,7 +87,8 @@ export default async function SubscriptionPage() {
                 <h2 className="mt-2 text-2xl font-black">{subscription.plan.name}</h2>
                 <p className="mt-2 text-zinc-400">
                   {subscription.status} ·{" "}
-                  {money(subscription.price.amountMinor, subscription.currency)} annually
+                  {money(subscription.price.amountMinor, subscription.currency)}/
+                  {intervalLabel(subscription.plan.interval)}
                 </p>
                 {trialRemainingLabel && (
                   <p className="mt-2 font-semibold text-amber-300">{trialRemainingLabel}</p>

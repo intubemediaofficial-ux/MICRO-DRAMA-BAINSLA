@@ -6,6 +6,8 @@ export async function resumeSubscription(userId: string, subscriptionId: string)
     where: { id: subscriptionId, userId, status: { in: ["TRIALING", "ACTIVE"] } },
   });
   if (!subscription) throw new Error("SUBSCRIPTION_NOT_FOUND");
+  if (subscription.provider === "RAZORPAY" && subscription.cancelAtPeriodEnd)
+    throw new Error("RESUME_NOT_SUPPORTED");
   return prisma.$transaction(async (tx) => {
     const result = await tx.subscription.update({
       where: { id: subscriptionId },

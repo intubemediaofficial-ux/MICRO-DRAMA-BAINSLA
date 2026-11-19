@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/server/auth";
 import { detectCountry, resolveCurrency } from "@/server/currency";
-import { getUserSubscription, purchaseAnnual, startTrial } from "@/server/subscriptions";
+import { createRazorpayCheckout, razorpayConfigured } from "@/server/razorpay";
+import { getUserSubscription, purchasePlan, startTrial } from "@/server/subscriptions";
 
 const input = z.object({
   planCode: z.string().min(1).default("VIP_ANNUAL"),
   discountCode: z.string().trim().min(1).max(32).optional(),
-  mode: z.enum(["trial", "annual"]).default("trial"),
+  mode: z.enum(["trial", "paid", "annual"]).default("trial"),
   deviceFingerprint: z.string().trim().min(8).max(256).optional(),
 });
 
@@ -22,11 +23,20 @@ export async function POST(request: Request) {
   if (!session) return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
   try {
     const data = input.parse(await request.json());
+    if (razorpayConfigured()) {
+      const checkout = await createRazorpayCheckout(
+        session.userId,
+        data.planCode,
+        data.mode === "trial" ? "TRIAL" : "PAID",
+        data.deviceFingerprint,
+      );
+      return NextResponse.json({ ok: true, checkout });
+    }
     const currency = resolveCurrency(request.headers);
     const country = detectCountry(request.headers) ?? "IN";
     const subscription =
-      data.mode === "annual"
-        ? await purchaseAnnual(session.userId, data.planCode, currency, country, data.discountCode)
+      data.mode !== "trial"
+        ? await purchasePlan(session.userId, data.planCode, currency, country, data.discountCode)
         : await startTrial(
             session.userId,
             data.planCode,
@@ -42,11 +52,16 @@ export async function POST(request: Request) {
     const status =
       message === "PLAN_NOT_FOUND" || message === "PRICE_NOT_FOUND"
         ? 404
-        : message === "INVALID_DISCOUNT" || message === "TRIAL_ALREADY_USED"
+        : message === "INVALID_DISCOUNT" ||
+            message === "TRIAL_ALREADY_USED" ||
+            message === "TRIAL_NOT_AVAILABLE" ||
+            message === "TRIAL_EMAIL_REQUIRED"
           ? 422
-          : message === "SUBSCRIPTION_EXISTS"
+          : message === "SUBSCRIPTION_EXISTS" || message === "CHECKOUT_PENDING"
             ? 409
-            : 400;
+            : message === "PAYMENTS_UNAVAILABLE" || message === "RAZORPAY_REQUEST_FAILED"
+              ? 503
+              : 400;
     return NextResponse.json({ error: { message } }, { status });
   }
 }

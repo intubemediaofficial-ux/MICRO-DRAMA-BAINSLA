@@ -131,6 +131,19 @@ export class StripeSubscriptionProvider implements SubscriptionProvider {
   }
 }
 
+export function devPaymentsAllowed() {
+  return process.env.NODE_ENV !== "production" || process.env.ALLOW_DEV_PAYMENTS === "1";
+}
+
+/** False in production when no real payment provider is configured, so plans can't be bought for free. */
+export function paymentsEnabled() {
+  return (
+    Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET) ||
+    Boolean(env.STRIPE_SECRET_KEY) ||
+    devPaymentsAllowed()
+  );
+}
+
 export function subscriptionProvider() {
   return env.STRIPE_SECRET_KEY ? new StripeSubscriptionProvider() : new DevSubscriptionProvider();
 }

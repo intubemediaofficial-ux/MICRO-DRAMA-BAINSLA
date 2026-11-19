@@ -4,7 +4,7 @@ import { prisma } from "@/server/db";
 import { GUEST_USER_ID, createStreamToken, watermark } from "@/server/tokens";
 import { resolveEpisodeEntitlement } from "@/server/entitlements";
 import { resolveCurrency } from "@/server/currency";
-import { getSubscriptionOffer, hasUsedTrial } from "@/server/subscriptions";
+import { getSubscriptionOffers, hasUsedTrial } from "@/server/subscriptions";
 import { getResumePositionForEpisode } from "@/server/watch-history";
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -38,7 +38,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!episode) return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
   const entitlement = await resolveEpisodeEntitlement(session.userId, id);
   if (!entitlement.entitled) {
-    const offer = await getSubscriptionOffer("VIP_ANNUAL", resolveCurrency(_request.headers));
+    const offers = await getSubscriptionOffers(resolveCurrency(_request.headers));
+    const offer = offers.find((item) => item.plan.trialDays > 0) ?? offers[0] ?? null;
     const trialAlreadyUsed = await hasUsedTrial(session.userId);
     return NextResponse.json(
       {

@@ -31,14 +31,15 @@ export async function getSubscriptionAdminMetrics(days = 30, search?: string) {
     GROUP BY s.country, i.currency
     ORDER BY "revenueMinor" DESC
   `);
-  // Annual revenue run rate is paid annual invoice revenue divided by twelve for an MRR-like view.
+  // Run rate: each paid plan invoice scaled to a yearly amount (UI divides by twelve for MRR).
   const annualRows = await prisma.$queryRaw<{ revenueMinor: bigint | null }[]>(
     Prisma.sql`
-      SELECT COALESCE(SUM(i."amountMinor"), 0) AS "revenueMinor"
+      SELECT COALESCE(SUM(i."amountMinor" * CASE p.interval
+        WHEN 'MONTHLY' THEN 12 WHEN 'HALF_YEARLY' THEN 2 ELSE 1 END), 0)::bigint AS "revenueMinor"
       FROM "SubscriptionInvoice" i
       INNER JOIN "Subscription" s ON s.id = i."subscriptionId"
       INNER JOIN "Plan" p ON p.id = s."planId"
-      WHERE i.status = 'PAID' AND p.interval = 'ANNUAL'
+      WHERE i.status = 'PAID' AND i.kind = 'RENEWAL'
     `,
   );
   const users = await prisma.user.findMany({
