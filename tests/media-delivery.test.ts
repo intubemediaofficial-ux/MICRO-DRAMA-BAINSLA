@@ -13,10 +13,15 @@ import { rewriteHlsManifest } from "../src/server/hls";
 describe("media delivery", () => {
   it("keeps uploaded episode videos off the public media route", () => {
     expect(isProtectedEpisodeMedia("episodes/abc-clip.mp4")).toBe(true);
+    expect(isProtectedEpisodeMedia("episodes/abc-original.mov")).toBe(true);
+    expect(isProtectedEpisodeMedia("episodes/abc-original.mkv")).toBe(true);
     expect(isProtectedEpisodeMedia("/media/episodes/abc-clip-hls/v0/seg-000.ts")).toBe(true);
     expect(isProtectedEpisodeMedia("x/../episodes/abc-clip.mp4")).toBe(true);
     expect(isProtectedEpisodeMedia("./episodes//abc-clip.mp4")).toBe(true);
+    expect(isProtectedEpisodeMedia("episodes/abc-thumbnail.jpg")).toBe(false);
     expect(isProtectedEpisodeMedia("episodes/abc-clip.mp4.jpg")).toBe(false);
+    expect(isProtectedEpisodeMedia("episodes/subtitle.vtt")).toBe(true);
+    expect(isProtectedEpisodeMedia("subtitles/abc-en.srt")).toBe(false);
     expect(isProtectedEpisodeMedia("admin/teaser/x.mp4")).toBe(false);
   });
 

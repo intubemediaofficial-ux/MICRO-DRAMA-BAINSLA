@@ -68,7 +68,7 @@ function parseRange(value: string | null, size: number) {
 
 export function isProtectedEpisodeMedia(key: string) {
   const normalized = path.posix.normalize(normalizeMediaKey(key)).replace(/^\/+/, "");
-  return normalized.startsWith("episodes/") && /\.(mp4|webm|m3u8|ts|m4s)$/i.test(normalized);
+  return normalized.startsWith("episodes/") && !/\.(jpg|jpeg|png|webp|gif|avif)$/i.test(normalized);
 }
 
 export async function serveMediaFile(
