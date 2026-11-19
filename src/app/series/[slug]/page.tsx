@@ -1,73 +1,100 @@
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
+import type { Route } from "next";
 import { getSession } from "@/server/auth";
+import { resolveRedirect } from "@/server/cms";
 import { prisma } from "@/server/db";
-import { resolveSeriesEpisodeEntitlements } from "@/server/entitlements";
-import { getWatchedEpisodeIds } from "@/server/discovery";
+import { getSeriesDetail } from "@/server/series-detail";
+import { SeoFieldsSchema } from "@/lib/seo";
+import { buildMetadata, SITE_ORIGIN } from "@/server/seo";
+import { getSeoGlobal } from "@/server/site-config";
+import { articleSchema, breadcrumbList, faqPageSchema, schemaTypeFor, tvSeriesSchema } from "@/server/structured-data";
+import { JsonLd } from "@/components/json-ld";
+import WatchlistToggle from "../watchlist-toggle";
+import ShareButton from "../share-button";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const slug = decodeURIComponent((await params).slug);
+  const detail = await getSeriesDetail(slug, null);
+  if (!detail) return {};
+  const { series } = detail;
+  return buildMetadata({
+    kind: "series",
+    path: `/series/${encodeURIComponent(series.slug)}`,
+    title: series.title,
+    excerpt: series.synopsis,
+    image: series.posterUrl,
+    seo: series.seo,
+    vars: { series: series.title },
+  });
+}
 import TeaserPlayer from "./teaser-player";
 import SeasonEpisodes from "./season-episodes";
 
 export default async function SeriesPage({ params }: { params: Promise<{ slug: string }> }) {
   const slug = decodeURIComponent((await params).slug);
   const session = await getSession();
-  const series = await prisma.series.findUnique({
-    where: { slug },
-    include: {
-      episodes: { orderBy: { number: "asc" } },
-      seasons: {
-        orderBy: [{ sortOrder: "asc" }, { number: "asc" }],
-        include: { episodes: { orderBy: { number: "asc" } } },
-      },
-      castMembers: { orderBy: { sortOrder: "asc" } },
-    },
-  });
-  if (!series) notFound();
-  const [entitlementByEpisodeId, watchedIds] = await Promise.all([
-    resolveSeriesEpisodeEntitlements(session?.userId ?? null, series.episodes, series.freeEpisodeCount),
-    session
-      ? getWatchedEpisodeIds(
-          session.userId,
-          series.episodes.map((episode) => episode.id),
-        )
-      : Promise.resolve(new Set<string>()),
+  const detail = await getSeriesDetail(slug, session?.userId ?? null);
+  if (!detail) {
+    const target = await resolveRedirect(`/series/${slug}`).catch(() => null);
+    if (target) {
+      if (target.permanent) permanentRedirect(target.toPath as Route);
+      redirect(target.toPath as Route);
+    }
+    notFound();
+  }
+  const { series, seasonGroups } = detail;
+  const [global] = await Promise.all([getSeoGlobal()]);
+  const seoResult = SeoFieldsSchema.safeParse(series.seo);
+  const seo = seoResult.success ? seoResult.data : {};
+  const schemaType = schemaTypeFor("series", seo.schemaType);
+  const seriesUrl = `${SITE_ORIGIN}/series/${encodeURIComponent(series.slug)}`;
+  const breadcrumbs = breadcrumbList([
+    { name: global.siteName, url: `${SITE_ORIGIN}/` },
+    { name: seo.breadcrumbTitle || series.title, url: seriesUrl },
   ]);
-  const toEpisodeView = (episode: (typeof series.episodes)[number]) => ({
-    id: episode.id,
-    number: episode.number,
-    title: episode.title,
-    durationSec: episode.durationSec,
-    thumbnailUrl: episode.thumbnailUrl,
-    isFree: episode.isFree,
-    coinPrice: episode.coinPrice,
-    watched: watchedIds.has(episode.id),
-    access: entitlementByEpisodeId.get(episode.id)?.reason ?? "LOCKED",
-  });
-  const assignedEpisodeIds = new Set(
-    series.seasons.flatMap((season) => season.episodes.map((episode) => episode.id)),
-  );
-  const seasonGroups = series.seasons.length
-    ? series.seasons.map((season, index) => {
-        const episodes = season.episodes.map(toEpisodeView);
-        if (index !== 0) return { ...season, episodes };
-        const unassignedEpisodes = series.episodes
-          .filter((episode) => !assignedEpisodeIds.has(episode.id))
-          .map(toEpisodeView);
-        return {
-          ...season,
-          episodes: [...episodes, ...unassignedEpisodes].sort((a, b) => a.number - b.number),
-        };
-      })
-    : [
-        {
-          id: "legacy",
-          number: 1,
-          title: "Season 1",
-          episodes: series.episodes.map(toEpisodeView),
-        },
-      ];
+  const description = seo.description || series.synopsis;
+  const entitySchema = schemaType === "None"
+    ? null
+    : schemaType === "FAQPage" && seo.faq?.length
+      ? faqPageSchema(seo.faq)
+      : schemaType === "Article" || schemaType === "BlogPosting" || schemaType === "NewsArticle"
+        ? articleSchema({
+            type: schemaType,
+            title: series.title,
+            description,
+            url: seriesUrl,
+            image: series.posterUrl,
+            organizationName: global.organization.name,
+            organizationLogo: global.organization.logo || undefined,
+          })
+        : tvSeriesSchema({
+            name: series.title,
+            description,
+            url: seriesUrl,
+            image: series.posterUrl,
+            genres: series.genres,
+            actors: series.castMembers.map((member) => member.name),
+            episodeCount: series.episodes.length,
+          });
+  const inWatchlist = session
+    ? Boolean(
+        await prisma.watchlistItem.findUnique({
+          where: { userId_seriesId: { userId: session.userId, seriesId: series.id } },
+          select: { id: true },
+        }),
+      )
+    : false;
   return (
     <div className="pb-24">
+      <JsonLd data={breadcrumbs} />
+      {entitySchema && <JsonLd data={entitySchema} />}
       <Link href="/" className="fixed left-4 top-4 z-10 rounded-full bg-black/50 px-4 py-2">
         ←
       </Link>
@@ -94,6 +121,17 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
               #{tag}
             </span>
           ))}
+        </div>
+        <div className="mt-4">
+          <WatchlistToggle
+            seriesId={series.id}
+            initialInWatchlist={inWatchlist}
+            signedIn={Boolean(session)}
+          />
+          <ShareButton
+            title={series.title}
+            url={`${SITE_ORIGIN}/series/${encodeURIComponent(series.slug)}`}
+          />
         </div>
         <div className="mt-5 flex flex-wrap gap-3 text-sm text-zinc-400">
           {(series.castMembers.length
@@ -122,10 +160,7 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
           <span className="self-center">· {series.episodes.length} episodes</span>
         </div>
         <h2 className="mt-8 mb-3 text-xl font-bold">Episodes</h2>
-        <SeasonEpisodes
-          freeEpisodeCount={series.freeEpisodeCount}
-          seasons={seasonGroups}
-        />
+        <SeasonEpisodes freeEpisodeCount={series.freeEpisodeCount} seasons={seasonGroups} />
       </section>
     </div>
   );

@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
+import { publicEpisodeWhere, publicSeriesSql, publicSeriesWhere } from "./publishing";
 
 type Ranked = { id: string; score?: bigint; latest?: Date };
 
@@ -14,8 +15,8 @@ export async function getWatchedEpisodeIds(userId: string, episodeIds: string[])
 async function orderedSeries(rows: Ranked[]) {
   if (!rows.length) return [];
   const items = await prisma.series.findMany({
-    where: { id: { in: rows.map((row) => row.id) }, isPublished: true },
-    include: { episodes: { orderBy: { number: "asc" }, take: 1 } },
+    where: { ...publicSeriesWhere, id: { in: rows.map((row) => row.id) } },
+    include: { episodes: { where: publicEpisodeWhere, orderBy: { number: "asc" }, take: 1 } },
   });
   const rank = new Map(rows.map((row, index) => [row.id, index]));
   return items.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
@@ -29,9 +30,11 @@ export async function getDiscovery(userId?: string) {
       SELECT s.id, COUNT(DISTINCT eu.id) + COUNT(DISTINCT el.id) AS score
       FROM "Series" s
       LEFT JOIN "Episode" e ON e."seriesId" = s.id
+        AND e."publishedAt" IS NOT NULL AND e."processingStatus" = 'READY'
+        AND e."hlsPath" NOT IN ('', 'sample.mp4')
       LEFT JOIN "EpisodeUnlock" eu ON eu."episodeId" = e.id AND eu."createdAt" >= ${since}
       LEFT JOIN "EpisodeLike" el ON el."episodeId" = e.id AND el."createdAt" >= ${since}
-      WHERE s."isPublished" = true
+      WHERE ${publicSeriesSql}
       GROUP BY s.id
       ORDER BY score DESC, s."createdAt" DESC
       LIMIT 8
@@ -43,7 +46,9 @@ export async function getDiscovery(userId?: string) {
       SELECT s.id, MAX(e."publishedAt") AS latest
       FROM "Series" s
       JOIN "Episode" e ON e."seriesId" = s.id
-      WHERE s."isPublished" = true
+        AND e."publishedAt" IS NOT NULL AND e."processingStatus" = 'READY'
+        AND e."hlsPath" NOT IN ('', 'sample.mp4')
+      WHERE ${publicSeriesSql}
       GROUP BY s.id
       ORDER BY latest DESC NULLS LAST
       LIMIT 8
@@ -86,7 +91,7 @@ export async function getDiscovery(userId?: string) {
           SELECT s.id, SUM(a.weight) AS score
           FROM "Series" s
           INNER JOIN affinity a ON a.tag = ANY(s.genres) OR a.tag = ANY(s."tropeTags")
-          WHERE s."isPublished" = true
+          WHERE ${publicSeriesSql}
           GROUP BY s.id
           ORDER BY score DESC, s.title ASC
           LIMIT 8
@@ -94,8 +99,8 @@ export async function getDiscovery(userId?: string) {
       )
     : [];
   const all = await prisma.series.findMany({
-    where: { isPublished: true },
-    include: { episodes: { orderBy: { number: "asc" }, take: 1 } },
+    where: publicSeriesWhere,
+    include: { episodes: { where: publicEpisodeWhere, orderBy: { number: "asc" }, take: 1 } },
     orderBy: { title: "asc" },
   });
   const genres = [...new Set(all.flatMap((item) => item.genres))];

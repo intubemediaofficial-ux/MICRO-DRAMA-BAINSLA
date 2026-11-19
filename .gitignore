@@ -6,3 +6,6 @@ node_modules/
 *.tsbuildinfo
 public/media/demo/
 public/media/episodes/
+keystore.properties
+*.jks
+*.keystore

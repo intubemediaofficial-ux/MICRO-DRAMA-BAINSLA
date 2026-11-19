@@ -2,11 +2,11 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { getSession } from "@/server/auth";
-import { prisma } from "@/server/db";
 import { resolveMediaPath, serveMediaFile } from "@/server/media";
 import { rewriteHlsManifest } from "@/server/hls";
 import { GUEST_USER_ID, verifyStreamToken } from "@/server/tokens";
 import { resolveEpisodeEntitlement } from "@/server/entitlements";
+import { findPublicEpisode } from "@/server/publishing";
 
 export async function GET(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const session = await getSession();
@@ -18,15 +18,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
       { error: { message: "Invalid or expired stream token" } },
       { status: 401 },
     );
-  const episode = await prisma.episode.findUnique({
-    where: { id: verified.episodeId },
-    include: { series: true },
-  });
+  const episode = await findPublicEpisode(verified.episodeId);
   if (!episode) return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
-  const entitlement = await resolveEpisodeEntitlement(
-    isGuest ? null : verified.userId,
-    episode.id,
-  );
+  const entitlement = await resolveEpisodeEntitlement(isGuest ? null : verified.userId, episode.id);
   if (!entitlement.entitled)
     return NextResponse.json({ error: { message: "Locked" } }, { status: 403 });
 
@@ -37,14 +31,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
     if (requested !== root && !requested.startsWith(`${root}/`)) {
       return NextResponse.json({ error: { message: "Invalid media path" } }, { status: 400 });
     }
-    return serveMediaFile(request, requested);
+    if (requested.endsWith(".m3u8")) return servePlaylist(requested, token);
+    return serveMediaFile(request, requested, "private, max-age=86400");
   }
   if (!episode.hlsPath.endsWith(".m3u8")) return serveMediaFile(request, episode.hlsPath);
+  return servePlaylist(episode.hlsPath, token);
+}
 
+async function servePlaylist(key: string, token: string) {
   try {
-    const manifestPath = resolveMediaPath(episode.hlsPath);
-    const manifest = await fs.readFile(manifestPath, "utf8");
-    const rewritten = rewriteHlsManifest(manifest, token, episode.hlsPath);
+    const manifest = await fs.readFile(resolveMediaPath(key), "utf8");
+    const rewritten = rewriteHlsManifest(manifest, token, key);
     return new NextResponse(rewritten, {
       headers: {
         "content-type": "application/vnd.apple.mpegurl",

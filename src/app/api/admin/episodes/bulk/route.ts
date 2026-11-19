@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
+import { notifyNewPublicEpisode } from "@/server/episode-notifications";
 import { prisma } from "@/server/db";
+import { hasPlayableVideo } from "@/lib/publishing";
 import {
   duplicateSkuMessage,
   episodeNumberConflictMessage,
@@ -18,7 +20,7 @@ const input = z.object({
         number: z.number().int().positive(),
         title: z.string().min(1),
         durationSec: z.number().int().positive().default(90),
-        hlsPath: z.string().default("sample.mp4"),
+        hlsPath: z.string().default(""),
         thumbnailUrl: z.string().default("/media/thumb-0.jpg"),
         isFree: z.boolean().default(false),
         coinPrice: z.number().int().positive().default(10),
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
     const data = input.parse(await request.json());
     const series = await prisma.series.findUnique({
       where: { id: data.seriesId },
-      select: { id: true, posterUrl: true },
+      select: { id: true, posterUrl: true, isPublished: true },
     });
     if (!series) return NextResponse.json({ error: { message: "Series not found" } }, { status: 404 });
     const season = data.seasonId
@@ -73,6 +75,7 @@ export async function POST(request: Request) {
           prisma.episode.create({
             data: {
               ...episode,
+              publishedAt: hasPlayableVideo(episode) ? (episode.publishedAt ?? null) : null,
               seriesId: data.seriesId,
               seasonId: season.id,
               thumbnailUrl: episode.thumbnailUrl ?? series.posterUrl,
@@ -96,7 +99,17 @@ export async function POST(request: Request) {
       }
       throw error;
     }
-    return NextResponse.json({ episodes }, { status: 201 });
+    if (series.isPublished)
+      for (const episode of episodes)
+        if (episode.publishedAt && hasPlayableVideo(episode))
+          void notifyNewPublicEpisode(episode.id).catch(() => {});
+    return NextResponse.json(
+      {
+        episodes,
+        draftedWithoutVideo: episodes.filter((episode) => !hasPlayableVideo(episode)).length,
+      },
+      { status: 201 },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bulk episode creation failed";
     return NextResponse.json(
@@ -122,27 +135,49 @@ export async function PATCH(request: Request) {
     if (data.numbers && data.numbers.some((item) => !ids.has(item.id)))
       throw new Error("NUMBER_UPDATE_OUTSIDE_SELECTION");
     const result = await prisma.$transaction(async (tx) => {
+      const selectedEpisodes = await tx.episode.findMany({
+        where: { id: { in: data.episodeIds } },
+        select: { id: true, hlsPath: true, processingStatus: true, publishedAt: true },
+      });
+      const playableIds = selectedEpisodes.filter(hasPlayableVideo).map((episode) => episode.id);
+      const skippedWithoutVideo =
+        data.publishedAt && data.publishedAt !== null
+          ? selectedEpisodes.filter((episode) => !hasPlayableVideo(episode)).map((episode) => episode.id)
+          : [];
       if (data.numbers?.length) {
         for (const item of data.numbers)
           await tx.episode.update({ where: { id: item.id }, data: { number: -item.number } });
         for (const item of data.numbers)
           await tx.episode.update({ where: { id: item.id }, data: { number: item.number } });
       }
-      const update = Object.fromEntries(
-        Object.entries({
-          coinPrice: data.coinPrice,
-          isFree: data.isFree,
-          publishedAt: data.publishedAt,
-        }).filter(([, value]) => value !== undefined),
-      );
+      const update: { coinPrice?: number; isFree?: boolean; publishedAt?: Date | null } = {};
+      if (data.coinPrice !== undefined) update.coinPrice = data.coinPrice;
+      if (data.isFree !== undefined) update.isFree = data.isFree;
+      if (data.publishedAt === null) update.publishedAt = null;
       if (Object.keys(update).length)
         await tx.episode.updateMany({ where: { id: { in: data.episodeIds } }, data: update });
-      return tx.episode.findMany({
-        where: { id: { in: data.episodeIds } },
-        orderBy: { number: "asc" },
-      });
+      if (data.publishedAt && playableIds.length)
+        await tx.episode.updateMany({
+          where: { id: { in: playableIds } },
+          data: { publishedAt: data.publishedAt },
+        });
+      return {
+        episodes: await tx.episode.findMany({
+          where: { id: { in: data.episodeIds } },
+          orderBy: { number: "asc" },
+        }),
+        skippedWithoutVideo,
+        newlyPublicIds:
+          data.publishedAt && data.publishedAt !== null
+            ? selectedEpisodes
+                .filter((episode) => episode.publishedAt === null && playableIds.includes(episode.id))
+                .map((episode) => episode.id)
+            : [],
+      };
     });
-    return NextResponse.json({ episodes: result });
+    for (const episodeId of result.newlyPublicIds)
+      void notifyNewPublicEpisode(episodeId).catch(() => {});
+    return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bulk episode update failed";
     return NextResponse.json(
