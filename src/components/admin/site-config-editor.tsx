@@ -417,7 +417,9 @@ export default function SiteConfigEditor({ kind }: { kind: "seo" | "theme" }) {
 
       {kind === "seo" && tab === "Webmaster verification" && sectionTitle("Webmaster verification", (
         <div className="grid gap-4 sm:grid-cols-2">
-          {Object.keys(config.verification).map((key) => textInput(`${key} verification`, `verification.${key}`))}
+          {(["google", "bing", "yandex", "pinterest", "baidu"] as const).map((key) =>
+            textInput(`${key} verification`, `verification.${key}`),
+          )}
         </div>
       ))}
 

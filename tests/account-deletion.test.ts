@@ -22,10 +22,12 @@ vi.mock("next/headers", () => ({
 
 import { POST as deleteAccountPost } from "../src/app/api/account/delete/route";
 import { POST as verifyPost } from "../src/app/api/auth/verify/route";
-import { getSession, issueSession } from "../src/server/auth";
+import { findOrCreateUser, getSession, issueSession } from "../src/server/auth";
 import { prisma } from "../src/server/db";
 import { hasUsedTrial } from "../src/server/subscriptions";
 import {
+  accountDeletionIdentifier,
+  anonymizedDeletedAccountIdentifier,
   anonymizedTrialClaimDeviceFingerprint,
   anonymizedTrialClaimEmail,
 } from "../src/server/trial-claim-privacy";
@@ -37,7 +39,10 @@ const deviceId = `account-delete-${suffix}`;
 let userId = "";
 let activeUserId = "";
 let referrerId = "";
+let referrerCode = "";
 let replacementUserId = "";
+let replacementPhoneUserId = "";
+let tombstoneUserId = "";
 const autoRenewUserIds: string[] = [];
 let seriesId = "";
 let episodeId = "";
@@ -116,6 +121,7 @@ describe("account deletion", () => {
     ]);
     userId = user.id;
     activeUserId = activeUser.id;
+    referrerCode = referrer.referralCode;
 
     const plan = await prisma.plan.create({
       data: {
@@ -300,7 +306,17 @@ describe("account deletion", () => {
     });
     await prisma.user.deleteMany({
       where: {
-        id: { in: [userId, activeUserId, referrerId, replacementUserId, ...autoRenewUserIds].filter(Boolean) },
+        id: {
+          in: [
+            userId,
+            activeUserId,
+            referrerId,
+            replacementUserId,
+            replacementPhoneUserId,
+            tombstoneUserId,
+            ...autoRenewUserIds,
+          ].filter(Boolean),
+        },
       },
     });
     await prisma.series.deleteMany({ where: { id: seriesId } });
@@ -319,6 +335,42 @@ describe("account deletion", () => {
     await issueSession({ userId, role: "USER" });
     const response = await deleteRequest({ confirm: "delete" });
     expect(response.status).toBe(400);
+  });
+
+  it("preserves tombstones when an already-deleted account is processed again", () => {
+    const deletedEmail = anonymizedDeletedAccountIdentifier("email", email, userId);
+    const deletedPhone = anonymizedDeletedAccountIdentifier("phone", phone, userId);
+    expect(accountDeletionIdentifier("email", deletedEmail, userId, true)).toBe(deletedEmail);
+    expect(accountDeletionIdentifier("phone", deletedPhone, userId, true)).toBe(deletedPhone);
+    expect(accountDeletionIdentifier("email", deletedEmail, userId, false)).toBe(deletedEmail);
+  });
+
+  it("keeps existing tombstones when processing an already-deleted account", async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: `account-tombstone-${suffix}@test.local`,
+        phone: `+1556${suffix}`,
+        referralCode: `AT${suffix}`,
+      },
+    });
+    tombstoneUserId = user.id;
+    const emailTombstone = anonymizedDeletedAccountIdentifier("email", user.email!, user.id);
+    const phoneTombstone = anonymizedDeletedAccountIdentifier("phone", user.phone!, user.id);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { email: emailTombstone, phone: phoneTombstone },
+    });
+
+    await issueSession({ userId: user.id, role: "USER" });
+    const response = await deleteRequest({ confirm: "DELETE" });
+
+    expect(response.status).toBe(200);
+    const deletedUser = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(deletedUser).toMatchObject({
+      email: emailTombstone,
+      phone: phoneTombstone,
+      isDisabled: true,
+    });
   });
 
   it("blocks active auto-renewing subscriptions", async () => {
@@ -372,7 +424,11 @@ describe("account deletion", () => {
 
     expect(response.status).toBe(200);
     expect(await prisma.user.findUniqueOrThrow({ where: { id: cancelingUserId } })).toMatchObject({
-      email: null,
+      email: anonymizedDeletedAccountIdentifier(
+        "email",
+        `account-canceling-${suffix}@test.local`,
+        cancelingUserId,
+      ),
       isDisabled: true,
     });
   });
@@ -386,8 +442,8 @@ describe("account deletion", () => {
 
     const deletedUser = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
     expect(deletedUser).toMatchObject({
-      email: null,
-      phone: null,
+      email: anonymizedDeletedAccountIdentifier("email", email, userId),
+      phone: anonymizedDeletedAccountIdentifier("phone", phone, userId),
       name: null,
       passwordHash: null,
       isDisabled: true,
@@ -455,7 +511,7 @@ describe("account deletion", () => {
     const login = await verifyPost(
       new Request("http://localhost/api/auth/verify", {
         method: "POST",
-        body: JSON.stringify({ identifier: email, code: "123456" }),
+        body: JSON.stringify({ identifier: email, code: "123456", referralCode: referrerCode }),
         headers: { "content-type": "application/json" },
       }),
     );
@@ -468,5 +524,22 @@ describe("account deletion", () => {
       isDisabled: false,
     });
     expect(await hasUsedTrial(replacementUserId)).toBe(true);
+
+    const phoneSignup = await findOrCreateUser(phone, referrerCode);
+    replacementPhoneUserId = phoneSignup.id;
+    expect(phoneSignup).toMatchObject({ phone, referredById: null });
+    expect(
+      await prisma.coinTransaction.count({
+        where: {
+          type: "REFERRAL_BONUS",
+          OR: [
+            { userId: replacementUserId, refId: referrerId },
+            { userId: referrerId, refId: replacementUserId },
+            { userId: replacementPhoneUserId, refId: referrerId },
+            { userId: referrerId, refId: replacementPhoneUserId },
+          ],
+        },
+      }),
+    ).toBe(0);
   });
 });
