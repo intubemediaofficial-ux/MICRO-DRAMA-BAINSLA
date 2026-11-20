@@ -11,6 +11,8 @@ import { renderTitleTemplate } from "@/lib/seo";
 import { SITE_ORIGIN } from "@/server/seo";
 import { themeCssVariables } from "@/lib/theme";
 
+export const dynamic = "force-dynamic";
+
 const googleFonts: Record<string, string> = {
   Inter: "Inter:wght@400;500;600;700;800",
   Poppins: "Poppins:wght@400;500;600;700;800",
