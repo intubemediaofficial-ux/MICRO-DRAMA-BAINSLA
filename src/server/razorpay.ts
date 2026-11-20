@@ -1,8 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { Prisma, Subscription, SubscriptionInterval } from "@prisma/client";
-import { env } from "./config";
 import { prisma } from "./db";
+import { completeRazorpayCoinPurchase } from "./coin-purchases";
+import { getSettings, type AppSettings } from "./settings";
 import { addInterval, findPlan, statusEvent } from "./subscriptions";
+import { priorTrialClaimWhere } from "./trial-claim-privacy";
 
 const API = "https://api.razorpay.com/v1";
 
@@ -19,12 +21,26 @@ const TOTAL_COUNT: Record<SubscriptionInterval, number> = {
   ANNUAL: 10,
 };
 
-export function razorpayConfigured() {
-  return Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET);
+export async function razorpayConfigured() {
+  const settings = await getSettings();
+  return Boolean(
+    settings.RAZORPAY_KEY_ID &&
+      settings.RAZORPAY_KEY_SECRET &&
+      settings.PAYMENTS_ENABLED,
+  );
 }
 
-async function razorpay<T>(path: string, body?: unknown): Promise<T> {
-  const auth = Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString("base64");
+async function razorpay<T>(
+  path: string,
+  body?: unknown,
+  credentials?: Pick<AppSettings, "RAZORPAY_KEY_ID" | "RAZORPAY_KEY_SECRET">,
+): Promise<T> {
+  const settings = credentials ?? (await getSettings());
+  if (!settings.RAZORPAY_KEY_ID || !settings.RAZORPAY_KEY_SECRET)
+    throw new Error("PAYMENTS_UNAVAILABLE");
+  const auth = Buffer.from(
+    `${settings.RAZORPAY_KEY_ID}:${settings.RAZORPAY_KEY_SECRET}`,
+  ).toString("base64");
   const response = await fetch(`${API}${path}`, {
     method: "POST",
     headers: { Authorization: `Basic ${auth}`, "content-type": "application/json" },
@@ -32,6 +48,32 @@ async function razorpay<T>(path: string, body?: unknown): Promise<T> {
   });
   if (!response.ok) throw new Error("RAZORPAY_REQUEST_FAILED");
   return (await response.json()) as T;
+}
+
+export async function createRazorpayOrder(input: {
+  amount: number;
+  currency: string;
+  receipt: string;
+  purchaseId: string;
+  userId: string;
+}) {
+  const settings = await getSettings();
+  if (
+    !settings.PAYMENTS_ENABLED ||
+    !settings.RAZORPAY_KEY_ID ||
+    !settings.RAZORPAY_KEY_SECRET
+  )
+    throw new Error("PAYMENTS_UNAVAILABLE");
+  return razorpay<{ id: string }>(
+    "/orders",
+    {
+      amount: input.amount,
+      currency: input.currency,
+      receipt: input.receipt,
+      notes: { purchaseId: input.purchaseId, userId: input.userId },
+    },
+    settings,
+  );
 }
 
 function hmac(secret: string, data: string) {
@@ -87,6 +129,13 @@ export async function createRazorpayCheckout(
   deviceFingerprint?: string,
   now = new Date(),
 ): Promise<RazorpayCheckout> {
+  const settings = await getSettings();
+  if (
+    !settings.PAYMENTS_ENABLED ||
+    !settings.RAZORPAY_KEY_ID ||
+    !settings.RAZORPAY_KEY_SECRET
+  )
+    throw new Error("PAYMENTS_UNAVAILABLE");
   const plan = await findPlan(planCode);
   if (!plan) throw new Error("PLAN_NOT_FOUND");
   const price = plan.prices.find((item) => item.currency === "INR");
@@ -101,7 +150,7 @@ export async function createRazorpayCheckout(
     if (!email) throw new Error("TRIAL_EMAIL_REQUIRED");
     const fingerprint = deviceFingerprint?.trim() || undefined;
     const prior = await prisma.trialClaim.findFirst({
-      where: { OR: [{ email }, ...(fingerprint ? [{ deviceFingerprint: fingerprint }] : [])] },
+      where: priorTrialClaimWhere(email, fingerprint),
     });
     if (prior) throw new Error("TRIAL_ALREADY_USED");
   }
@@ -179,7 +228,7 @@ export async function createRazorpayCheckout(
   });
   return {
     provider: "RAZORPAY",
-    keyId: env.RAZORPAY_KEY_ID!,
+    keyId: settings.RAZORPAY_KEY_ID,
     razorpaySubscriptionId: remote.id,
     subscriptionId,
     description: trial ? `${plan.trialDays}-day trial, then ${plan.name}` : plan.name,
@@ -258,9 +307,10 @@ export async function confirmRazorpayCheckout(
     deviceFingerprint?: string;
   },
 ) {
-  if (!env.RAZORPAY_KEY_SECRET) throw new Error("PAYMENTS_UNAVAILABLE");
+  const settings = await getSettings();
+  if (!settings.RAZORPAY_KEY_SECRET) throw new Error("PAYMENTS_UNAVAILABLE");
   const expected = hmac(
-    env.RAZORPAY_KEY_SECRET,
+    settings.RAZORPAY_KEY_SECRET,
     `${input.razorpayPaymentId}|${input.razorpaySubscriptionId}`,
   );
   if (!safeEqual(expected, input.razorpaySignature)) throw new Error("INVALID_PAYMENT_SIGNATURE");
@@ -275,16 +325,19 @@ export async function confirmRazorpayCheckout(
 type RazorpayEvent = {
   event?: string;
   payload?: {
+    order?: { entity?: { id?: string } };
     subscription?: {
       entity?: { id?: string; current_start?: number | null; current_end?: number | null };
     };
-    payment?: { entity?: { id?: string; amount?: number } };
+    payment?: { entity?: { id?: string; amount?: number; order_id?: string } };
   };
 };
 
-export function verifyRazorpayWebhook(payload: string, signature: string | null) {
-  if (!env.RAZORPAY_WEBHOOK_SECRET || !signature) throw new Error("INVALID_WEBHOOK_SIGNATURE");
-  if (!safeEqual(hmac(env.RAZORPAY_WEBHOOK_SECRET, payload), signature))
+export async function verifyRazorpayWebhook(payload: string, signature: string | null) {
+  const settings = await getSettings();
+  if (!settings.RAZORPAY_WEBHOOK_SECRET || !signature)
+    throw new Error("INVALID_WEBHOOK_SIGNATURE");
+  if (!safeEqual(hmac(settings.RAZORPAY_WEBHOOK_SECRET, payload), signature))
     throw new Error("INVALID_WEBHOOK_SIGNATURE");
   return JSON.parse(payload) as RazorpayEvent;
 }
@@ -294,6 +347,41 @@ function fromUnix(seconds: number | null | undefined) {
 }
 
 export async function processRazorpayWebhook(eventId: string, event: RazorpayEvent) {
+  const orderId =
+    event.event === "order.paid"
+      ? (event.payload?.order?.entity?.id ?? event.payload?.payment?.entity?.order_id)
+      : event.event === "payment.captured"
+        ? event.payload?.payment?.entity?.order_id
+        : undefined;
+  if (orderId) {
+    const purchase = await prisma.purchase.findFirst({
+      where: { provider: "RAZORPAY", providerRef: orderId },
+      select: { id: true },
+    });
+    if (!purchase) return { duplicate: false, handled: false };
+    try {
+      await prisma.subscriptionWebhookEvent.create({
+        data: {
+          provider: "RAZORPAY",
+          providerEventId: eventId,
+          payload: event as Prisma.InputJsonValue,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
+        return { duplicate: true, handled: false };
+      throw error;
+    }
+    try {
+      const result = await completeRazorpayCoinPurchase(orderId);
+      return { duplicate: false, handled: result.found };
+    } catch (error) {
+      await prisma.subscriptionWebhookEvent
+        .delete({ where: { providerEventId: eventId } })
+        .catch(() => undefined);
+      throw error;
+    }
+  }
   const remote = event.payload?.subscription?.entity;
   if (!remote?.id) return { duplicate: false, handled: false };
   const local = await prisma.subscription.findUnique({ where: { providerRef: remote.id } });

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { ToastProvider } from "./admin-ui";
@@ -14,7 +15,11 @@ type AdminHref =
   | "/admin/commerce"
   | "/admin/commerce#marketing"
   | "/admin/analytics"
-  | "/admin/settings";
+  | "/admin/settings"
+  | "/admin/pages"
+  | "/admin/blog"
+  | "/admin/seo"
+  | "/admin/appearance";
 
 const nav: readonly [label: string, href: AdminHref][] = [
   ["Dashboard", "/admin"],
@@ -25,6 +30,10 @@ const nav: readonly [label: string, href: AdminHref][] = [
   ["Commerce", "/admin/commerce"],
   ["Marketing", "/admin/commerce#marketing"],
   ["Analytics", "/admin/analytics"],
+  ["Pages", "/admin/pages"],
+  ["Blog", "/admin/blog"],
+  ["SEO", "/admin/seo"],
+  ["Appearance", "/admin/appearance"],
   ["Settings", "/admin/settings"],
 ];
 
@@ -63,7 +72,7 @@ export default function AdminShell({
         >
           <div className="mb-8 flex items-center justify-between px-2">
             <div>
-              <p className="text-sm font-black tracking-[0.18em] text-rose-400">MICRODRAMA</p>
+              <p className="text-sm font-black tracking-[0.18em] text-rose-400">INTUBE DRAMA</p>
               <p className="mt-1 text-xs text-zinc-500">Admin workspace</p>
             </div>
             <button type="button" onClick={() => setOpen(false)} className="text-zinc-500 md:hidden">
@@ -79,7 +88,7 @@ export default function AdminShell({
               return (
                 <Link
                   key={label}
-                  href={href}
+                  href={href as Route}
                   onClick={() => setOpen(false)}
                   className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
                     active

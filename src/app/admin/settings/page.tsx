@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSession } from "@/server/auth";
+import IntegrationsSettings from "./integrations-settings";
 
 export default async function AdminSettingsPage() {
   const session = await getSession();
@@ -22,6 +23,7 @@ export default async function AdminSettingsPage() {
           <Link href="/" className="mt-4 inline-block rounded-xl border border-white/10 bg-zinc-800 px-4 py-2.5 text-sm font-bold">View site →</Link>
         </section>
       </div>
+      <IntegrationsSettings />
     </div>
   );
 }

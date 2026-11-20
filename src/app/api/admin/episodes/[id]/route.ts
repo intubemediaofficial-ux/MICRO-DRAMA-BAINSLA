@@ -2,14 +2,17 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { adminSession } from "@/server/admin";
+import { notifyNewPublicEpisode } from "@/server/episode-notifications";
 import { prisma } from "@/server/db";
+import { hasPlayableVideo } from "@/lib/publishing";
+import { sanitizedSeo } from "@/server/cms-content";
 import { duplicateSkuMessage, episodeNumberConflictMessage } from "@/server/episode-validation";
 
 const input = z.object({
   title: z.string().min(1).optional(),
   number: z.number().int().positive().optional(),
   durationSec: z.number().int().positive().optional(),
-  hlsPath: z.string().min(1).optional(),
+  hlsPath: z.string().optional(),
   thumbnailUrl: z.string().min(1).optional(),
   isFree: z.boolean().optional(),
   coinPrice: z.number().int().positive().optional(),
@@ -17,6 +20,7 @@ const input = z.object({
   seasonId: z.string().nullable().optional(),
   originalFilename: z.string().max(255).nullable().optional(),
   sku: z.string().trim().max(120).transform((value) => value || null).nullable().optional(),
+  seo: z.unknown().nullable().optional(),
 });
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -24,8 +28,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     await adminSession();
     const { id } = await params;
     const data = input.parse(await request.json());
-    const existing = await prisma.episode.findUnique({ where: { id }, select: { seriesId: true } });
+    const seo = data.seo === undefined ? undefined : sanitizedSeo(data.seo);
+    const { seo: _seo, ...episodeData } = data;
+    const existing = await prisma.episode.findUnique({
+      where: { id },
+      select: { seriesId: true, hlsPath: true, processingStatus: true, publishedAt: true },
+    });
     if (!existing) return NextResponse.json({ error: { message: "Episode not found" } }, { status: 404 });
+    const merged = {
+      hlsPath: data.hlsPath === undefined ? existing.hlsPath : data.hlsPath,
+      processingStatus: existing.processingStatus,
+    };
+    if (data.publishedAt && !hasPlayableVideo(merged))
+      return NextResponse.json(
+        { error: { message: "Upload a video file before publishing this episode." } },
+        { status: 400 },
+      );
     if (data.seasonId) {
       const season = await prisma.season.findUnique({ where: { id: data.seasonId }, select: { seriesId: true } });
       if (!season || season.seriesId !== existing.seriesId)
@@ -54,12 +72,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         );
     }
     try {
-      return NextResponse.json(
-        await prisma.episode.update({
+      const updated = await prisma.episode.update({
           where: { id },
-          data: { ...data, ...(data.thumbnailUrl ? { thumbnailSource: "CUSTOM" } : {}) },
-        }),
-      );
+          data: {
+            ...episodeData,
+            ...(seo !== undefined ? { seo } : {}),
+            ...(data.publishedAt === undefined &&
+            existing.publishedAt !== null &&
+            !hasPlayableVideo(merged)
+              ? { publishedAt: null }
+              : {}),
+            ...(data.thumbnailUrl ? { thumbnailSource: "CUSTOM" } : {}),
+          },
+        });
+      if (!existing.publishedAt && updated.publishedAt)
+        void notifyNewPublicEpisode(updated.id).catch(() => {});
+      return NextResponse.json(updated);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         if (data.number !== undefined) {

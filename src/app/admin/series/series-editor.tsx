@@ -2,6 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { hasPlayableVideo } from "@/lib/publishing";
+import type { SeoFields } from "@/lib/seo";
+import SeoPanel from "@/components/editor/seo-panel";
 import {
   Button,
   Confirm,
@@ -29,7 +32,21 @@ type Episode = {
   processingError?: string | null;
   originalFilename?: string | null;
   sku?: string | null;
+  seo?: SeoFields | null;
   subtitles?: { id: string; lang: string; srtPath: string }[];
+};
+type EpisodeActionResult =
+  | { episode?: Episode; episodes?: Episode[]; skippedWithoutVideo?: string[] }
+  | Episode;
+type NewEpisodeDraft = {
+  seasonId: string;
+  number: number;
+  title: string;
+  durationSec: number;
+  coinPrice: number;
+  isFree: boolean;
+  publish: boolean;
+  videoFile: File | null;
 };
 type Season = {
   id: string;
@@ -71,6 +88,7 @@ type SeriesData = {
   castMembers: Cast[];
   seasons: Season[];
   episodes: Episode[];
+  seo?: SeoFields | null;
 };
 
 function slugify(value: string) {
@@ -227,6 +245,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   const [slug, setSlug] = useState(initial?.slug ?? "");
   const [slugEdited, setSlugEdited] = useState(Boolean(initial?.slug));
   const [synopsis, setSynopsis] = useState(initial?.synopsis ?? "");
+  const [seo, setSeo] = useState<SeoFields>(initial?.seo ?? {});
   const [posterUrl, setPosterUrl] = useState(initial?.posterUrl ?? "");
   const [teaserUrl, setTeaserUrl] = useState(initial?.teaserUrl ?? "");
   const [genres, setGenres] = useState(initial?.genres ?? []);
@@ -247,6 +266,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   const [saving, setSaving] = useState(false);
   const [episodeId, setEpisodeId] = useState(initial?.episodes[0]?.id ?? "");
   const [episodeDraft, setEpisodeDraft] = useState<Episode | null>(null);
+  const [newEpisodeDraft, setNewEpisodeDraft] = useState<NewEpisodeDraft | null>(null);
   const [bulkText, setBulkText] = useState("");
   const [subtitleLang, setSubtitleLang] = useState("hi");
   const [subtitlePending, setSubtitlePending] = useState(false);
@@ -255,6 +275,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [bulkSeasonId, setBulkSeasonId] = useState(initial?.seasons?.[0]?.id ?? "");
   const [bulkQueue, setBulkQueue] = useState<BulkUploadItem[]>([]);
+  const [publishBulkAfterUpload, setPublishBulkAfterUpload] = useState(false);
   const parsedBulk = useMemo(
     () =>
       bulkText
@@ -275,6 +296,9 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
         }),
     [bulkText],
   );
+  const canPublishSeries = Boolean(
+    id && episodes.some((episode) => Boolean(episode.publishedAt) && hasPlayableVideo(episode)),
+  );
 
   async function saveSeries() {
     setSaving(true);
@@ -282,6 +306,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
       slug: slug || slugify(title),
       title,
       synopsis,
+      seo,
       posterUrl,
       teaserUrl,
       genres,
@@ -393,6 +418,19 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
     setEpisodeId(item.id);
     setEpisodeDraft({ ...item, subtitles: item.subtitles ?? [] });
   }
+  function startNewEpisode() {
+    if (!seasons.length) return toast("Create a season before adding episodes.", "error");
+    setNewEpisodeDraft({
+      seasonId: seasons[0].id,
+      number: Math.max(0, ...episodes.map((episode) => episode.number)) + 1,
+      title: "",
+      durationSec: 90,
+      coinPrice: defaultCoinPrice,
+      isFree: false,
+      publish: false,
+      videoFile: null,
+    });
+  }
   async function episodeAction(
     url: string,
     method: string,
@@ -412,7 +450,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
         return null;
       }
       toast(message);
-      return (await response.json()) as { episode?: Episode; episodes?: Episode[] };
+      return (await response.json()) as EpisodeActionResult;
     } finally {
       setPendingAction(null);
     }
@@ -426,11 +464,18 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
       message,
       "bulk",
     );
-    if (result?.episodes) {
+    if (result && "episodes" in result && result.episodes) {
       setEpisodes((current) =>
         current.map((item) => result.episodes?.find((next) => next.id === item.id) ?? item),
       );
       setSelected([]);
+    }
+    if ("publishedAt" in body && body.publishedAt !== null) {
+      const skippedCount =
+        result && "skippedWithoutVideo" in result
+          ? (result.skippedWithoutVideo?.length ?? 0)
+          : 0;
+      toast(`${skippedCount} episodes skipped because they have no video.`, "info");
     }
   }
   async function renumberSelected() {
@@ -449,7 +494,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
       `${chosen.length} episodes renumbered.`,
       "bulk",
     );
-    if (result?.episodes) {
+    if (result && "episodes" in result && result.episodes) {
       setEpisodes((current) =>
         current
           .map((item) => result.episodes?.find((next) => next.id === item.id) ?? item)
@@ -487,19 +532,76 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
         thumbnailUrl: episodeDraft.thumbnailUrl,
         isFree: episodeDraft.isFree,
         coinPrice: episodeDraft.coinPrice,
-        publishedAt: episodeDraft.publishedAt,
+        ...(hasPlayableVideo(episodeDraft) ? { publishedAt: episodeDraft.publishedAt } : {}),
         originalFilename: episodeDraft.originalFilename,
         sku: episodeDraft.sku,
+        seo: episodeDraft.seo ?? {},
       },
       "Episode saved.",
     );
-    if (result?.episode)
+    const updated =
+      result && "episode" in result
+        ? result.episode
+        : result && "id" in result
+          ? result
+          : null;
+    if (updated) {
+      setEpisodeDraft((current) => ({
+        ...updated,
+        subtitles: updated.subtitles ?? current?.subtitles ?? [],
+      }));
       setEpisodes((current) =>
-        current.map((item) => (item.id === result.episode?.id ? result.episode : item)),
+        current.map((item) =>
+          item.id === updated.id
+            ? { ...updated, subtitles: updated.subtitles ?? item.subtitles }
+            : item,
+        ),
       );
+    }
   }
-  async function uploadEpisode(file: File) {
-    if (!episodeDraft) return;
+  async function createSingleEpisode() {
+    if (!newEpisodeDraft) return;
+    if (!newEpisodeDraft.videoFile) return toast("Video file is required", "error");
+    if (!newEpisodeDraft.title.trim()) return toast("Episode title is required", "error");
+    setPendingAction("episode-create");
+    try {
+      const response = await fetch("/api/admin/episodes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          seriesId: id,
+          seasonId: newEpisodeDraft.seasonId,
+          episodes: [
+            {
+              number: newEpisodeDraft.number,
+              title: newEpisodeDraft.title.trim(),
+              durationSec: newEpisodeDraft.durationSec,
+              coinPrice: newEpisodeDraft.coinPrice,
+              isFree: newEpisodeDraft.isFree,
+              hlsPath: "",
+              publishedAt: null,
+              originalFilename: newEpisodeDraft.videoFile.name,
+            },
+          ],
+        }),
+      });
+      if (!response.ok) throw new Error(await readError(response));
+      const data = (await response.json()) as { episodes: Episode[] };
+      const episode = data.episodes[0];
+      setEpisodes((current) => [...current, episode].sort((a, b) => a.number - b.number));
+      setNewEpisodeDraft(null);
+      await uploadEpisodeFile(episode, newEpisodeDraft.videoFile, newEpisodeDraft.publish);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Episode creation failed", "error");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+  async function uploadEpisodeFile(
+    targetEpisode: Episode,
+    file: File,
+    publishAfterUpload = false,
+  ) {
     const form = new FormData();
     form.append("file", file);
     setEpisodeUploadProgress(1);
@@ -509,7 +611,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
         processing?: { status: string; error?: string };
       }>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("POST", `/api/admin/episodes/${episodeDraft.id}/upload`);
+        xhr.open("POST", `/api/admin/episodes/${targetEpisode.id}/upload`);
         xhr.upload.onprogress = (event) => {
           if (event.lengthComputable)
             setEpisodeUploadProgress(Math.round((event.loaded / event.total) * 100));
@@ -523,21 +625,43 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
         xhr.onerror = () => reject(new Error("Video upload failed"));
         xhr.send(form);
       });
-      setEpisodeDraft(data.episode);
+      let episode = data.episode;
+      setEpisodeDraft((current) => (current?.id === episode.id ? episode : current));
       setEpisodes((current) =>
-        current.map((item) => (item.id === data.episode.id ? data.episode : item)),
+        current.map((item) => (item.id === episode.id ? episode : item)),
       );
+      if (data.processing?.status === "READY" && publishAfterUpload && hasPlayableVideo(episode)) {
+        const response = await fetch(`/api/admin/episodes/${episode.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ publishedAt: new Date().toISOString() }),
+        });
+        if (!response.ok) throw new Error(await readError(response));
+        episode = (await response.json()) as Episode;
+        setEpisodeDraft((current) => (current?.id === episode.id ? episode : current));
+        setEpisodes((current) =>
+          current.map((item) => (item.id === episode.id ? episode : item)),
+        );
+      }
       toast(
         data.processing?.status === "FAILED"
           ? `Video uploaded but processing failed: ${data.processing.error ?? "try again"}`
-          : "Episode video uploaded and processed.",
+          : publishAfterUpload && episode.publishedAt
+            ? "Episode video uploaded and published."
+            : "Episode video uploaded and processed.",
         data.processing?.status === "FAILED" ? "error" : "success",
       );
+      return episode;
     } catch (error) {
       toast(error instanceof Error ? error.message : "Video upload failed", "error");
+      return null;
     } finally {
       setEpisodeUploadProgress(0);
     }
+  }
+  async function uploadEpisode(file: File) {
+    if (!episodeDraft) return;
+    await uploadEpisodeFile(episodeDraft, file);
   }
   async function uploadSubtitle(file: File) {
     if (!episodeDraft) return;
@@ -630,10 +754,15 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
         toast(await readError(response), "error");
         return;
       }
-      const data = (await response.json()) as { episodes: Episode[] };
+      const data = (await response.json()) as {
+        episodes: Episode[];
+        draftedWithoutVideo?: number;
+      };
       setEpisodes((current) => [...current, ...data.episodes].sort((a, b) => a.number - b.number));
       setBulkText("");
-      toast(`${data.episodes.length} episodes added.`);
+      toast(
+        `${data.episodes.length} episodes added; ${data.draftedWithoutVideo ?? 0} drafted without video.`,
+      );
     } finally {
       setPendingAction(null);
     }
@@ -679,6 +808,8 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
               title: item.file.name.replace(/\.[^.]+$/, ""),
               coinPrice: defaultCoinPrice,
               isFree: false,
+              hlsPath: "",
+              publishedAt: null,
               originalFilename: item.file.name,
               sku: item.sku || null,
             },
@@ -720,6 +851,31 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
       );
       if (uploadResponse.processing?.status === "FAILED")
         throw new Error(uploadResponse.processing.error ?? "Video processing failed");
+      let uploadedEpisode = uploadResponse.episode;
+      if (publishBulkAfterUpload && hasPlayableVideo(uploadedEpisode)) {
+        const publishResponse = await fetch(`/api/admin/episodes/${uploadedEpisode.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ publishedAt: new Date().toISOString() }),
+        });
+        if (!publishResponse.ok) {
+          const message = await readError(publishResponse);
+          toast(message, "error");
+          setEpisodes((current) =>
+            current.map((episodeItem) =>
+              episodeItem.id === uploadedEpisode.id ? uploadedEpisode : episodeItem,
+            ),
+          );
+          updateBulkItem(item.id, { status: "ready", progress: 100, error: message });
+          return;
+        }
+        uploadedEpisode = (await publishResponse.json()) as Episode;
+      }
+      setEpisodes((current) =>
+        current.map((episodeItem) =>
+          episodeItem.id === uploadedEpisode.id ? uploadedEpisode : episodeItem,
+        ),
+      );
       updateBulkItem(item.id, { status: "ready", progress: 100 });
     } catch (error) {
       updateBulkItem(item.id, {
@@ -825,17 +981,31 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
             <input
               type="checkbox"
               checked={isPublished}
+              disabled={!canPublishSeries && !isPublished}
               onChange={(event) => setIsPublished(event.target.checked)}
               className="h-4 w-4 accent-rose-500"
             />
             <span>
               <b className="block text-sm">Published</b>
               <small className="text-xs text-zinc-500">
-                Make this series visible on the public catalogue.
+                {!canPublishSeries && !isPublished
+                  ? "Needs at least one published episode with a video"
+                  : isPublished
+                    ? "Unpublish this series from the public catalogue."
+                    : "Make this series visible on the public catalogue."}
               </small>
             </span>
           </label>
         </div>
+        <SeoPanel
+          kind="series"
+          title={title}
+          slug={slug}
+          description={synopsis}
+          html={`<p>${synopsis}</p>`}
+          seo={seo}
+          onChange={setSeo}
+        />
         <div className="mt-5 flex justify-end">
           <Button onClick={() => void saveSeries()} pending={saving}>
             {id ? "Save details" : "Create series"}
@@ -1011,6 +1181,11 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
           title="Episodes"
           description="The chips make access and publishing state visible immediately."
         >
+          <div className="mb-4 flex justify-end">
+            <Button variant="secondary" onClick={startNewEpisode}>
+              Add episode
+            </Button>
+          </div>
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-zinc-950 p-3">
             <b className="mr-2 text-sm">{selected.length} selected</b>
             <input
@@ -1158,8 +1333,20 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
                       </StatusChip>
                     </td>
                     <td className="p-3">
-                      <StatusChip tone={item.publishedAt ? "success" : "neutral"}>
-                        {item.publishedAt ? "Published" : "Draft"}
+                      <StatusChip
+                        tone={
+                          !hasPlayableVideo(item)
+                            ? "warning"
+                            : item.publishedAt
+                              ? "success"
+                              : "neutral"
+                        }
+                      >
+                        {!hasPlayableVideo(item)
+                          ? "Draft · No video"
+                          : item.publishedAt
+                            ? "Published"
+                            : "Draft"}
                       </StatusChip>
                     </td>
                     <td className="p-3">
@@ -1250,6 +1437,14 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
                     </option>
                   ))}
                 </select>
+                <label className="flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm text-zinc-300">
+                  <input
+                    type="checkbox"
+                    checked={publishBulkAfterUpload}
+                    onChange={(event) => setPublishBulkAfterUpload(event.target.checked)}
+                  />
+                  Publish after upload
+                </label>
                 <label className="cursor-pointer rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-bold">
                   Choose videos
                   <input
@@ -1344,6 +1539,131 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
               </div>
             )}
           </div>
+          {newEpisodeDraft && (
+            <AdminModal
+              open
+              title="Add episode"
+              description="A video file is required. The episode will be created as a draft and published after processing if selected."
+              onClose={() => setNewEpisodeDraft(null)}
+            >
+              <div className="space-y-4">
+                <Field label="Title">
+                  <input
+                    value={newEpisodeDraft.title}
+                    onChange={(event) =>
+                      setNewEpisodeDraft({ ...newEpisodeDraft, title: event.target.value })
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <Field label="Season">
+                    <select
+                      value={newEpisodeDraft.seasonId}
+                      onChange={(event) =>
+                        setNewEpisodeDraft({ ...newEpisodeDraft, seasonId: event.target.value })
+                      }
+                      className={inputClass}
+                    >
+                      {seasons.map((season) => (
+                        <option key={season.id} value={season.id}>
+                          S{season.number} · {season.title || `Season ${season.number}`}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Number">
+                    <input
+                      type="number"
+                      min="1"
+                      value={newEpisodeDraft.number}
+                      onChange={(event) =>
+                        setNewEpisodeDraft({
+                          ...newEpisodeDraft,
+                          number: Number(event.target.value),
+                        })
+                      }
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Duration (sec)">
+                    <input
+                      type="number"
+                      min="1"
+                      value={newEpisodeDraft.durationSec}
+                      onChange={(event) =>
+                        setNewEpisodeDraft({
+                          ...newEpisodeDraft,
+                          durationSec: Number(event.target.value),
+                        })
+                      }
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Coin price">
+                    <input
+                      type="number"
+                      min="1"
+                      value={newEpisodeDraft.coinPrice}
+                      onChange={(event) =>
+                        setNewEpisodeDraft({
+                          ...newEpisodeDraft,
+                          coinPrice: Number(event.target.value),
+                        })
+                      }
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
+                <Field label="Video file *" helper="Required to create an episode.">
+                  <input
+                    type="file"
+                    accept="video/*"
+                    onChange={(event) =>
+                      setNewEpisodeDraft({
+                        ...newEpisodeDraft,
+                        videoFile: event.target.files?.[0] ?? null,
+                      })
+                    }
+                    className={`${inputClass} file:mr-3 file:rounded-lg file:border-0 file:bg-rose-500 file:px-3 file:py-2 file:text-white`}
+                  />
+                  {newEpisodeDraft.videoFile && (
+                    <small className="mt-2 block text-zinc-500">
+                      {newEpisodeDraft.videoFile.name}
+                    </small>
+                  )}
+                </Field>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={newEpisodeDraft.isFree}
+                      onChange={(event) =>
+                        setNewEpisodeDraft({ ...newEpisodeDraft, isFree: event.target.checked })
+                      }
+                    />{" "}
+                    Free episode
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={newEpisodeDraft.publish}
+                      onChange={(event) =>
+                        setNewEpisodeDraft({ ...newEpisodeDraft, publish: event.target.checked })
+                      }
+                    />{" "}
+                    Publish after upload
+                  </label>
+                </div>
+                <Button
+                  pending={pendingAction === "episode-create"}
+                  onClick={() => void createSingleEpisode()}
+                >
+                  Create episode
+                </Button>
+              </div>
+            </AdminModal>
+          )}
           {episodeDraft && (
             <AdminModal
               open
@@ -1442,6 +1762,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
                       <input
                         type="checkbox"
                         checked={Boolean(episodeDraft.publishedAt)}
+                        disabled={!hasPlayableVideo(episodeDraft)}
                         onChange={(event) =>
                           setEpisodeDraft({
                             ...episodeDraft,
@@ -1450,13 +1771,27 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
                         }
                       />{" "}
                       Published
+                      {!hasPlayableVideo(episodeDraft) && (
+                        <small className="text-xs text-zinc-500">
+                          Upload a video file to publish
+                        </small>
+                      )}
                     </label>
                   </div>
+                  <SeoPanel
+                    kind="episode"
+                    title={episodeDraft.title}
+                    slug={episodeDraft.id}
+                    description={episodeDraft.title}
+                    html=""
+                    seo={episodeDraft.seo ?? {}}
+                    onChange={(nextSeo) => setEpisodeDraft({ ...episodeDraft, seo: nextSeo })}
+                  />
                   <Button onClick={() => void saveEpisode()}>Save episode</Button>
                 </div>
                 <div className="space-y-4">
                   <Field
-                    label="Video upload"
+                    label="Video file *"
                     helper="Upload-first workflow; the raw path is kept below for advanced cases."
                   >
                     <input

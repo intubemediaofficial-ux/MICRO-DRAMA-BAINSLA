@@ -1,7 +1,21 @@
 import Image from "next/image";
 import Link from "next/link";
 import { prisma } from "@/server/db";
+import { publicSeriesWhere } from "@/server/publishing";
+import { buildMetadata } from "@/server/seo";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbList, webPageSchema } from "@/server/structured-data";
+import { getSeoGlobal } from "@/server/site-config";
 import SearchControls from "./search-controls";
+
+export async function generateMetadata() {
+  return buildMetadata({
+    kind: "search",
+    path: "/search",
+    title: "Search stories",
+    excerpt: "Find your next short drama.",
+  });
+}
 
 export default async function SearchPage({
   searchParams,
@@ -9,10 +23,11 @@ export default async function SearchPage({
   searchParams: Promise<{ q?: string; genre?: string; trope?: string; cast?: string }>;
 }) {
   const params = await searchParams;
+  const global = await getSeoGlobal();
   const q = params.q?.trim();
   const items = await prisma.series.findMany({
     where: {
-      isPublished: true,
+      ...publicSeriesWhere,
       ...(q
         ? {
             OR: [
@@ -30,6 +45,16 @@ export default async function SearchPage({
   });
   return (
     <div className="p-5 pb-24">
+      <JsonLd data={breadcrumbList([
+        { name: global.siteName, url: "https://intubedrama.com/" },
+        { name: "Search", url: "https://intubedrama.com/search" },
+      ])} />
+      <JsonLd data={webPageSchema({
+        type: "WebPage",
+        title: "Search stories",
+        description: "Find your next short drama.",
+        url: "https://intubedrama.com/search",
+      })} />
       <Link href="/" className="text-zinc-400">
         ← Discover
       </Link>

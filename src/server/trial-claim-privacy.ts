@@ -1,0 +1,42 @@
+import { Prisma } from "@prisma/client";
+import { createHmac } from "node:crypto";
+import { env } from "./config";
+
+function hashTrialIdentifier(kind: string, value: string) {
+  return createHmac("sha256", env.SESSION_SECRET)
+    .update(`${kind}:${value.trim().toLowerCase()}`)
+    .digest("hex");
+}
+
+export function anonymizedTrialClaimEmail(email: string) {
+  return `deleted-${hashTrialIdentifier("email", email)}@deleted.invalid`;
+}
+
+export function anonymizedTrialClaimDeviceFingerprint(fingerprint: string) {
+  return hashTrialIdentifier("device", fingerprint);
+}
+
+export function priorTrialClaimWhere(
+  email: string,
+  fingerprint?: string,
+): Prisma.TrialClaimWhereInput {
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedFingerprint = fingerprint?.trim() || undefined;
+  return {
+    OR: [
+      { email: { in: [normalizedEmail, anonymizedTrialClaimEmail(normalizedEmail)] } },
+      ...(normalizedFingerprint
+        ? [
+            {
+              deviceFingerprint: {
+                in: [
+                  normalizedFingerprint,
+                  anonymizedTrialClaimDeviceFingerprint(normalizedFingerprint),
+                ],
+              },
+            },
+          ]
+        : []),
+    ],
+  };
+}

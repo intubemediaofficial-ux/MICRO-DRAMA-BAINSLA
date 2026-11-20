@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { findPublicEpisode } from "@/server/publishing";
 const input = z.object({ episodeId: z.string() });
 export async function POST(request: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 });
   try {
     const { episodeId } = input.parse(await request.json());
+    if (!(await findPublicEpisode(episodeId)))
+      return NextResponse.json({ error: { message: "Not found" } }, { status: 404 });
     const existing = await prisma.episodeLike.findUnique({
       where: { userId_episodeId: { userId: session.userId, episodeId } },
     });

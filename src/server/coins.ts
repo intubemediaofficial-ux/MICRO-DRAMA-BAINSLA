@@ -9,6 +9,90 @@ export class InsufficientCoins extends Error {
 type Ref = { type: string; id: string };
 export const CHECKIN_REWARDS = [5, 8, 12, 16, 22, 30, 50];
 
+function utcDay() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+export async function getDailyCheckinStatus(userId: string) {
+  const day = utcDay();
+  const yesterday = new Date(day);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const [checkin, prior] = await Promise.all([
+    prisma.dailyCheckin.findUnique({ where: { userId_day: { userId, day } } }),
+    prisma.dailyCheckin.findFirst({
+      where: { userId, day: { lt: day } },
+      orderBy: { day: "desc" },
+    }),
+  ]);
+  const streak =
+    checkin?.streak ?? (prior?.day.getTime() === yesterday.getTime() ? prior.streak : 0);
+  return {
+    checkedInToday: Boolean(checkin),
+    streak,
+    nextReward: CHECKIN_REWARDS[Math.min(streak, CHECKIN_REWARDS.length - 1)] ?? 5,
+    rewards: CHECKIN_REWARDS,
+  };
+}
+
+export async function claimDailyCheckin(userId: string) {
+  const day = utcDay();
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.dailyCheckin.findUnique({
+      where: { userId_day: { userId, day } },
+    });
+    if (existing) {
+      const user = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { coinBalance: true },
+      });
+      return { checkin: existing, coinsAwarded: 0, balance: user.coinBalance, alreadyCheckedIn: true };
+    }
+    const yesterday = new Date(day);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const prior = await tx.dailyCheckin.findFirst({
+      where: { userId, day: { lt: day } },
+      orderBy: { day: "desc" },
+    });
+    const streak = prior?.day.getTime() === yesterday.getTime() ? Math.min(prior.streak + 1, 7) : 1;
+    const inserted = await tx.dailyCheckin.createMany({
+      data: [{ userId, day, streak }],
+      skipDuplicates: true,
+    });
+    if (inserted.count === 0) {
+      const [checkin, user] = await Promise.all([
+        tx.dailyCheckin.findUniqueOrThrow({ where: { userId_day: { userId, day } } }),
+        tx.user.findUniqueOrThrow({ where: { id: userId }, select: { coinBalance: true } }),
+      ]);
+      return { checkin, coinsAwarded: 0, balance: user.coinBalance, alreadyCheckedIn: true };
+    }
+    const reward = CHECKIN_REWARDS[streak - 1] ?? CHECKIN_REWARDS[0]!;
+    const updated = await tx.user.updateMany({
+      where: { id: userId },
+      data: { coinBalance: { increment: reward } },
+    });
+    if (updated.count !== 1) throw new Error("USER_NOT_FOUND");
+    const user = await tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { coinBalance: true },
+    });
+    await tx.coinTransaction.create({
+      data: {
+        userId,
+        delta: reward,
+        type: "DAILY_CHECKIN",
+        balanceAfter: user.coinBalance,
+        refType: "day",
+        refId: day.toISOString(),
+      },
+    });
+    const checkin = await tx.dailyCheckin.findUniqueOrThrow({
+      where: { userId_day: { userId, day } },
+    });
+    return { checkin, coinsAwarded: reward, balance: user.coinBalance, alreadyCheckedIn: false };
+  });
+}
+
 export async function adjustCoins(userId: string, delta: number, reason: string, actorId: string) {
   if (!Number.isInteger(delta) || delta === 0) throw new Error("INVALID_COIN_ADJUSTMENT");
   if (!reason.trim()) throw new Error("ADJUSTMENT_REASON_REQUIRED");
@@ -37,9 +121,15 @@ export async function adjustCoins(userId: string, delta: number, reason: string,
   });
 }
 
-export async function credit(userId: string, delta: number, type: LedgerType, ref?: Ref) {
+export async function credit(
+  userId: string,
+  delta: number,
+  type: LedgerType,
+  ref?: Ref,
+  transaction?: Prisma.TransactionClient,
+) {
   if (delta <= 0) throw new Error("CREDIT_MUST_BE_POSITIVE");
-  return prisma.$transaction(async (tx) => {
+  const apply = async (tx: Prisma.TransactionClient) => {
     const updated = await tx.user.updateMany({
       where: { id: userId },
       data: { coinBalance: { increment: delta } },
@@ -59,7 +149,8 @@ export async function credit(userId: string, delta: number, type: LedgerType, re
         refId: ref?.id,
       },
     });
-  });
+  };
+  return transaction ? apply(transaction) : prisma.$transaction(apply);
 }
 export async function debit(userId: string, cost: number, type: LedgerType, ref?: Ref) {
   if (cost <= 0) throw new Error("DEBIT_MUST_BE_POSITIVE");
@@ -128,35 +219,5 @@ export async function unlockEpisode(userId: string, episodeId: string) {
   }
 }
 export async function dailyCheckin(userId: string) {
-  const now = new Date();
-  const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  return prisma.$transaction(async (tx) => {
-    const prior = await tx.dailyCheckin.findFirst({ where: { userId }, orderBy: { day: "desc" } });
-    const existing = await tx.dailyCheckin.findUnique({ where: { userId_day: { userId, day } } });
-    if (existing) return existing;
-    const yesterday = new Date(day);
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-    const streak = prior?.day.getTime() === yesterday.getTime() ? Math.min(prior.streak + 1, 7) : 1;
-    const checkin = await tx.dailyCheckin.create({ data: { userId, day, streak } });
-    const reward = CHECKIN_REWARDS[streak - 1] ?? CHECKIN_REWARDS[0];
-    await tx.user.updateMany({
-      where: { id: userId },
-      data: { coinBalance: { increment: reward } },
-    });
-    const user = await tx.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { coinBalance: true },
-    });
-    await tx.coinTransaction.create({
-      data: {
-        userId,
-        delta: reward,
-        type: "DAILY_CHECKIN",
-        balanceAfter: user.coinBalance,
-        refType: "day",
-        refId: day.toISOString(),
-      },
-    });
-    return checkin;
-  });
+  return (await claimDailyCheckin(userId)).checkin;
 }
