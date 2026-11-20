@@ -4,7 +4,7 @@ import { z } from "zod";
 import { clearSession, getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import {
-  anonymizedDeletedAccountIdentifier,
+  accountDeletionIdentifier,
   anonymizedTrialClaimDeviceFingerprint,
   anonymizedTrialClaimEmail,
 } from "@/server/trial-claim-privacy";
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({
       where: { id: session.userId },
-      select: { email: true, phone: true },
+      select: { email: true, phone: true, isDisabled: true },
     });
     if (!user) return "missing" as const;
 
@@ -89,12 +89,8 @@ export async function POST(request: Request) {
     await tx.user.update({
       where: { id: session.userId },
       data: {
-        email: user.email
-          ? anonymizedDeletedAccountIdentifier("email", user.email, session.userId)
-          : null,
-        phone: user.phone
-          ? anonymizedDeletedAccountIdentifier("phone", user.phone, session.userId)
-          : null,
+        email: accountDeletionIdentifier("email", user.email, session.userId, user.isDisabled),
+        phone: accountDeletionIdentifier("phone", user.phone, session.userId, user.isDisabled),
         name: null,
         passwordHash: null,
         isDisabled: true,

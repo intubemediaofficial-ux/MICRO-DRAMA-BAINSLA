@@ -26,6 +26,7 @@ import { findOrCreateUser, getSession, issueSession } from "../src/server/auth";
 import { prisma } from "../src/server/db";
 import { hasUsedTrial } from "../src/server/subscriptions";
 import {
+  accountDeletionIdentifier,
   anonymizedDeletedAccountIdentifier,
   anonymizedTrialClaimDeviceFingerprint,
   anonymizedTrialClaimEmail,
@@ -41,6 +42,7 @@ let referrerId = "";
 let referrerCode = "";
 let replacementUserId = "";
 let replacementPhoneUserId = "";
+let tombstoneUserId = "";
 const autoRenewUserIds: string[] = [];
 let seriesId = "";
 let episodeId = "";
@@ -311,6 +313,7 @@ describe("account deletion", () => {
             referrerId,
             replacementUserId,
             replacementPhoneUserId,
+            tombstoneUserId,
             ...autoRenewUserIds,
           ].filter(Boolean),
         },
@@ -332,6 +335,42 @@ describe("account deletion", () => {
     await issueSession({ userId, role: "USER" });
     const response = await deleteRequest({ confirm: "delete" });
     expect(response.status).toBe(400);
+  });
+
+  it("preserves tombstones when an already-deleted account is processed again", () => {
+    const deletedEmail = anonymizedDeletedAccountIdentifier("email", email, userId);
+    const deletedPhone = anonymizedDeletedAccountIdentifier("phone", phone, userId);
+    expect(accountDeletionIdentifier("email", deletedEmail, userId, true)).toBe(deletedEmail);
+    expect(accountDeletionIdentifier("phone", deletedPhone, userId, true)).toBe(deletedPhone);
+    expect(accountDeletionIdentifier("email", deletedEmail, userId, false)).toBe(deletedEmail);
+  });
+
+  it("keeps existing tombstones when processing an already-deleted account", async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: `account-tombstone-${suffix}@test.local`,
+        phone: `+1556${suffix}`,
+        referralCode: `AT${suffix}`,
+      },
+    });
+    tombstoneUserId = user.id;
+    const emailTombstone = anonymizedDeletedAccountIdentifier("email", user.email!, user.id);
+    const phoneTombstone = anonymizedDeletedAccountIdentifier("phone", user.phone!, user.id);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { email: emailTombstone, phone: phoneTombstone },
+    });
+
+    await issueSession({ userId: user.id, role: "USER" });
+    const response = await deleteRequest({ confirm: "DELETE" });
+
+    expect(response.status).toBe(200);
+    const deletedUser = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(deletedUser).toMatchObject({
+      email: emailTombstone,
+      phone: phoneTombstone,
+      isDisabled: true,
+    });
   });
 
   it("blocks active auto-renewing subscriptions", async () => {
