@@ -11,6 +11,16 @@ const inputSchema = z.object({
 });
 const MAX_NOT_FOUND_LOGS = 2000;
 
+function resolvesRedirectForPath(path: string, segments: string[]) {
+  if (segments[0] === "watch" || segments[0] === "api") return false;
+  if (path === "/subscribe") return false;
+  if (segments[0] === "admin" && segments[1] === "series" && segments.length === 3)
+    return false;
+  if (segments[0] === "blog") return segments.length > 1;
+  if (segments[0] === "series" && segments.length === 2) return true;
+  return segments.length > 0;
+}
+
 function safeReferrer(request: Request) {
   const value = request.headers.get("referer");
   if (!value) return undefined;
@@ -43,10 +53,12 @@ async function resolvesToRealContent(path: string) {
           : Promise.resolve(null);
   const [content, redirect] = await Promise.all([
     contentLookup,
-    prisma.redirect.findFirst({
-      where: { fromPath: path, active: true },
-      select: { id: true },
-    }),
+    resolvesRedirectForPath(path, segments)
+      ? prisma.redirect.findFirst({
+          where: { fromPath: path, active: true },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
   ]);
   return Boolean(content || redirect);
 }

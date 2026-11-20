@@ -69,7 +69,7 @@ describe("public 404 logging", () => {
     expect(mocks.upsert).toHaveBeenCalled();
   });
 
-  it("does not log published content or active redirects", async () => {
+  it("does not log published content", async () => {
     mocks.findPost.mockResolvedValueOnce({ id: "published-post" });
     const response = await POST(
       new Request("http://localhost/api/seo/not-found", {
@@ -82,5 +82,47 @@ describe("public 404 logging", () => {
     expect(response.status).toBe(200);
     expect(mocks.findLog).not.toHaveBeenCalled();
     expect(mocks.upsert).not.toHaveBeenCalled();
+  });
+
+  it("checks redirects only for routes that resolve them and still logs other 404s", async () => {
+    mocks.findRedirect.mockResolvedValue({ id: "active-redirect" });
+    for (const [index, path] of [
+      [0, "/blog/moved-post"],
+      [1, "/series/moved-series"],
+    ] as const) {
+      const response = await POST(
+        new Request("http://localhost/api/seo/not-found", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-forwarded-for": `203.0.113.${20 + index}`,
+          },
+          body: JSON.stringify({ path }),
+        }),
+      );
+      expect(response.status).toBe(200);
+    }
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(mocks.findRedirect).toHaveBeenCalledTimes(2);
+
+    for (const [index, path] of [
+      [0, "/watch/missing-episode"],
+      [1, "/subscribe"],
+      [2, "/admin/series/missing-id"],
+    ] as const) {
+      const response = await POST(
+        new Request("http://localhost/api/seo/not-found", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-forwarded-for": `203.0.113.${30 + index}`,
+          },
+          body: JSON.stringify({ path }),
+        }),
+      );
+      expect(response.status).toBe(200);
+    }
+    expect(mocks.findRedirect).toHaveBeenCalledTimes(2);
+    expect(mocks.upsert).toHaveBeenCalledTimes(3);
   });
 });
