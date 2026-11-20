@@ -8,6 +8,18 @@ function hashTrialIdentifier(kind: string, value: string) {
     .digest("hex");
 }
 
+export function deletedAccountIdentifierPrefix(kind: "email" | "phone", value: string) {
+  return `deleted:${hashTrialIdentifier(kind, value)}:`;
+}
+
+export function anonymizedDeletedAccountIdentifier(
+  kind: "email" | "phone",
+  value: string,
+  userId: string,
+) {
+  return `${deletedAccountIdentifierPrefix(kind, value)}${userId}`;
+}
+
 export function anonymizedTrialClaimEmail(email: string) {
   return `deleted-${hashTrialIdentifier("email", email)}@deleted.invalid`;
 }

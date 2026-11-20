@@ -4,6 +4,7 @@ import { z } from "zod";
 import { clearSession, getSession } from "@/server/auth";
 import { prisma } from "@/server/db";
 import {
+  anonymizedDeletedAccountIdentifier,
   anonymizedTrialClaimDeviceFingerprint,
   anonymizedTrialClaimEmail,
 } from "@/server/trial-claim-privacy";
@@ -88,8 +89,12 @@ export async function POST(request: Request) {
     await tx.user.update({
       where: { id: session.userId },
       data: {
-        email: null,
-        phone: null,
+        email: user.email
+          ? anonymizedDeletedAccountIdentifier("email", user.email, session.userId)
+          : null,
+        phone: user.phone
+          ? anonymizedDeletedAccountIdentifier("phone", user.phone, session.userId)
+          : null,
         name: null,
         passwordHash: null,
         isDisabled: true,
