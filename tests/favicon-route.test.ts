@@ -24,4 +24,13 @@ describe("favicon route", () => {
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe("/icon.svg");
   });
+
+  it("percent-encodes non-ASCII favicon URLs", async () => {
+    mocks.getTheme.mockResolvedValue({ faviconUrl: "https://cdn.example.test/图标.png?a=%20" });
+
+    const response = await GET();
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("https://cdn.example.test/%E5%9B%BE%E6%A0%87.png?a=%20");
+  });
 });

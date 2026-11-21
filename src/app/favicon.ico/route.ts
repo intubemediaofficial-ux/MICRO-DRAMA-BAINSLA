@@ -5,5 +5,6 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const theme = await getTheme();
   // Relative Location keeps the public host behind the reverse proxy.
-  return new Response(null, { status: 307, headers: { Location: theme.faviconUrl || "/icon.svg" } });
+  const target = (theme.faviconUrl || "/icon.svg").replace(/[^\x00-\x7F]/gu, encodeURIComponent);
+  return new Response(null, { status: 307, headers: { Location: target } });
 }
