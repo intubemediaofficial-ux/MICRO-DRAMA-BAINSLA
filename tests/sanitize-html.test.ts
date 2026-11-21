@@ -37,4 +37,16 @@ describe("CMS HTML sanitization", () => {
     expect(html).not.toContain('src="//evil.com/x.png"');
     expect(html).not.toContain("evil.com");
   });
+
+  it("preserves RGB colors while stripping unsafe style declarations", () => {
+    const html = sanitizeContentHtml(
+      '<p style="color: rgb(37, 99, 235); background-color: rgba(37, 99, 235, 0.5)">Safe</p><p style="color: rgb(1,2,3);background:url(x);font-family:expression(alert(1))">Unsafe</p>',
+    );
+
+    expect(html).toMatch(/color:rgb\(37,\s*99,\s*235\)/);
+    expect(html).toMatch(/background-color:rgba\(37,\s*99,\s*235,\s*0\.5\)/);
+    expect(html).toContain("rgb(1,2,3)");
+    expect(html).not.toContain("background:url");
+    expect(html).not.toContain("expression");
+  });
 });

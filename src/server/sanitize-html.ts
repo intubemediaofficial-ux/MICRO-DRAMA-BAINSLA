@@ -2,6 +2,7 @@ import sanitizeHtml from "sanitize-html";
 
 const widthPattern = /^\d+(?:\.\d+)?(?:px|%)$/i;
 const hexColorPattern = /^#[\da-f]{3,8}$/i;
+const rgbColorPattern = /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*(0|1|0?\.\d+)\s*)?\)$/;
 
 const options: sanitizeHtml.IOptions = {
   allowProtocolRelative: false,
@@ -36,8 +37,8 @@ const options: sanitizeHtml.IOptions = {
   },
   allowedStyles: {
     "*": {
-      color: [hexColorPattern],
-      "background-color": [hexColorPattern],
+      color: [hexColorPattern, rgbColorPattern],
+      "background-color": [hexColorPattern, rgbColorPattern],
       "text-align": [/^(left|center|right|justify)$/],
     },
     img: { width: [widthPattern] },
