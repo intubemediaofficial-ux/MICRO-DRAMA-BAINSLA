@@ -10,7 +10,7 @@ describe("favicon route", () => {
   it("redirects to the configured theme favicon", async () => {
     mocks.getTheme.mockResolvedValue({ faviconUrl: "https://cdn.example.test/brand.ico" });
 
-    const response = await GET(new Request("https://intubedrama.com/favicon.ico"));
+    const response = await GET();
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe("https://cdn.example.test/brand.ico");
@@ -19,9 +19,9 @@ describe("favicon route", () => {
   it("falls back to the SVG icon when no theme favicon is configured", async () => {
     mocks.getTheme.mockResolvedValue({ faviconUrl: undefined });
 
-    const response = await GET(new Request("https://intubedrama.com/favicon.ico"));
+    const response = await GET();
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe("https://intubedrama.com/icon.svg");
+    expect(response.headers.get("location")).toBe("/icon.svg");
   });
 });

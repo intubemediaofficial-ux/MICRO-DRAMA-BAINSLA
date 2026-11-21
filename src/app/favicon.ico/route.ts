@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
 import { getTheme } from "@/server/site-config";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
+export async function GET() {
   const theme = await getTheme();
-  return NextResponse.redirect(new URL(theme.faviconUrl || "/icon.svg", request.url), 307);
+  // Relative Location keeps the public host behind the reverse proxy.
+  return new Response(null, { status: 307, headers: { Location: theme.faviconUrl || "/icon.svg" } });
 }
