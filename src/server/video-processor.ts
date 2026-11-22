@@ -26,7 +26,9 @@ export interface VideoProcessor {
 export function selectThumbnailTimestamp(durationSec: number) {
   if (!Number.isFinite(durationSec) || durationSec <= 0) return 0;
   if (durationSec < 10) return Math.max(0, durationSec / 2);
-  return Math.min(15, Math.max(10, durationSec - 0.5));
+  const latestSafeTimestamp = durationSec - 0.5;
+  const preferredTimestamp = Math.min(15, Math.max(10, latestSafeTimestamp));
+  return Math.min(preferredTimestamp, latestSafeTimestamp);
 }
 
 export function parseDuration(value: string) {
@@ -180,6 +182,7 @@ export class FfmpegVideoProcessor implements VideoProcessor {
       const durationSec = await probeVideoDuration(inputKey);
       const timestamp = selectThumbnailTimestamp(durationSec);
       const output = resolveMediaPath(thumbnailKey);
+      await fs.mkdir(path.dirname(output), { recursive: true });
       await run("ffmpeg", [
         "-hide_banner",
         "-loglevel",
@@ -195,6 +198,9 @@ export class FfmpegVideoProcessor implements VideoProcessor {
         "-y",
         output,
       ]);
+      const thumbnail = await fs.stat(output);
+      if (!thumbnail.isFile() || thumbnail.size === 0)
+        throw new Error("ffmpeg did not produce a thumbnail");
       const hlsPath = await transcodeToHls(inputKey).catch(() => inputKey);
       return {
         status: "READY",

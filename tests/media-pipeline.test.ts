@@ -18,7 +18,8 @@ import { selectPlaybackMode } from "../src/lib/playback";
 describe("media processing helpers", () => {
   it("chooses a frame in the requested window and clamps short clips", () => {
     expect(selectThumbnailTimestamp(120)).toBe(15);
-    expect(selectThumbnailTimestamp(10)).toBe(10);
+    expect(selectThumbnailTimestamp(10)).toBe(9.5);
+    expect(selectThumbnailTimestamp(10.2)).toBeCloseTo(9.7);
     expect(selectThumbnailTimestamp(6)).toBe(3);
     expect(selectThumbnailTimestamp(1)).toBe(0.5);
   });

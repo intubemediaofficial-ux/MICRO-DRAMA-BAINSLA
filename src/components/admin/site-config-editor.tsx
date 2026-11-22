@@ -125,7 +125,21 @@ export default function SiteConfigEditor({ kind }: { kind: "seo" | "theme" }) {
 
   async function reset() {
     if (!defaults || !window.confirm("Reset all appearance settings to their defaults?")) return;
-    await submit(defaults, "Appearance reset to defaults.");
+    setBusy(true);
+    setError("");
+    setSavedMessage("");
+    try {
+      const response = await fetch(endpoint, { method: "DELETE" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error?.message || "Reset failed");
+      setConfig(result[kind]);
+      setSavedMessage("Appearance reset to defaults.");
+      previewFrame.current?.contentWindow?.location.reload();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Reset failed");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function uploadImage(path: string, file?: File) {
@@ -330,7 +344,9 @@ export default function SiteConfigEditor({ kind }: { kind: "seo" | "theme" }) {
               ))}
               <button type="button" disabled={config.footerColumns.length >= 8} onClick={() => update("footerColumns", [...config.footerColumns, { title: "", links: [] }])} className="rounded-lg bg-zinc-800 px-3 py-2 text-sm disabled:opacity-50">Add footer column</button>
               <div className="grid gap-3 sm:grid-cols-2">
-                {socialNetworks.map((network) => textInput(network, `social.${network}`))}
+                {socialNetworks.map((network) => (
+                  <div key={network}>{textInput(network, `social.${network}`)}</div>
+                ))}
               </div>
             </div>
           ))}
@@ -417,7 +433,9 @@ export default function SiteConfigEditor({ kind }: { kind: "seo" | "theme" }) {
 
       {kind === "seo" && tab === "Webmaster verification" && sectionTitle("Webmaster verification", (
         <div className="grid gap-4 sm:grid-cols-2">
-          {Object.keys(config.verification).map((key) => textInput(`${key} verification`, `verification.${key}`))}
+          {(["google", "bing", "yandex", "pinterest", "baidu"] as const).map((key) =>
+            textInput(`${key} verification`, `verification.${key}`),
+          )}
         </div>
       ))}
 

@@ -22,10 +22,14 @@ vi.mock("@/server/db", () => ({
 
 import {
   getSeoGlobal,
+  getTheme,
+  invalidateSiteConfigCache,
   mergeSiteConfig,
   SEO_GLOBAL_DEFAULTS,
   SeoGlobalSchema,
   saveSeoGlobal,
+  saveTheme,
+  resetTheme,
   THEME_DEFAULTS,
   ThemeSchema,
 } from "@/server/site-config";
@@ -70,5 +74,23 @@ describe("site configuration defaults", () => {
     expect(await getSeoGlobal()).toMatchObject({
       analytics: { ga4Id: "G-EXAMPLE123" },
     });
+  });
+
+  it("removes optional logo and social values when resetting the theme", async () => {
+    storedSettings.clear();
+    invalidateSiteConfigCache("THEME");
+    await saveTheme({
+      logoUrl: "/media/logo.svg",
+      social: { instagram: "https://instagram.com/intube" },
+    }, "admin-test");
+    expect(await getTheme()).toMatchObject({
+      logoUrl: "/media/logo.svg",
+      social: { instagram: "https://instagram.com/intube" },
+    });
+
+    await resetTheme("admin-test");
+
+    expect(await getTheme()).toEqual(THEME_DEFAULTS);
+    expect(JSON.parse(storedSettings.get("THEME")!)).toEqual(THEME_DEFAULTS);
   });
 });

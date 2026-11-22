@@ -5,6 +5,7 @@ import { credit } from "./coins";
 import { env } from "./config";
 import { prisma } from "./db";
 import { getSettings } from "./settings";
+import { deletedAccountIdentifierPrefix } from "./trial-claim-privacy";
 
 const COOKIE = "microdrama_session";
 const REFERRAL_COOKIE = "ref";
@@ -71,7 +72,14 @@ export async function findOrCreateUser(identifier: string, referralCode?: string
   const isEmail = identifier.includes("@");
   return prisma.$transaction(async (tx) => {
     const existing = await tx.user.findFirst({
-      where: isEmail ? { email: identifier } : { phone: identifier },
+      where: isEmail
+        ? {
+            AND: [
+              { email: identifier },
+              { NOT: { email: { startsWith: "deleted:" } } },
+            ],
+          }
+        : { phone: identifier },
     });
     if (existing) {
       if (existing.isDisabled) throw new Error("ACCOUNT_DISABLED");
@@ -97,6 +105,20 @@ export async function findOrCreateUser(identifier: string, referralCode?: string
         select: { id: true, isDisabled: true },
       });
       if (referrer && !referrer.isDisabled) referrerId = referrer.id;
+    }
+
+    if (referrerId) {
+      const deletedPrefix = deletedAccountIdentifierPrefix(isEmail ? "email" : "phone", identifier);
+      const previouslyDeleted = await tx.user.findFirst({
+        where: {
+          OR: [
+            { email: { startsWith: deletedPrefix } },
+            { phone: { startsWith: deletedPrefix } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (previouslyDeleted) referrerId = undefined;
     }
 
     const user = await tx.user.create({

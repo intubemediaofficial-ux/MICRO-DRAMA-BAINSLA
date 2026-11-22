@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminSession } from "@/server/admin";
-import { getTheme, saveTheme, THEME_DEFAULTS } from "@/server/site-config";
+import { getTheme, resetTheme, saveTheme, THEME_DEFAULTS } from "@/server/site-config";
 
 function errorResponse(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : fallback;
@@ -28,5 +28,14 @@ export async function PUT(request: Request) {
     return NextResponse.json({ theme: await saveTheme(patch, session.userId) });
   } catch (error) {
     return errorResponse(error, "Theme settings update failed");
+  }
+}
+
+export async function DELETE() {
+  try {
+    const session = await adminSession();
+    return NextResponse.json({ theme: await resetTheme(session.userId) });
+  } catch (error) {
+    return errorResponse(error, "Theme settings reset failed");
   }
 }

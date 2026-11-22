@@ -62,7 +62,7 @@ export default function SeoPanel({
   });
   const field = "w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm";
   return (
-    <section className="mt-8 rounded-2xl border border-white/10 bg-zinc-900 p-4">
+    <section className="mt-8 min-w-0 rounded-2xl border border-white/10 bg-zinc-900 p-4">
       <div className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
         <h2 className="mr-auto text-lg font-bold">SEO</h2>
         <span className="rounded-full bg-rose-500/15 px-3 py-1 text-sm font-bold text-rose-200">{analysis.score}/100</span>
@@ -73,9 +73,9 @@ export default function SeoPanel({
         ))}
       </div>
       {tab === "General" && (
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <div className="space-y-4">
-            <div className="rounded-xl border border-white/10 bg-zinc-950 p-3">
+        <div className="mt-4 grid min-w-0 gap-4">
+          <div className="min-w-0 space-y-4">
+            <div className="min-w-0 rounded-xl border border-white/10 bg-zinc-950 p-3">
               <div className="mb-3 flex items-center gap-2">
                 <p className="mr-auto text-xs text-zinc-500">Google search preview</p>
                 {(["desktop", "mobile"] as const).map((device) => (
@@ -91,9 +91,9 @@ export default function SeoPanel({
                 ))}
               </div>
               <div className={`rounded-lg bg-white p-3 text-left text-black ${previewDevice === "desktop" ? "max-w-[600px]" : "max-w-[360px]"}`}>
-                <p className="text-xs text-[#4d5156]">https://intubedrama.com{previewPath}</p>
-                <p className="mt-1 text-xl leading-6 text-[#1a0dab]" title={renderedTitle}>{truncatedTitle || "SEO title"}</p>
-                <p className="mt-1 text-sm leading-5 text-[#4d5156]" title={renderedDescription}>{truncatedDescription}</p>
+                <p className="break-all text-xs text-[#4d5156]">https://intubedrama.com{previewPath}</p>
+                <p className="mt-1 break-words text-xl leading-6 text-[#1a0dab]" title={renderedTitle}>{truncatedTitle || "SEO title"}</p>
+                <p className="mt-1 break-words text-sm leading-5 text-[#4d5156]" title={renderedDescription}>{truncatedDescription}</p>
               </div>
             </div>
             <label className="block text-sm">SEO title <span className={`text-xs ${titleLengthIsGood ? "text-emerald-400" : "text-amber-300"}`}>{renderedTitle.length}/60 rendered</span>
@@ -115,7 +115,7 @@ export default function SeoPanel({
               }} />
             </label>
           </div>
-          <div>
+          <div className="min-w-0">
             <h3 className="mb-2 font-semibold">SEO analysis</h3>
             <ul className="space-y-2 text-sm">
               {analysis.checks.map((check) => (

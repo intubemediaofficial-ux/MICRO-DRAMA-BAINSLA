@@ -290,14 +290,18 @@ async function saveConfig<T>(
   const parsed = schema.safeParse(merged);
   if (!parsed.success) throw new Error("INVALID_SITE_CONFIG");
 
-  const value = JSON.stringify(parsed.data);
+  return persistConfig(key, parsed.data, actorId);
+}
+
+async function persistConfig<T>(key: ConfigKey, config: T, actorId: string): Promise<T> {
+  const value = JSON.stringify(config);
   await prisma.appSetting.upsert({
     where: { key },
     create: { key, value, isSecret: false, updatedById: actorId },
     update: { value, isSecret: false, updatedById: actorId },
   });
   cache.delete(key);
-  return clone(parsed.data);
+  return clone(config);
 }
 
 export function getSeoGlobal() {
@@ -316,6 +320,10 @@ export async function saveSeoGlobal(patch: unknown, actorId: string) {
 export async function saveTheme(patch: unknown, actorId: string) {
   const current = await getTheme();
   return saveConfig("THEME", ThemeSchema, current, patch, actorId);
+}
+
+export async function resetTheme(actorId: string) {
+  return persistConfig("THEME", ThemeSchema.parse(THEME_DEFAULTS), actorId);
 }
 
 export function invalidateSiteConfigCache(key?: ConfigKey) {

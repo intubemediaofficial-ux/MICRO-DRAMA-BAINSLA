@@ -11,6 +11,8 @@ import { renderTitleTemplate } from "@/lib/seo";
 import { SITE_ORIGIN } from "@/server/seo";
 import { themeCssVariables } from "@/lib/theme";
 
+export const dynamic = "force-dynamic";
+
 const googleFonts: Record<string, string> = {
   Inter: "Inter:wght@400;500;600;700;800",
   Poppins: "Poppins:wght@400;500;600;700;800",
@@ -37,7 +39,7 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(SITE_ORIGIN),
     title: { default: title, template: `%s ${seo.separator} ${seo.siteName}` },
     description: seo.homeDescription || seo.defaultDescription,
-    icons: { icon: theme.faviconUrl || "/favicon.ico" },
+    icons: { icon: theme.faviconUrl || "/icon.svg" },
     verification: {
       ...(seo.verification.google ? { google: seo.verification.google } : {}),
       ...(seo.verification.yandex ? { yandex: seo.verification.yandex } : {}),
@@ -116,7 +118,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         )}
         <JsonLd data={organization} />
         <JsonLd data={website} />
-        <main className="mx-auto min-h-screen max-w-6xl">
+        <main className="mx-auto min-h-screen max-w-6xl pb-24">
           {children}
           <SiteFooter />
         </main>
