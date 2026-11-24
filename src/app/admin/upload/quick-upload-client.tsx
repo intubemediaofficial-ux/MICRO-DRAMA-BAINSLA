@@ -274,7 +274,6 @@ export default function QuickUploadClient({
     setRunning(true);
     setBatchComplete(false);
     try {
-      const target = await createTargetSeries();
       const used = new Set(existingNumbers);
       for (const item of pendingItems) {
         if (!Number.isInteger(item.number) || item.number < 1)
@@ -283,6 +282,7 @@ export default function QuickUploadClient({
           throw new Error(`Episode number ${item.number} is already used in this series.`);
         used.add(item.number);
       }
+      const target = await createTargetSeries();
       const createResponse = await fetch("/api/admin/episodes", {
         method: "POST",
         headers: { "content-type": "application/json" },
