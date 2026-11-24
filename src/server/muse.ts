@@ -309,19 +309,25 @@ async function downloadImage(url: string) {
 export async function generatePoster({
   prompt,
   seriesId,
+  title,
+  synopsis,
 }: {
   prompt: string;
   seriesId?: string;
+  title?: string;
+  synopsis?: string;
 }) {
   const config = await museConfig();
-  const series = seriesId
+  const series = seriesId && (title === undefined || synopsis === undefined)
     ? await prisma.series.findUnique({
         where: { id: seriesId },
         select: { title: true, synopsis: true },
       })
     : null;
-  const context = series
-    ? `Series title: ${series.title}\nSeries synopsis: ${series.synopsis}\n\n`
+  const contextTitle = title ?? series?.title ?? "";
+  const contextSynopsis = synopsis ?? series?.synopsis ?? "";
+  const context = contextTitle || contextSynopsis
+    ? `Series title: ${contextTitle}\nSeries synopsis: ${contextSynopsis}\n\n`
     : "";
   const response = await museJson(
     "/images/generations",

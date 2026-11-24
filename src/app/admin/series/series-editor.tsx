@@ -430,7 +430,12 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
       const response = await fetch("/api/admin/muse/poster", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: posterPrompt.trim(), seriesId: id }),
+        body: JSON.stringify({
+          prompt: posterPrompt.trim(),
+          seriesId: id,
+          title,
+          synopsis,
+        }),
       });
       const body = (await response.json().catch(() => null)) as
         | { url?: string; error?: { message?: string } }

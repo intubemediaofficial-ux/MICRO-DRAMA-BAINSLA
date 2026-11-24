@@ -251,6 +251,32 @@ describe("Muse suggestions", () => {
     expect(mocks.storagePut).toHaveBeenCalledWith(poster.key, webp);
   });
 
+  it("uses unsaved series details instead of persisted poster context", async () => {
+    const webp = Buffer.alloc(12);
+    webp.write("RIFF", 0, "ascii");
+    webp.write("WEBP", 8, "ascii");
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ b64_json: webp.toString("base64") }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await generatePoster({
+      prompt: "A dramatic poster",
+      seriesId: "series-1",
+      title: "Unsaved series title",
+      synopsis: "The synopsis currently in the editor.",
+    });
+
+    const [, options] = vi.mocked(fetch).mock.calls[0] ?? [];
+    const requestBody = JSON.parse(String(options?.body));
+    expect(requestBody.prompt).toContain("Series title: Unsaved series title");
+    expect(requestBody.prompt).toContain("Series synopsis: The synopsis currently in the editor.");
+    expect(requestBody.prompt).not.toContain("Existing title");
+    expect(mocks.seriesFindUnique).not.toHaveBeenCalled();
+  });
+
   it("rejects non-image poster bytes", async () => {
     const bytes = Buffer.from("not an image");
     vi.mocked(fetch).mockResolvedValue(
