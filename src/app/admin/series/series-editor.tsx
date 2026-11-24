@@ -3,6 +3,13 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { hasPlayableVideo } from "@/lib/publishing";
+import {
+  isVideoFile,
+  planEpisodeNumbers,
+  pollEpisodeProcessing,
+  uploadEpisodeVideo,
+  type EpisodeUploadState,
+} from "@/lib/admin-upload";
 import type { SeoFields } from "@/lib/seo";
 import SeoPanel from "@/components/editor/seo-panel";
 import {
@@ -59,7 +66,10 @@ type BulkUploadItem = {
   id: string;
   file: File;
   number: number;
+  title: string;
+  isFree: boolean;
   sku: string;
+  episodeId?: string;
   status: "queued" | "uploading" | "processing" | "ready" | "failed";
   progress: number;
   error?: string;
@@ -306,7 +316,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [bulkSeasonId, setBulkSeasonId] = useState(initial?.seasons?.[0]?.id ?? "");
   const [bulkQueue, setBulkQueue] = useState<BulkUploadItem[]>([]);
-  const [publishBulkAfterUpload, setPublishBulkAfterUpload] = useState(false);
+  const [publishBulkAfterUpload, setPublishBulkAfterUpload] = useState(true);
   const parsedBulk = useMemo(
     () =>
       bulkText
@@ -314,18 +324,32 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
         .map((line) => line.trim())
         .filter(Boolean)
         .map((line) => {
-          const [number, episodeTitle, episodePrice, free] = line
-            .split("|")
-            .map((item) => item?.trim());
+          const parts = line.split("|").map((item) => item.trim());
+          const [rawNumber = "", rawTitle = "", rawPrice = "", rawFree = ""] = parts;
+          const number = Number(rawNumber);
+          const title = rawTitle || `Episode ${number}`;
+          const coinPrice = rawPrice ? Number(rawPrice) : defaultCoinPrice;
+          const freeValue = rawFree.toLowerCase();
+          const isFree =
+            rawFree === ""
+              ? number <= freeEpisodeCount
+              : ["true", "free", "1", "yes"].includes(freeValue);
           return {
-            number: Number(number),
-            title: episodeTitle ?? "",
-            coinPrice: Number(episodePrice),
-            isFree: free?.toLowerCase() === "true",
-            valid: Boolean(Number(number) && episodeTitle && Number(episodePrice) > 0),
+            number,
+            title,
+            coinPrice,
+            isFree,
+            valid:
+              parts.length <= 4 &&
+              Number.isInteger(number) &&
+              number > 0 &&
+              Number.isInteger(coinPrice) &&
+              coinPrice > 0 &&
+              (!rawFree ||
+                ["true", "free", "1", "yes", "false", "vip", "0", "no"].includes(freeValue)),
           };
         }),
-    [bulkText],
+    [bulkText, defaultCoinPrice, freeEpisodeCount],
   );
   const canPublishSeries = Boolean(
     id && episodes.some((episode) => Boolean(episode.publishedAt) && hasPlayableVideo(episode)),
@@ -586,14 +610,15 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   }
   function startNewEpisode() {
     if (!seasons.length) return toast("Create a season before adding episodes.", "error");
+    const number = Math.max(0, ...episodes.map((episode) => episode.number)) + 1;
     setNewEpisodeDraft({
       seasonId: seasons[0].id,
-      number: Math.max(0, ...episodes.map((episode) => episode.number)) + 1,
-      title: "",
+      number,
+      title: `Episode ${number}`,
       durationSec: 90,
       coinPrice: defaultCoinPrice,
-      isFree: false,
-      publish: false,
+      isFree: number <= freeEpisodeCount,
+      publish: true,
       videoFile: null,
     });
   }
@@ -766,58 +791,33 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   async function uploadEpisodeFile(
     targetEpisode: Episode,
     file: File,
-    publishAfterUpload = false,
+    publishAfterUpload = true,
   ) {
-    const form = new FormData();
-    form.append("file", file);
     setEpisodeUploadProgress(1);
-    try {
-      const data = await new Promise<{
-        episode: Episode;
-        processing?: { status: string; error?: string };
-      }>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", `/api/admin/episodes/${targetEpisode.id}/upload`);
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable)
-            setEpisodeUploadProgress(Math.round((event.loaded / event.total) * 100));
-        };
-        xhr.onload = () =>
-          xhr.status >= 200 && xhr.status < 300
-            ? resolve(JSON.parse(xhr.responseText))
-            : reject(
-                new Error(JSON.parse(xhr.responseText)?.error?.message ?? "Video upload failed"),
-              );
-        xhr.onerror = () => reject(new Error("Video upload failed"));
-        xhr.send(form);
-      });
-      let episode = data.episode;
-      setEpisodeDraft((current) => (current?.id === episode.id ? episode : current));
+    const updateEpisode = (state: EpisodeUploadState) => {
+      setEpisodeDraft((current) =>
+        current?.id === state.id ? { ...current, ...state } : current,
+      );
       setEpisodes((current) =>
-        current.map((item) => (item.id === episode.id ? episode : item)),
+        current.map((item) => (item.id === state.id ? { ...item, ...state } : item)),
       );
-      if (data.processing?.status === "READY" && publishAfterUpload && hasPlayableVideo(episode)) {
-        const response = await fetch(`/api/admin/episodes/${episode.id}`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ publishedAt: new Date().toISOString() }),
-        });
-        if (!response.ok) throw new Error(await readError(response));
-        episode = (await response.json()) as Episode;
-        setEpisodeDraft((current) => (current?.id === episode.id ? episode : current));
-        setEpisodes((current) =>
-          current.map((item) => (item.id === episode.id ? episode : item)),
-        );
-      }
+    };
+    try {
+      const uploaded = await uploadEpisodeVideo(targetEpisode.id, file, {
+        publish: publishAfterUpload,
+        onProgress: setEpisodeUploadProgress,
+      });
+      updateEpisode(uploaded);
+      const processed = await pollEpisodeProcessing(id ?? "", targetEpisode.id, updateEpisode);
+      if (processed.processingStatus === "FAILED")
+        throw new Error(processed.processingError ?? "Video processing failed.");
+      updateEpisode(processed);
       toast(
-        data.processing?.status === "FAILED"
-          ? `Video uploaded but processing failed: ${data.processing.error ?? "try again"}`
-          : publishAfterUpload && episode.publishedAt
-            ? "Episode video uploaded and published."
-            : "Episode video uploaded and processed.",
-        data.processing?.status === "FAILED" ? "error" : "success",
+        publishAfterUpload && processed.publishedAt
+          ? "Episode video uploaded and published."
+          : "Episode video uploaded and processed.",
       );
-      return episode;
+      return { ...targetEpisode, ...processed };
     } catch (error) {
       toast(error instanceof Error ? error.message : "Video upload failed", "error");
       return null;
@@ -940,18 +940,26 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
       toast("Create a season before uploading episodes.", "error");
       return;
     }
-    const lastNumber = episodes
-      .filter((episode) => episode.seasonId === selectedSeason.id)
-      .reduce((max, episode) => Math.max(max, episode.number), 0);
-    const additions = Array.from(files).map((file, index) => ({
-      id: `${Date.now()}-${index}-${file.name}`,
-      file,
-      number: lastNumber + index + 1,
-      sku: "",
-      status: "queued" as const,
-      progress: 0,
-    }));
-    setBulkQueue((current) => [...current, ...additions]);
+    const videoFiles = Array.from(files).filter(isVideoFile);
+    if (!videoFiles.length) return;
+    if (videoFiles.length !== files.length) toast("Non-video files were ignored.", "info");
+    setBulkQueue((current) => {
+      const usedNumbers = [
+        ...episodes.map((episode) => episode.number),
+        ...current.map((item) => item.number),
+      ];
+      const additions = planEpisodeNumbers(videoFiles, usedNumbers).map(({ file, number }) => ({
+        id: `${Date.now()}-${Math.random()}-${file.name}`,
+        file,
+        number,
+        title: `Episode ${number}`,
+        isFree: number <= freeEpisodeCount,
+        sku: "",
+        status: "queued" as const,
+        progress: 0,
+      }));
+      return [...current, ...additions];
+    });
   }
   function updateBulkItem(id: string, patch: Partial<BulkUploadItem>) {
     setBulkQueue((current) =>
@@ -960,88 +968,55 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   }
   async function uploadBulkItem(item: BulkUploadItem) {
     if (!id || !bulkSeasonId) return;
-    updateBulkItem(item.id, { status: "uploading", progress: 1, error: undefined });
+    updateBulkItem(item.id, { status: "uploading", progress: 0, error: undefined });
     try {
-      const createResponse = await fetch("/api/admin/episodes", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          seriesId: id,
-          seasonId: bulkSeasonId,
-          episodes: [
-            {
-              number: item.number,
-              title: item.file.name.replace(/\.[^.]+$/, ""),
-              coinPrice: defaultCoinPrice,
-              isFree: false,
-              hlsPath: "",
-              publishedAt: null,
-              originalFilename: item.file.name,
-              sku: item.sku || null,
-            },
-          ],
-        }),
-      });
-      if (!createResponse.ok) throw new Error(await readError(createResponse));
-      const created = (await createResponse.json()) as { episodes: Episode[] };
-      const episode = created.episodes[0];
-      setEpisodes((current) => [...current, episode].sort((a, b) => a.number - b.number));
-      updateBulkItem(item.id, { status: "processing", progress: 25 });
-      const form = new FormData();
-      form.append("file", item.file);
-      const uploadResponse = await new Promise<{
-        episode: Episode;
-        processing?: { status: string; error?: string };
-      }>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", `/api/admin/episodes/${episode.id}/upload`);
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable)
-            updateBulkItem(item.id, {
-              progress: Math.max(25, Math.round((event.loaded / event.total) * 75) + 25),
-            });
-        };
-        xhr.onload = () =>
-          xhr.status >= 200 && xhr.status < 300
-            ? resolve(JSON.parse(xhr.responseText))
-            : reject(
-                new Error(JSON.parse(xhr.responseText)?.error?.message ?? "Video upload failed"),
-              );
-        xhr.onerror = () => reject(new Error("Video upload failed"));
-        xhr.send(form);
-      });
-      setEpisodes((current) =>
-        current.map((episodeItem) =>
-          episodeItem.id === uploadResponse.episode.id ? uploadResponse.episode : episodeItem,
-        ),
-      );
-      if (uploadResponse.processing?.status === "FAILED")
-        throw new Error(uploadResponse.processing.error ?? "Video processing failed");
-      let uploadedEpisode = uploadResponse.episode;
-      if (publishBulkAfterUpload && hasPlayableVideo(uploadedEpisode)) {
-        const publishResponse = await fetch(`/api/admin/episodes/${uploadedEpisode.id}`, {
-          method: "PATCH",
+      let episodeId = item.episodeId;
+      if (!episodeId) {
+        const createResponse = await fetch("/api/admin/episodes", {
+          method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ publishedAt: new Date().toISOString() }),
+          body: JSON.stringify({
+            seriesId: id,
+            seasonId: bulkSeasonId,
+            episodes: [
+              {
+                number: item.number,
+                title: item.title.trim() || `Episode ${item.number}`,
+                coinPrice: defaultCoinPrice,
+                isFree: item.isFree,
+                hlsPath: "",
+                publishedAt: null,
+                originalFilename: item.file.name,
+                sku: item.sku || null,
+              },
+            ],
+          }),
         });
-        if (!publishResponse.ok) {
-          const message = await readError(publishResponse);
-          toast(message, "error");
-          setEpisodes((current) =>
-            current.map((episodeItem) =>
-              episodeItem.id === uploadedEpisode.id ? uploadedEpisode : episodeItem,
-            ),
-          );
-          updateBulkItem(item.id, { status: "ready", progress: 100, error: message });
-          return;
-        }
-        uploadedEpisode = (await publishResponse.json()) as Episode;
+        if (!createResponse.ok) throw new Error(await readError(createResponse));
+        const created = (await createResponse.json()) as { episodes: Episode[] };
+        const episode = created.episodes[0];
+        episodeId = episode.id;
+        updateBulkItem(item.id, { episodeId });
+        setEpisodes((current) => [...current, episode].sort((a, b) => a.number - b.number));
       }
-      setEpisodes((current) =>
-        current.map((episodeItem) =>
-          episodeItem.id === uploadedEpisode.id ? uploadedEpisode : episodeItem,
-        ),
-      );
+      const updateEpisode = (state: EpisodeUploadState) => {
+        setEpisodeDraft((current) =>
+          current?.id === state.id ? { ...current, ...state } : current,
+        );
+        setEpisodes((current) =>
+          current.map((episode) => (episode.id === state.id ? { ...episode, ...state } : episode)),
+        );
+        updateBulkItem(item.id, { status: "processing", progress: 100 });
+      };
+      const uploaded = await uploadEpisodeVideo(episodeId, item.file, {
+        publish: publishBulkAfterUpload,
+        onProgress: (progress) => updateBulkItem(item.id, { progress }),
+      });
+      updateEpisode(uploaded);
+      const processed = await pollEpisodeProcessing(id, episodeId, updateEpisode);
+      if (processed.processingStatus === "FAILED")
+        throw new Error(processed.processingError ?? "Video processing failed.");
+      updateEpisode(processed);
       updateBulkItem(item.id, { status: "ready", progress: 100 });
     } catch (error) {
       updateBulkItem(item.id, {
@@ -1693,13 +1668,14 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
           <div className="mt-5 rounded-xl border border-dashed border-white/15 p-4">
             <h3 className="font-bold">Bulk add episodes</h3>
             <p className="mt-1 text-xs text-zinc-500">
-              One per line: number|title|price|free — example: 61|A new secret|12|false
+              One per line: 61, 61|Title, or number|title|price|free. Missing values use the
+              series defaults.
             </p>
             <textarea
               value={bulkText}
               onChange={(event) => setBulkText(event.target.value)}
               rows={4}
-              placeholder="61|A new secret|12|false"
+              placeholder={"61\n62|A new secret\n63|Another secret|12|false"}
               className={`${inputClass} mt-3 font-mono`}
             />
             {parsedBulk.length > 0 && (
@@ -1769,7 +1745,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
                 {bulkQueue.map((item) => (
                   <div
                     key={item.id}
-                    className="grid gap-2 rounded-xl border border-white/10 bg-zinc-950 p-3 md:grid-cols-[1.4fr_90px_1fr_120px] md:items-center"
+                    className="grid gap-2 rounded-xl border border-white/10 bg-zinc-950 p-3 md:grid-cols-[1.2fr_90px_1.5fr_70px_1fr_150px] md:items-center"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold">{item.file.name}</p>
@@ -1783,7 +1759,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
                         type="number"
                         min="1"
                         value={item.number}
-                        disabled={item.status !== "queued" && item.status !== "failed"}
+                        disabled={Boolean(item.episodeId)}
                         onChange={(event) =>
                           updateBulkItem(item.id, { number: Number(event.target.value) })
                         }
@@ -1791,10 +1767,30 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
                       />
                     </label>
                     <label className="text-xs text-zinc-400">
+                      Title
+                      <input
+                        value={item.title}
+                        disabled={Boolean(item.episodeId)}
+                        onChange={(event) => updateBulkItem(item.id, { title: event.target.value })}
+                        className={`${inputClass} mt-1`}
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-zinc-400">
+                      <input
+                        type="checkbox"
+                        checked={item.isFree}
+                        disabled={Boolean(item.episodeId)}
+                        onChange={(event) =>
+                          updateBulkItem(item.id, { isFree: event.target.checked })
+                        }
+                      />
+                      Free
+                    </label>
+                    <label className="text-xs text-zinc-400">
                       SKU
                       <input
                         value={item.sku}
-                        disabled={item.status !== "queued" && item.status !== "failed"}
+                        disabled={Boolean(item.episodeId)}
                         onChange={(event) => updateBulkItem(item.id, { sku: event.target.value })}
                         placeholder="Optional unique SKU"
                         className={`${inputClass} mt-1`}
@@ -1810,7 +1806,11 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
                               : "warning"
                         }
                       >
-                        {item.status}
+                        {item.status === "uploading"
+                          ? `Uploading ${item.progress}%`
+                          : item.status === "processing"
+                            ? "Processing"
+                            : item.status}
                       </StatusChip>
                       {item.status === "failed" && (
                         <button
@@ -1881,12 +1881,18 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
                       type="number"
                       min="1"
                       value={newEpisodeDraft.number}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const number = Number(event.target.value);
                         setNewEpisodeDraft({
                           ...newEpisodeDraft,
-                          number: Number(event.target.value),
-                        })
-                      }
+                          number,
+                          title:
+                            newEpisodeDraft.title === `Episode ${newEpisodeDraft.number}`
+                              ? `Episode ${number}`
+                              : newEpisodeDraft.title,
+                          isFree: number <= freeEpisodeCount,
+                        });
+                      }}
                       className={inputClass}
                     />
                   </Field>

@@ -161,6 +161,7 @@ model Series {
   freeEpisodeCount Int            @default(5)
   defaultCoinPrice Int            @default(10)
   isPublished      Boolean        @default(false)
+  publishOnFirstReady Boolean      @default(false)
   createdAt        DateTime       @default(now())
   episodes         Episode[]
   seasons          Season[]
@@ -231,6 +232,8 @@ model Episode {
   thumbnailSource EpisodeThumbnailSource @default(LEGACY)
   processingStatus EpisodeProcessingStatus @default(READY)
   processingError String?
+  sourceKey      String?
+  publishOnReady Boolean         @default(false)
   isFree       Boolean         @default(false)
   coinPrice    Int
   publishedAt  DateTime?

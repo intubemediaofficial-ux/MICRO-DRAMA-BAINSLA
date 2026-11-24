@@ -9,6 +9,7 @@ import { ToastProvider } from "./admin-ui";
 type AdminHref =
   | "/admin"
   | "/admin/series"
+  | "/admin/upload"
   | "/admin/home"
   | "/admin/users"
   | "/admin/subscriptions"
@@ -24,6 +25,7 @@ type AdminHref =
 const nav: readonly [label: string, href: AdminHref][] = [
   ["Dashboard", "/admin"],
   ["Series", "/admin/series"],
+  ["Quick upload", "/admin/upload"],
   ["Home curation", "/admin/home"],
   ["Users", "/admin/users"],
   ["Subscriptions", "/admin/subscriptions"],
