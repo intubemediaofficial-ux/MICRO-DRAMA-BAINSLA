@@ -15,7 +15,7 @@ export default async function SubscriptionPage() {
       <div className="p-5 pb-24">
         <h1 className="text-3xl font-black">My Subscription</h1>
         <p className="mt-3 text-zinc-400">Sign in to start a VIP trial or manage billing.</p>
-        <Link href="/login" className="mt-5 inline-block rounded-full bg-rose-500 px-5 py-3">
+        <Link href={`/login?returnTo=${encodeURIComponent("/account/subscription")}`} className="mt-5 inline-block rounded-full bg-rose-500 px-5 py-3">
           Sign in
         </Link>
       </div>

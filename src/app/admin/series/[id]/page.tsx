@@ -7,7 +7,7 @@ import SeriesEditor from "../series-editor";
 export default async function EditSeriesPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session || session.role !== "ADMIN")
-    return <div className="p-8"><h1 className="text-3xl font-black">Admin access required</h1><Link href="/login" className="mt-5 inline-block rounded-full bg-rose-500 px-5 py-3">Sign in</Link></div>;
+    return <div className="p-8"><h1 className="text-3xl font-black">Admin access required</h1><Link href={`/login?returnTo=${encodeURIComponent("/admin/series")}`} className="mt-5 inline-block rounded-full bg-rose-500 px-5 py-3">Sign in</Link></div>;
   const { id } = await params;
   const series = await prisma.series.findUnique({
     where: { id },

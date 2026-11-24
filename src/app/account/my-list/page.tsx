@@ -13,7 +13,7 @@ export default async function MyListPage() {
       <div className="p-5 pb-24">
         <h1 className="text-3xl font-black">My List</h1>
         <p className="mt-3 text-zinc-400">Sign in to save series to your list.</p>
-        <Link href="/login" className="mt-5 inline-block rounded-full bg-rose-500 px-5 py-3">
+        <Link href={`/login?returnTo=${encodeURIComponent("/account/my-list")}`} className="mt-5 inline-block rounded-full bg-rose-500 px-5 py-3">
           Sign in
         </Link>
       </div>

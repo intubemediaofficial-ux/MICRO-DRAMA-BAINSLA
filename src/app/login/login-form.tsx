@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
+type LoginResponse = { dev?: boolean; error?: { message?: string } };
+
 declare global {
   interface Window {
     google?: {
@@ -32,7 +34,10 @@ export default function LoginForm({
   const [requested, setRequested] = useState(false);
   const [mode, setMode] = useState<"otp" | "password">("password");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<{ text: string; tone: "error" | "info" } | null>(
+    null,
+  );
+  const [pending, setPending] = useState(false);
   const googleButton = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!googleClientId || !googleButton.current) return;
@@ -42,14 +47,23 @@ export default function LoginForm({
       window.google.accounts.id.initialize({
         client_id: googleClientId,
         callback: async ({ credential }) => {
-          const response = await fetch("/api/auth/google", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ idToken: credential }),
-          });
-          const data = await response.json();
-          if (response.ok) location.href = redirectTo;
-          else setMessage(data.error?.message ?? "Google sign-in failed");
+          setMessage(null);
+          try {
+            const response = await fetch("/api/auth/google", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ idToken: credential }),
+            });
+            const data: LoginResponse = await response.json().catch(() => ({}));
+            if (response.ok) location.href = redirectTo;
+            else
+              setMessage({
+                text: data.error?.message ?? "Google sign-in failed",
+                tone: "error",
+              });
+          } catch {
+            setMessage({ text: "Network error, please try again", tone: "error" });
+          }
         },
       });
       window.google.accounts.id.renderButton(googleButton.current, {
@@ -73,33 +87,51 @@ export default function LoginForm({
   }, [googleClientId, redirectTo]);
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (mode === "password") {
-      const response = await fetch("/api/auth/password/login", {
+    if (pending) return;
+    setPending(true);
+    setMessage(null);
+    try {
+      if (mode === "password") {
+        const response = await fetch("/api/auth/password/login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: identifier, password }),
+        });
+        const data: LoginResponse = await response.json().catch(() => ({}));
+        if (response.ok) location.href = redirectTo;
+        else
+          setMessage({
+            text: data.error?.message ?? "Invalid email or password",
+            tone: "error",
+          });
+        return;
+      }
+      const endpoint = requested ? "/api/auth/verify" : "/api/auth/request";
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: identifier, password }),
+        body: JSON.stringify(requested ? { identifier, code } : { identifier }),
       });
-      const data = await response.json();
-      if (response.ok) location.href = redirectTo;
-      else setMessage(data.error?.message ?? "Invalid email or password");
-      return;
+      const data: LoginResponse = await response.json().catch(() => ({}));
+      if (response.ok && !requested) {
+        setRequested(true);
+        setMessage({
+          text: data.dev
+            ? "OTP sent. In dev, use 123456."
+            : "OTP sent to your email. It expires in 10 minutes.",
+          tone: "info",
+        });
+      } else if (response.ok) location.href = redirectTo;
+      else
+        setMessage({
+          text: data.error?.message ?? "Something went wrong",
+          tone: "error",
+        });
+    } catch {
+      setMessage({ text: "Network error, please try again", tone: "error" });
+    } finally {
+      setPending(false);
     }
-    const endpoint = requested ? "/api/auth/verify" : "/api/auth/request";
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(requested ? { identifier, code } : { identifier }),
-    });
-    const data = await response.json();
-    if (response.ok && !requested) {
-      setRequested(true);
-      setMessage(
-        data.dev
-          ? "OTP sent. In dev, use 123456."
-          : "OTP sent to your email. It expires in 10 minutes.",
-      );
-    } else if (response.ok) location.href = redirectTo;
-    else setMessage(data.error?.message ?? "Something went wrong");
   }
   return (
     <form onSubmit={submit} className="mt-8 space-y-4">
@@ -145,8 +177,19 @@ export default function LoginForm({
           className="w-full rounded-xl bg-zinc-800 p-4 outline-none ring-rose-500 focus:ring-2"
         />
       )}
-      <button className="w-full rounded-xl bg-rose-500 p-4 font-bold">
-        {mode === "password" ? "Sign in" : requested ? "Enter Intube Drama" : "Send OTP"}
+      <button
+        disabled={pending}
+        className="w-full rounded-xl bg-rose-500 p-4 font-bold disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {pending
+          ? mode === "password"
+            ? "Signing in…"
+            : "Please wait…"
+          : mode === "password"
+            ? "Sign in"
+            : requested
+              ? "Enter Intube Drama"
+              : "Send OTP"}
       </button>
       {googleClientId ? (
         <div className="space-y-3 border-t border-white/10 pt-4">
@@ -154,7 +197,14 @@ export default function LoginForm({
           <div ref={googleButton} className="flex justify-center" />
         </div>
       ) : null}
-      {message && <p className="text-sm text-zinc-400">{message}</p>}
+      {message && (
+        <p
+          role={message.tone === "error" ? "alert" : "status"}
+          className={`text-sm ${message.tone === "error" ? "text-rose-400" : "text-zinc-400"}`}
+        >
+          {message.text}
+        </p>
+      )}
     </form>
   );
 }

@@ -9,7 +9,7 @@ export default async function AdminSeriesPage() {
     return (
       <div className="p-8">
         <h1 className="text-3xl font-black">Admin access required</h1>
-        <Link href="/login" className="mt-5 inline-block rounded-full bg-rose-500 px-5 py-3">
+        <Link href={`/login?returnTo=${encodeURIComponent("/admin/series")}`} className="mt-5 inline-block rounded-full bg-rose-500 px-5 py-3">
           Sign in
         </Link>
       </div>

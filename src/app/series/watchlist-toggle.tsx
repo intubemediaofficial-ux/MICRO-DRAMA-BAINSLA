@@ -7,10 +7,12 @@ export default function WatchlistToggle({
   seriesId,
   initialInWatchlist,
   signedIn,
+  returnTo,
 }: {
   seriesId: string;
   initialInWatchlist: boolean;
   signedIn: boolean;
+  returnTo: string;
 }) {
   const [inWatchlist, setInWatchlist] = useState(initialInWatchlist);
   const [busy, setBusy] = useState(false);
@@ -49,7 +51,7 @@ export default function WatchlistToggle({
     </div>
   ) : (
     <Link
-      href="/login"
+      href={`/login?returnTo=${encodeURIComponent(returnTo)}`}
       className="rounded-full border border-white/15 bg-zinc-900 px-4 py-2 text-sm font-semibold"
     >
       + My List
