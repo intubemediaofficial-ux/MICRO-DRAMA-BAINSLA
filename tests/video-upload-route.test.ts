@@ -96,11 +96,12 @@ describe("episode video upload route", () => {
     expect(response.status).toBe(202);
     expect(body.queued).toBe(true);
     expect(body.episode.processingStatus).toBe("PROCESSING");
+    const sourceKey = body.episode.sourceKey as string;
     expect(mocks.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: existingEpisode.id },
         data: expect.objectContaining({
-          sourceKey: "episodes/episode-1-EP_01.mp4",
+          sourceKey: expect.stringMatching(/^episodes\/episode-1-[a-z0-9]+-EP_01\.mp4$/),
           publishOnReady: true,
           processingStatus: "PROCESSING",
           processingError: null,
@@ -111,8 +112,33 @@ describe("episode video upload route", () => {
     );
     expect(mocks.enqueueEpisodeVideo).toHaveBeenCalledWith(existingEpisode.id);
     await expect(
-      fs.readFile(path.join(mediaDir, "episodes", "episode-1-EP_01.mp4")),
+      fs.readFile(path.join(mediaDir, sourceKey)),
     ).resolves.toEqual(Buffer.from([1, 2, 3]));
+  });
+
+  it("stores same-name re-uploads under distinct keys", async () => {
+    const dateNow = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(1_770_000_000_000)
+      .mockReturnValueOnce(1_770_000_000_001);
+    try {
+      for (let upload = 0; upload < 2; upload += 1) {
+        const response = await uploadEpisode(rawRequest(), {
+          params: Promise.resolve({ id: existingEpisode.id }),
+        });
+        expect(response.status).toBe(202);
+      }
+    } finally {
+      dateNow.mockRestore();
+    }
+
+    const sourceKeys = mocks.update.mock.calls.map(([{ data }]) => data.sourceKey as string);
+    expect(sourceKeys).toHaveLength(2);
+    expect(sourceKeys[0]).not.toBe(sourceKeys[1]);
+    expect(sourceKeys).toEqual([
+      "episodes/episode-1-ml4kasqo-EP_01.mp4",
+      "episodes/episode-1-ml4kasqp-EP_01.mp4",
+    ]);
   });
 
   it("rejects an over-cap request without queueing it", async () => {

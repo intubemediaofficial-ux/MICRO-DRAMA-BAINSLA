@@ -32,7 +32,7 @@ vi.mock("@/server/video-processor", () => ({
       : { thumbnailUrl, thumbnailSource: "AUTO" },
 }));
 
-import { processEpisodeVideo } from "@/server/video-queue";
+import { enqueueEpisodeVideo, processEpisodeVideo } from "@/server/video-queue";
 
 function episode(overrides: Record<string, unknown> = {}) {
   return {
@@ -77,7 +77,11 @@ describe("episode video queue processing", () => {
 
     expect(mocks.episodeUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "episode-1", processingStatus: "PROCESSING" },
+        where: {
+          id: "episode-1",
+          processingStatus: "PROCESSING",
+          sourceKey: "episodes/source.mp4",
+        },
         data: expect.objectContaining({
           processingStatus: "READY",
           hlsPath: "episodes/source-hls/master.m3u8",
@@ -87,6 +91,31 @@ describe("episode video queue processing", () => {
       }),
     );
     expect(mocks.notify).toHaveBeenCalledWith("episode-1");
+  });
+
+  it("keeps an existing publication timestamp when replacing a video", async () => {
+    const publishedAt = new Date("2025-02-03T04:05:06.000Z");
+    mocks.findUnique.mockResolvedValue(
+      episode({
+        publishedAt,
+        series: {
+          id: "series-1",
+          isPublished: false,
+          posterUrl: "/poster.jpg",
+          publishOnFirstReady: true,
+        },
+      }),
+    );
+
+    await processEpisodeVideo("episode-1");
+
+    expect(mocks.episodeUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ publishedAt }),
+      }),
+    );
+    expect(mocks.seriesUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.notify).not.toHaveBeenCalled();
   });
 
   it("publishes a draft series on its first ready episode and uses its thumbnail as poster", async () => {
@@ -120,7 +149,11 @@ describe("episode video queue processing", () => {
     await processEpisodeVideo("episode-1");
 
     expect(mocks.episodeUpdateMany).toHaveBeenCalledWith({
-      where: { id: "episode-1", processingStatus: "PROCESSING" },
+      where: {
+        id: "episode-1",
+        processingStatus: "PROCESSING",
+        sourceKey: "episodes/source.mp4",
+      },
       data: {
         processingStatus: "FAILED",
         processingError: "FFmpeg failed",
@@ -130,5 +163,93 @@ describe("episode video queue processing", () => {
     });
     expect(mocks.seriesUpdateMany).not.toHaveBeenCalled();
     expect(mocks.notify).not.toHaveBeenCalled();
+  });
+
+  it("reprocesses a mid-run upload without writing the stale result", async () => {
+    const oldSource = episode({
+      sourceKey: "episodes/old.mp4",
+      originalFilename: "old.mp4",
+    });
+    const newSource = episode({
+      sourceKey: "episodes/new.mp4",
+      originalFilename: "new.mp4",
+    });
+    mocks.findUnique.mockResolvedValueOnce(oldSource).mockResolvedValueOnce(newSource);
+    let finishOldProcess!: (result: object) => void;
+    const oldProcess = new Promise<object>((resolve) => {
+      finishOldProcess = resolve;
+    });
+    mocks.process
+      .mockReturnValueOnce(oldProcess)
+      .mockResolvedValueOnce({
+        status: "READY",
+        hlsPath: "episodes/new-hls/master.m3u8",
+        thumbnailUrl: "/api/media/episodes/new.jpg",
+        durationSec: 50,
+      });
+    mocks.episodeUpdateMany.mockImplementation(
+      async ({ where }: { where: { sourceKey: string } }) => ({
+        count: where.sourceKey === "episodes/old.mp4" ? 0 : 1,
+      }),
+    );
+
+    expect(enqueueEpisodeVideo("episode-1")).toBe(true);
+    await vi.waitFor(() => expect(mocks.process).toHaveBeenCalledTimes(1));
+    expect(enqueueEpisodeVideo("episode-1")).toBe(false);
+    finishOldProcess({
+      status: "READY",
+      hlsPath: "episodes/old-hls/master.m3u8",
+      thumbnailUrl: "/api/media/episodes/old.jpg",
+      durationSec: 40,
+    });
+
+    await vi.waitFor(() => expect(mocks.notify).toHaveBeenCalledWith("episode-1"));
+
+    expect(mocks.process.mock.calls.map(([key]) => key)).toEqual([
+      "episodes/old.mp4",
+      "episodes/new.mp4",
+    ]);
+    expect(mocks.episodeUpdateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          id: "episode-1",
+          processingStatus: "PROCESSING",
+          sourceKey: "episodes/old.mp4",
+        },
+      }),
+    );
+    expect(mocks.episodeUpdateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          id: "episode-1",
+          processingStatus: "PROCESSING",
+          sourceKey: "episodes/new.mp4",
+        },
+        data: expect.objectContaining({ hlsPath: "episodes/new-hls/master.m3u8" }),
+      }),
+    );
+  });
+
+  it("scopes thrown-job failure updates to the source key it started with", async () => {
+    mocks.process.mockRejectedValue(new Error("FFmpeg failed"));
+
+    enqueueEpisodeVideo("episode-1");
+    await vi.waitFor(() =>
+      expect(mocks.episodeUpdateMany).toHaveBeenCalledWith({
+        where: {
+          id: "episode-1",
+          processingStatus: "PROCESSING",
+          sourceKey: "episodes/source.mp4",
+        },
+        data: {
+          processingStatus: "FAILED",
+          processingError: "FFmpeg failed",
+          publishOnReady: false,
+          publishedAt: null,
+        },
+      }),
+    );
   });
 });

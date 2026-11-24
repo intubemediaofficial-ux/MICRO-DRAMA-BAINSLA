@@ -12,11 +12,12 @@ const concurrency =
 const pending: string[] = [];
 const queued = new Set<string>();
 const running = new Set<string>();
+const rerun = new Set<string>();
 
-async function markFailed(episodeId: string, error: unknown) {
+async function markFailed(episodeId: string, sourceKey: string, error: unknown) {
   const message = error instanceof Error ? error.message : "Video processing failed";
   await prisma.episode.updateMany({
-    where: { id: episodeId, processingStatus: "PROCESSING" },
+    where: { id: episodeId, processingStatus: "PROCESSING", sourceKey },
     data: {
       processingStatus: "FAILED",
       processingError: message.slice(0, 1000),
@@ -26,8 +27,8 @@ async function markFailed(episodeId: string, error: unknown) {
   });
 }
 
-export async function processEpisodeVideo(episodeId: string) {
-  const existing = await prisma.episode.findUnique({
+async function findEpisodeForProcessing(episodeId: string) {
+  return prisma.episode.findUnique({
     where: { id: episodeId },
     include: {
       series: {
@@ -40,13 +41,22 @@ export async function processEpisodeVideo(episodeId: string) {
       },
     },
   });
-  if (!existing?.sourceKey) return;
+}
+
+type EpisodeForProcessing = Awaited<ReturnType<typeof findEpisodeForProcessing>>;
+
+async function processLoadedEpisode(existing: EpisodeForProcessing) {
+  if (!existing?.sourceKey || existing.processingStatus !== "PROCESSING") return;
 
   const thumbnailKey = `${existing.sourceKey.replace(/\.[^.]+$/, "")}.jpg`;
   const processed = await new FfmpegVideoProcessor().process(existing.sourceKey, thumbnailKey);
   if (processed.status === "FAILED") {
     await prisma.episode.updateMany({
-      where: { id: episodeId, processingStatus: "PROCESSING" },
+      where: {
+        id: existing.id,
+        processingStatus: "PROCESSING",
+        sourceKey: existing.sourceKey,
+      },
       data: {
         processingStatus: "FAILED",
         processingError: processed.error,
@@ -57,12 +67,18 @@ export async function processEpisodeVideo(episodeId: string) {
     return;
   }
 
-  const publishedAt =
-    existing.publishOnReady && hasPlayableVideo({ ...processed, processingStatus: "READY" })
-      ? new Date()
-      : existing.publishedAt;
+  const justPublished = Boolean(
+    existing.publishOnReady &&
+      existing.publishedAt === null &&
+      hasPlayableVideo({ ...processed, processingStatus: "READY" }),
+  );
+  const publishedAt = justPublished ? new Date() : existing.publishedAt;
   const updated = await prisma.episode.updateMany({
-    where: { id: episodeId, processingStatus: "PROCESSING" },
+    where: {
+      id: existing.id,
+      processingStatus: "PROCESSING",
+      sourceKey: existing.sourceKey,
+    },
     data: {
       hlsPath: processed.hlsPath,
       ...buildEpisodeUploadMetadata({
@@ -87,7 +103,6 @@ export async function processEpisodeVideo(episodeId: string) {
     });
   }
 
-  const justPublished = Boolean(existing.publishOnReady && publishedAt);
   let seriesPublished = existing.series.isPublished;
   if (justPublished && existing.series.publishOnFirstReady) {
     const publishedSeries = await prisma.series.updateMany({
@@ -97,20 +112,33 @@ export async function processEpisodeVideo(episodeId: string) {
     seriesPublished ||= publishedSeries.count > 0;
   }
   if (justPublished && seriesPublished)
-    void notifyNewPublicEpisode(episodeId).catch(() => {});
+    void notifyNewPublicEpisode(existing.id).catch(() => {});
+}
+
+export async function processEpisodeVideo(episodeId: string) {
+  await processLoadedEpisode(await findEpisodeForProcessing(episodeId));
 }
 
 async function run(episodeId: string) {
+  let sourceKey: string | null = null;
   try {
-    await processEpisodeVideo(episodeId);
+    const existing = await findEpisodeForProcessing(episodeId);
+    sourceKey = existing?.sourceKey ?? null;
+    await processLoadedEpisode(existing);
   } catch (error) {
-    try {
-      await markFailed(episodeId, error);
-    } catch {
-      return;
+    if (sourceKey) {
+      try {
+        await markFailed(episodeId, sourceKey, error);
+      } catch {
+        return;
+      }
     }
   } finally {
     running.delete(episodeId);
+    if (rerun.delete(episodeId)) {
+      pending.push(episodeId);
+      queued.add(episodeId);
+    }
     pump();
   }
 }
@@ -126,7 +154,11 @@ function pump() {
 }
 
 export function enqueueEpisodeVideo(episodeId: string) {
-  if (queued.has(episodeId) || running.has(episodeId)) return false;
+  if (queued.has(episodeId)) return false;
+  if (running.has(episodeId)) {
+    rerun.add(episodeId);
+    return false;
+  }
   pending.push(episodeId);
   queued.add(episodeId);
   pump();

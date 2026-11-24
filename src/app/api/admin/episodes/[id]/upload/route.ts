@@ -67,7 +67,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
 
     const originalFilename = filename.replace(/[\u0000-\u001f]/g, "").slice(0, 255);
-    const key = `episodes/${id}-${safeFilename(originalFilename)}`;
+    const key = `episodes/${id}-${Date.now().toString(36)}-${safeFilename(originalFilename)}`;
     await storage.putStream(key, body, MAX_VIDEO_UPLOAD_BYTES);
     const publishOnReady = new URL(request.url).searchParams.get("publish") === "1";
     const episode = await prisma.episode.update({

@@ -827,7 +827,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   }
   async function uploadEpisode(file: File) {
     if (!episodeDraft) return;
-    await uploadEpisodeFile(episodeDraft, file);
+    await uploadEpisodeFile(episodeDraft, file, false);
   }
   async function uploadSubtitle(file: File) {
     if (!episodeDraft) return;
