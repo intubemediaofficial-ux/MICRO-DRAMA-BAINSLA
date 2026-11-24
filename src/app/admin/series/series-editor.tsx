@@ -254,7 +254,16 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   const [freeEpisodeCount, setFreeEpisodeCount] = useState(initial?.freeEpisodeCount ?? 5);
   const [defaultCoinPrice, setDefaultCoinPrice] = useState(initial?.defaultCoinPrice ?? 10);
   const [isPublished, setIsPublished] = useState(initial?.isPublished ?? false);
-  const [cast, setCast] = useState<Cast[]>(initial?.castMembers ?? []);
+  const [cast, setCast] = useState<Cast[]>(() =>
+    initial?.castMembers?.length
+      ? initial.castMembers
+      : (initial?.castNames ?? []).map((name, index) => ({
+          name,
+          role: null,
+          photo: null,
+          sortOrder: index,
+        })),
+  );
   const [episodes, setEpisodes] = useState<Episode[]>(initial?.episodes ?? []);
   const [seasons, setSeasons] = useState<Season[]>(initial?.seasons ?? []);
   const [seasonDraft, setSeasonDraft] = useState<Season | null>(null);
