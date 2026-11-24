@@ -275,7 +275,7 @@ describe("video-required publishing", () => {
   });
 
   it("clears pending auto-publish when a processing episode is explicitly unpublished", async () => {
-    const processing = await makeEpisode(editableSeries.series.id, editableSeries.season.id, 3, {
+    const processing = await makeEpisode(editableSeries.series.id, editableSeries.season.id, 5, {
       hlsPath: "episodes/publishing-in-progress.m3u8",
       publishedAt: new Date(),
       processingStatus: "PROCESSING",
