@@ -46,7 +46,7 @@ export default async function DeleteAccountPage() {
         <section className="mt-6">
           <p className="text-zinc-400">Sign in to request account deletion.</p>
           <Link
-            href="/login"
+            href={`/login?returnTo=${encodeURIComponent("/account/delete")}`}
             className="mt-4 inline-block rounded-full bg-rose-500 px-5 py-3 font-bold text-white"
           >
             Sign in

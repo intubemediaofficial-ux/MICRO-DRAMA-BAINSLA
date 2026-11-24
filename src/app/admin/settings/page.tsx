@@ -5,7 +5,7 @@ import IntegrationsSettings from "./integrations-settings";
 export default async function AdminSettingsPage() {
   const session = await getSession();
   if (!session || session.role !== "ADMIN")
-    return <div className="p-8"><h1 className="text-3xl font-black">Admin access required</h1><Link href="/login" className="mt-5 inline-block rounded-full bg-rose-500 px-5 py-3">Sign in</Link></div>;
+    return <div className="p-8"><h1 className="text-3xl font-black">Admin access required</h1><Link href={`/login?returnTo=${encodeURIComponent("/admin/settings")}`} className="mt-5 inline-block rounded-full bg-rose-500 px-5 py-3">Sign in</Link></div>;
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-[0.2em] text-rose-400">Workspace</p>
