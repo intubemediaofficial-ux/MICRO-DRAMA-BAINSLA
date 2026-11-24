@@ -46,16 +46,17 @@ async function findEpisodeForProcessing(episodeId: string) {
 type EpisodeForProcessing = Awaited<ReturnType<typeof findEpisodeForProcessing>>;
 
 async function processLoadedEpisode(existing: EpisodeForProcessing) {
-  if (!existing?.sourceKey || existing.processingStatus !== "PROCESSING") return;
+  const sourceKey = existing?.sourceKey;
+  if (!existing || !sourceKey || existing.processingStatus !== "PROCESSING") return;
 
-  const thumbnailKey = `${existing.sourceKey.replace(/\.[^.]+$/, "")}.jpg`;
-  const processed = await new FfmpegVideoProcessor().process(existing.sourceKey, thumbnailKey);
+  const thumbnailKey = `${sourceKey.replace(/\.[^.]+$/, "")}.jpg`;
+  const processed = await new FfmpegVideoProcessor().process(sourceKey, thumbnailKey);
   if (processed.status === "FAILED") {
     await prisma.episode.updateMany({
       where: {
         id: existing.id,
         processingStatus: "PROCESSING",
-        sourceKey: existing.sourceKey,
+        sourceKey,
       },
       data: {
         processingStatus: "FAILED",
@@ -80,7 +81,7 @@ async function processLoadedEpisode(existing: EpisodeForProcessing) {
   });
   if (
     !latest ||
-    latest.sourceKey !== existing.sourceKey ||
+    latest.sourceKey !== sourceKey ||
     latest.processingStatus !== "PROCESSING"
   )
     return;
@@ -96,13 +97,13 @@ async function processLoadedEpisode(existing: EpisodeForProcessing) {
       where: {
         id: existing.id,
         processingStatus: "PROCESSING",
-        sourceKey: existing.sourceKey,
+        sourceKey,
       },
       data: {
         hlsPath: processed.hlsPath,
         ...buildEpisodeUploadMetadata({
           originalFilename:
-            existing.originalFilename ?? existing.sourceKey.split("/").pop() ?? "video.mp4",
+            existing.originalFilename ?? sourceKey.split("/").pop() ?? "video.mp4",
           durationSec: processed.durationSec,
           sku: latest.sku,
         }),
