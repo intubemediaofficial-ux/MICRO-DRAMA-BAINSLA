@@ -118,6 +118,19 @@ describe("episode video queue processing", () => {
     expect(mocks.notify).not.toHaveBeenCalled();
   });
 
+  it("does not publish when a pending publish request has been cleared", async () => {
+    mocks.findUnique.mockResolvedValue(episode({ publishOnReady: false }));
+
+    await processEpisodeVideo("episode-1");
+
+    expect(mocks.episodeUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ publishedAt: null, publishOnReady: false }),
+      }),
+    );
+    expect(mocks.notify).not.toHaveBeenCalled();
+  });
+
   it("publishes a draft series on its first ready episode and uses its thumbnail as poster", async () => {
     mocks.findUnique.mockResolvedValue(
       episode({

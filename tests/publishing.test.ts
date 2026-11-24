@@ -274,6 +274,32 @@ describe("video-required publishing", () => {
     expect((await published.json()).publishedAt).not.toBeNull();
   });
 
+  it("clears pending auto-publish when a processing episode is explicitly unpublished", async () => {
+    const processing = await makeEpisode(editableSeries.series.id, editableSeries.season.id, 3, {
+      hlsPath: "episodes/publishing-in-progress.m3u8",
+      publishedAt: new Date(),
+      processingStatus: "PROCESSING",
+    });
+    await prisma.episode.update({
+      where: { id: processing.id },
+      data: { publishOnReady: true },
+    });
+
+    const response = await patchEpisode(
+      jsonRequest({ publishedAt: null }, "PATCH"),
+      { params: Promise.resolve({ id: processing.id }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      publishedAt: null,
+      publishOnReady: false,
+    });
+    expect(
+      await prisma.episode.findUniqueOrThrow({ where: { id: processing.id } }),
+    ).toMatchObject({ publishedAt: null, publishOnReady: false });
+  });
+
   it("publishes only playable episodes in a bulk publish", async () => {
     const missingVideo = await makeEpisode(editableSeries.series.id, editableSeries.season.id, 3);
     const playable = await makeEpisode(editableSeries.series.id, editableSeries.season.id, 4, {
