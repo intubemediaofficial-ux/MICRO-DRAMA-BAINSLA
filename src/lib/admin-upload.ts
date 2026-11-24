@@ -61,7 +61,10 @@ export async function uploadEpisodeVideo(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `/api/admin/episodes/${encodeURIComponent(episodeId)}/upload${query}`);
-    xhr.setRequestHeader("content-type", file.type || "application/octet-stream");
+    xhr.setRequestHeader(
+      "content-type",
+      file.type.startsWith("video/") ? file.type : "application/octet-stream",
+    );
     xhr.setRequestHeader("x-filename", encodeURIComponent(file.name));
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable)

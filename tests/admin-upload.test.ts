@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { parseEpisodeNumber, planEpisodeNumbers } from "@/lib/admin-upload";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  parseEpisodeNumber,
+  planEpisodeNumbers,
+  uploadEpisodeVideo,
+} from "@/lib/admin-upload";
+
+afterEach(() => vi.unstubAllGlobals());
 
 function file(name: string) {
   return { name } as File;
@@ -46,5 +52,43 @@ describe("admin video upload helpers", () => {
       ["EP 05 copy.mp4", 6],
       ["EP 05.mp4", 7],
     ]);
+  });
+
+  it.each([
+    ["video/mp4", "video/mp4"],
+    ["application/pdf", "application/octet-stream"],
+    ["", "application/octet-stream"],
+  ])("uses a safe upload content type for %s", async (fileType, expectedType) => {
+    class MockXMLHttpRequest {
+      static instance: MockXMLHttpRequest;
+      upload = {};
+      headers: Record<string, string> = {};
+      status = 202;
+      responseText = JSON.stringify({ episode: { id: "episode-1" } });
+      onload: (() => void) | null = null;
+
+      constructor() {
+        MockXMLHttpRequest.instance = this;
+      }
+
+      open() {}
+
+      setRequestHeader(name: string, value: string) {
+        this.headers[name] = value;
+      }
+
+      send() {}
+    }
+
+    vi.stubGlobal("XMLHttpRequest", MockXMLHttpRequest);
+    const request = uploadEpisodeVideo(
+      "episode-1",
+      { name: "clip.mp4", type: fileType } as File,
+      { publish: false },
+    );
+
+    expect(MockXMLHttpRequest.instance.headers["content-type"]).toBe(expectedType);
+    MockXMLHttpRequest.instance.onload?.();
+    await expect(request).resolves.toMatchObject({ id: "episode-1" });
   });
 });
