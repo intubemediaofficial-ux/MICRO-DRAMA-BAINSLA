@@ -207,38 +207,37 @@ export default function QuickUploadClient({
     return result.url;
   }
 
+  async function patchTargetSeries(id: string, isPublished: boolean) {
+    const posterUrl = await uploadPoster();
+    const publishFirst = !isPublished && publishSeriesFirst;
+    const response = await fetch("/api/admin/series", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id,
+        data: {
+          publishOnFirstReady: publishFirst,
+          freeEpisodeCount,
+          defaultCoinPrice: coinPrice,
+          genres: genresText
+            .split(",")
+            .map((genre) => genre.trim())
+            .filter(Boolean),
+          ...(posterUrl ? { posterUrl } : {}),
+        },
+      }),
+    });
+    if (!response.ok) throw new Error(await responseError(response));
+    return { id, isPublished, publishFirst };
+  }
+
   async function createTargetSeries() {
     if (mode === "existing") {
       if (!selectedSeries) throw new Error("Choose an existing series first.");
-      const posterUrl = await uploadPoster();
-      const publishFirst =
-        !selectedSeries.isPublished && publishSeriesFirst;
-      const response = await fetch("/api/admin/series", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          id: selectedSeries.id,
-          data: {
-            publishOnFirstReady: publishFirst,
-            freeEpisodeCount,
-            defaultCoinPrice: coinPrice,
-            genres: genresText
-              .split(",")
-              .map((genre) => genre.trim())
-              .filter(Boolean),
-            ...(posterUrl ? { posterUrl } : {}),
-          },
-        }),
-      });
-      if (!response.ok) throw new Error(await responseError(response));
-      return {
-        id: selectedSeries.id,
-        isPublished: selectedSeries.isPublished,
-        publishFirst,
-      };
+      return patchTargetSeries(selectedSeries.id, selectedSeries.isPublished);
     }
 
-    if (createdSeriesId) return { id: createdSeriesId, isPublished: false, publishFirst: publishSeriesFirst };
+    if (createdSeriesId) return patchTargetSeries(createdSeriesId, seriesIsPublished);
     if (!title.trim()) throw new Error("Series title is required.");
     const posterUrl = await uploadPoster();
     const response = await fetch("/api/admin/series", {
