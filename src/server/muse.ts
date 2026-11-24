@@ -52,7 +52,10 @@ const suggestionSchema = z.object({
     .transform((values) => values.slice(0, 100)),
 });
 
-export type MuseSuggestion = z.infer<typeof suggestionSchema>;
+type MuseSuggestionPayload = z.infer<typeof suggestionSchema>;
+export type MuseSuggestion = Omit<MuseSuggestionPayload, "episodeTitles"> & {
+  episodeTitles: { episodeId: string; number: number; title: string }[];
+};
 
 type MuseEpisodeCandidate = {
   number: number;
@@ -69,7 +72,10 @@ export function selectMuseEpisodes(episodes: MuseEpisodeCandidate[]) {
   return (uploaded.length ? uploaded : playable).slice(0, 3);
 }
 
-export function parseMuseSuggestion(reply: string, existingEpisodeNumbers: number[]) {
+export function parseMuseSuggestion(
+  reply: string,
+  existingEpisodes: { id: string; number: number }[],
+): MuseSuggestion {
   try {
     const cleaned = reply
       .trim()
@@ -79,14 +85,15 @@ export function parseMuseSuggestion(reply: string, existingEpisodeNumbers: numbe
     const end = cleaned.lastIndexOf("}");
     if (start < 0 || end < start) throw new Error("MUSE_BAD_RESPONSE");
     const parsed = suggestionSchema.parse(JSON.parse(cleaned.slice(start, end + 1)));
-    const existingNumbers = new Set(existingEpisodeNumbers);
+    const episodesByNumber = new Map(existingEpisodes.map((episode) => [episode.number, episode]));
     const seenNumbers = new Set<number>();
     return {
       ...parsed,
-      episodeTitles: parsed.episodeTitles.filter(({ number }) => {
-        if (!existingNumbers.has(number) || seenNumbers.has(number)) return false;
+      episodeTitles: parsed.episodeTitles.flatMap(({ number, title }) => {
+        const episode = episodesByNumber.get(number);
+        if (!episode || seenNumbers.has(number)) return [];
         seenNumbers.add(number);
-        return true;
+        return [{ episodeId: episode.id, number, title }];
       }),
     };
   } catch {
@@ -163,7 +170,7 @@ export async function suggestSeriesDetails({
         id: true,
         title: true,
         synopsis: true,
-        episodes: { select: { number: true } },
+        episodes: { select: { id: true, number: true } },
       },
     }),
   ]);
@@ -228,7 +235,7 @@ export async function suggestSeriesDetails({
   if (!reply) throw new Error("MUSE_BAD_RESPONSE");
   return parseMuseSuggestion(
     reply,
-    series.episodes.map((episode) => episode.number),
+    series.episodes,
   );
 }
 

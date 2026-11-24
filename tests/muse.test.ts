@@ -85,7 +85,10 @@ beforeEach(() => {
     id: "series-1",
     title: "Existing title",
     synopsis: "Existing synopsis",
-    episodes: [{ number: 1 }, { number: 2 }],
+    episodes: [
+      { id: "episode-1", number: 1 },
+      { id: "episode-2", number: 2 },
+    ],
   });
   mocks.episodeFindMany.mockResolvedValue([
     {
@@ -137,17 +140,26 @@ describe("Muse suggestions", () => {
   it("parses a fenced JSON reply", () => {
     const parsed = parseMuseSuggestion(
       `\`\`\`json\n${JSON.stringify(suggestion())}\n\`\`\``,
-      [1, 2],
+      [
+        { id: "episode-1", number: 1 },
+        { id: "episode-2", number: 2 },
+      ],
     );
 
     expect(parsed.title).toBe("A Secret Promise");
-    expect(parsed.episodeTitles).toHaveLength(2);
+    expect(parsed.episodeTitles).toEqual([
+      { episodeId: "episode-1", number: 1, title: "The Unexpected Meeting" },
+      { episodeId: "episode-2", number: 2, title: "A Secret Revealed" },
+    ]);
   });
 
   it("clamps an overlong title", () => {
     const parsed = parseMuseSuggestion(
       JSON.stringify(suggestion({ title: "x".repeat(200) })),
-      [1, 2],
+      [
+        { id: "episode-1", number: 1 },
+        { id: "episode-2", number: 2 },
+      ],
     );
 
     expect(parsed.title).toHaveLength(160);
@@ -163,10 +175,15 @@ describe("Muse suggestions", () => {
           ],
         }),
       ),
-      [1, 2],
+      [
+        { id: "episode-1", number: 1 },
+        { id: "episode-2", number: 2 },
+      ],
     );
 
-    expect(parsed.episodeTitles).toEqual([{ number: 1, title: "The Unexpected Meeting" }]);
+    expect(parsed.episodeTitles).toEqual([
+      { episodeId: "episode-1", number: 1, title: "The Unexpected Meeting" },
+    ]);
   });
 
   it("throws when the API key is not configured", async () => {
@@ -193,6 +210,11 @@ describe("Muse suggestions", () => {
     });
 
     expect(result.title).toBe("A Secret Promise");
+    expect(result.episodeTitles[0]).toEqual({
+      episodeId: "episode-1",
+      number: 1,
+      title: "The Unexpected Meeting",
+    });
     expect(mocks.extractFrames).toHaveBeenCalledTimes(2);
     expect(mocks.extractFrames).toHaveBeenNthCalledWith(
       1,

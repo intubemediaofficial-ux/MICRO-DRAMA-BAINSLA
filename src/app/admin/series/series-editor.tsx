@@ -102,7 +102,7 @@ type MuseSuggestion = {
     keywords: string[];
   };
   posterPrompt: string;
-  episodeTitles: { number: number; title: string }[];
+  episodeTitles: { episodeId: string; number: number; title: string }[];
 };
 
 function slugify(value: string) {
@@ -329,7 +329,9 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   );
   const matchingMuseTitles =
     museSuggestion?.episodeTitles.filter((suggestion) =>
-      episodes.some((episode) => episode.number === suggestion.number),
+      episodes.some(
+        (episode) => episode.id === suggestion.episodeId && episode.number === suggestion.number,
+      ),
     ) ?? [];
 
   async function autoFillWithMuse() {
@@ -386,7 +388,10 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
     const updates = museSuggestion.episodeTitles
       .map((suggestion) => ({
         suggestion,
-        episode: episodes.find((episode) => episode.number === suggestion.number),
+        episode: episodes.find(
+          (episode) =>
+            episode.id === suggestion.episodeId && episode.number === suggestion.number,
+        ),
       }))
       .filter(
         (item): item is { suggestion: MuseSuggestion["episodeTitles"][number]; episode: Episode } =>
@@ -1107,7 +1112,7 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
             {matchingMuseTitles.length ? (
               <ul className="mt-3 space-y-2 text-sm text-zinc-300">
                 {matchingMuseTitles.map((item) => (
-                  <li key={item.number}>
+                  <li key={item.episodeId}>
                     Episode {item.number}: {item.title}
                   </li>
                 ))}
