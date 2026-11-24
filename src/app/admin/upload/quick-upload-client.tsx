@@ -117,6 +117,16 @@ export default function QuickUploadClient({
   }, [mode, selectedSeries]);
 
   useEffect(() => {
+    setItems((current) =>
+      current.map((item) =>
+        item.status === "queued" && !item.isFreeEdited
+          ? { ...item, isFree: item.number <= freeEpisodeCount }
+          : item,
+      ),
+    );
+  }, [freeEpisodeCount]);
+
+  useEffect(() => {
     if (mode !== "existing" || !selectedSeriesId || createdSeriesId) {
       setExistingNumbers([]);
       setLoadingNumbers(false);
