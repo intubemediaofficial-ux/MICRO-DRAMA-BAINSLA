@@ -339,6 +339,10 @@ describe("video-required publishing", () => {
     });
 
     const alreadyPublished = await makeSeries("already-published", true);
+    await prisma.series.update({
+      where: { id: alreadyPublished.series.id },
+      data: { status: "COMPLETED" },
+    });
     const metadataSave = await patchSeries(
       jsonRequest(
         { id: alreadyPublished.series.id, data: { title: "x", isPublished: true } },
@@ -346,6 +350,7 @@ describe("video-required publishing", () => {
       ),
     );
     expect(metadataSave.status).toBe(200);
+    expect((await metadataSave.json()).status).toBe("COMPLETED");
 
     const created = await createSeries(
       jsonRequest({

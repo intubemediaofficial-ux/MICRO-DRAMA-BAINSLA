@@ -20,7 +20,7 @@ const seriesInput = z.object({
   freeEpisodeCount: z.number().int().nonnegative(),
   defaultCoinPrice: z.number().int().positive(),
   isPublished: z.boolean(),
-  status: z.enum(["ONGOING", "COMPLETED"]).default("ONGOING"),
+  status: z.enum(["ONGOING", "COMPLETED"]),
   publishOnFirstReady: z.boolean(),
   seo: z.unknown().nullable().optional(),
 });
