@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db";
 import { storage } from "@/server/storage";
 import { getSettings } from "@/server/settings";
+import { isPlaceholderVideo } from "@/server/demo-media";
 import { extractFrames } from "@/server/muse-frames";
 
 export { extractFrames };
@@ -52,6 +53,21 @@ const suggestionSchema = z.object({
 });
 
 export type MuseSuggestion = z.infer<typeof suggestionSchema>;
+
+type MuseEpisodeCandidate = {
+  number: number;
+  title: string;
+  hlsPath: string;
+  originalFilename: string | null;
+};
+
+export function selectMuseEpisodes(episodes: MuseEpisodeCandidate[]) {
+  const playable = episodes
+    .filter((episode) => episode.hlsPath.trim() && !isPlaceholderVideo(episode.hlsPath.trim()))
+    .sort((a, b) => a.number - b.number);
+  const uploaded = playable.filter((episode) => Boolean(episode.originalFilename?.trim()));
+  return (uploaded.length ? uploaded : playable).slice(0, 3);
+}
 
 export function parseMuseSuggestion(reply: string, existingEpisodeNumbers: number[]) {
   try {
@@ -153,16 +169,16 @@ export async function suggestSeriesDetails({
   ]);
   if (!series) throw new Error("MUSE_SERIES_NOT_FOUND");
 
-  const episodes = await prisma.episode.findMany({
+  const candidates = await prisma.episode.findMany({
     where: {
       seriesId,
       hlsPath: { not: "" },
       processingStatus: "READY",
     },
     orderBy: { number: "asc" },
-    take: 3,
-    select: { number: true, title: true, hlsPath: true },
+    select: { number: true, title: true, hlsPath: true, originalFilename: true },
   });
+  const episodes = selectMuseEpisodes(candidates);
   if (!episodes.length) throw new Error("MUSE_NO_VIDEO");
 
   const frameCounts = [4, 3, 3];

@@ -33,6 +33,7 @@ import {
   generatePoster,
   museConfig,
   parseMuseSuggestion,
+  selectMuseEpisodes,
   suggestSeriesDetails,
 } from "@/server/muse";
 import { POST as suggestRoute } from "@/app/api/admin/muse/series/[id]/suggest/route";
@@ -87,8 +88,18 @@ beforeEach(() => {
     episodes: [{ number: 1 }, { number: 2 }],
   });
   mocks.episodeFindMany.mockResolvedValue([
-    { number: 1, title: "Episode one", hlsPath: "episodes/one/master.m3u8" },
-    { number: 2, title: "Episode two", hlsPath: "episodes/two/master.m3u8" },
+    {
+      number: 1,
+      title: "Episode one",
+      hlsPath: "episodes/one/master.m3u8",
+      originalFilename: null,
+    },
+    {
+      number: 2,
+      title: "Episode two",
+      hlsPath: "episodes/two/master.m3u8",
+      originalFilename: null,
+    },
   ]);
   mocks.extractFrames.mockResolvedValue(["data:image/jpeg;base64,ZmFrZQ=="]);
   mocks.storagePut.mockResolvedValue(undefined);
@@ -102,6 +113,27 @@ afterEach(() => {
 });
 
 describe("Muse suggestions", () => {
+  it("excludes demo footage and prefers uploaded episodes", () => {
+    const selected = selectMuseEpisodes([
+      { number: 1, title: "Demo one", hlsPath: "sample.mp4", originalFilename: null },
+      { number: 2, title: "Demo two", hlsPath: "sample.mp4", originalFilename: null },
+      { number: 3, title: "Uploaded", hlsPath: "episodes/uploaded.m3u8", originalFilename: "film.mp4" },
+      { number: 4, title: "Manual", hlsPath: "episodes/manual.m3u8", originalFilename: null },
+    ]);
+
+    expect(selected.map((episode) => episode.title)).toEqual(["Uploaded"]);
+  });
+
+  it("falls back to real non-uploaded episodes if there are no uploads", () => {
+    const selected = selectMuseEpisodes([
+      { number: 1, title: "Demo", hlsPath: "/media/sample.mp4", originalFilename: null },
+      { number: 3, title: "Third", hlsPath: "episodes/third.m3u8", originalFilename: null },
+      { number: 2, title: "Second", hlsPath: "episodes/second.m3u8", originalFilename: null },
+    ]);
+
+    expect(selected.map((episode) => episode.title)).toEqual(["Second", "Third"]);
+  });
+
   it("parses a fenced JSON reply", () => {
     const parsed = parseMuseSuggestion(
       `\`\`\`json\n${JSON.stringify(suggestion())}\n\`\`\``,
