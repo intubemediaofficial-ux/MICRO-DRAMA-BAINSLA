@@ -67,12 +67,30 @@ async function processLoadedEpisode(existing: EpisodeForProcessing) {
     return;
   }
 
+  const latest = await prisma.episode.findUnique({
+    where: { id: existing.id },
+    select: {
+      sourceKey: true,
+      processingStatus: true,
+      sku: true,
+      thumbnailSource: true,
+      publishedAt: true,
+      publishOnReady: true,
+    },
+  });
+  if (
+    !latest ||
+    latest.sourceKey !== existing.sourceKey ||
+    latest.processingStatus !== "PROCESSING"
+  )
+    return;
+
   const justPublished = Boolean(
-    existing.publishOnReady &&
-      existing.publishedAt === null &&
+    latest.publishOnReady &&
+      latest.publishedAt === null &&
       hasPlayableVideo({ ...processed, processingStatus: "READY" }),
   );
-  const publishedAt = justPublished ? new Date() : existing.publishedAt;
+  const publishedAt = justPublished ? new Date() : latest.publishedAt;
   const updated = await prisma.episode.updateMany({
     where: {
       id: existing.id,
@@ -85,11 +103,11 @@ async function processLoadedEpisode(existing: EpisodeForProcessing) {
         originalFilename:
           existing.originalFilename ?? existing.sourceKey.split("/").pop() ?? "video.mp4",
         durationSec: processed.durationSec,
-        sku: existing.sku,
+        sku: latest.sku,
       }),
       processingStatus: "READY",
       processingError: null,
-      ...thumbnailPersistence(existing.thumbnailSource, processed.thumbnailUrl),
+      ...thumbnailPersistence(latest.thumbnailSource, processed.thumbnailUrl),
       publishedAt,
       publishOnReady: false,
     },

@@ -118,6 +118,40 @@ describe("episode video queue processing", () => {
     expect(mocks.notify).not.toHaveBeenCalled();
   });
 
+  it("uses episode metadata saved while video processing is running", async () => {
+    const publishedAt = new Date("2026-01-02T03:04:05.000Z");
+    mocks.findUnique
+      .mockResolvedValueOnce(episode({ sku: "old-sku" }))
+      .mockResolvedValueOnce(
+        episode({
+          sku: "new-sku",
+          thumbnailSource: "CUSTOM",
+          publishedAt,
+          publishOnReady: false,
+        }),
+      );
+
+    await processEpisodeVideo("episode-1");
+
+    expect(mocks.episodeUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "episode-1",
+          processingStatus: "PROCESSING",
+          sourceKey: "episodes/source.mp4",
+        },
+        data: expect.objectContaining({
+          sku: "new-sku",
+          publishedAt,
+        }),
+      }),
+    );
+    const data = mocks.episodeUpdateMany.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty("thumbnailUrl");
+    expect(data).not.toHaveProperty("thumbnailSource");
+    expect(mocks.notify).not.toHaveBeenCalled();
+  });
+
   it("does not publish when a pending publish request has been cleared", async () => {
     mocks.findUnique.mockResolvedValue(episode({ publishOnReady: false }));
 
@@ -187,7 +221,11 @@ describe("episode video queue processing", () => {
       sourceKey: "episodes/new.mp4",
       originalFilename: "new.mp4",
     });
-    mocks.findUnique.mockResolvedValueOnce(oldSource).mockResolvedValueOnce(newSource);
+    mocks.findUnique
+      .mockResolvedValueOnce(oldSource)
+      .mockResolvedValueOnce(oldSource)
+      .mockResolvedValueOnce(newSource)
+      .mockResolvedValueOnce(newSource);
     let finishOldProcess!: (result: object) => void;
     const oldProcess = new Promise<object>((resolve) => {
       finishOldProcess = resolve;
