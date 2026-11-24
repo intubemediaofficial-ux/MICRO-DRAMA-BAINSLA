@@ -141,6 +141,23 @@ describe("episode video upload route", () => {
     ]);
   });
 
+  it("truncates a long filename stem while preserving its extension", async () => {
+    const filename = `${"a".repeat(300)}.mp4`;
+    const response = await uploadEpisode(
+      rawRequest({ "x-filename": encodeURIComponent(filename) }),
+      { params: Promise.resolve({ id: existingEpisode.id }) },
+    );
+    const body = await response.json();
+    const sourceKey = body.episode.sourceKey as string;
+    const storedName = sourceKey.split("/").at(-1)!.replace(/^episode-1-[a-z0-9]+-/, "");
+
+    expect(response.status).toBe(202);
+    expect(storedName).toBe(`${"a".repeat(116)}.mp4`);
+    await expect(fs.readFile(path.join(mediaDir, sourceKey))).resolves.toEqual(
+      Buffer.from([1, 2, 3]),
+    );
+  });
+
   it("rejects an over-cap request without queueing it", async () => {
     const response = await uploadEpisode(
       rawRequest({ "content-length": String(MAX_VIDEO_UPLOAD_BYTES + 1) }),

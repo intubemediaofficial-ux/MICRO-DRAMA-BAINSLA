@@ -25,7 +25,12 @@ function filenameFromRequest(request: Request, contentType: string) {
 }
 
 function safeFilename(filename: string) {
-  return filename.replace(/[\u0000-\u001f]/g, "").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 255) || "video.mp4";
+  const sanitized = filename
+    .replace(/[\u0000-\u001f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]/g, "_");
+  const extension = sanitized.match(/\.[a-zA-Z0-9]{1,16}$/)?.[0] ?? "";
+  const stem = extension ? sanitized.slice(0, -extension.length) : sanitized;
+  return `${stem.slice(0, 120 - extension.length)}${extension}` || "video.mp4";
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -66,8 +71,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         { status: 400 },
       );
 
-    const originalFilename = filename.replace(/[\u0000-\u001f]/g, "").slice(0, 255);
-    const key = `episodes/${id}-${Date.now().toString(36)}-${safeFilename(originalFilename)}`;
+    const cleanFilename = filename.replace(/[\u0000-\u001f]/g, "");
+    const originalFilename = cleanFilename.slice(0, 255);
+    const key = `episodes/${id}-${Date.now().toString(36)}-${safeFilename(cleanFilename)}`;
     await storage.putStream(key, body, MAX_VIDEO_UPLOAD_BYTES);
     const publishOnReady = new URL(request.url).searchParams.get("publish") === "1";
     const episode = await prisma.episode.update({
