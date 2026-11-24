@@ -40,6 +40,9 @@ const settingsPatch = z.object({
   RAZORPAY_KEY_ID: z.string().max(255).optional(),
   RAZORPAY_KEY_SECRET: z.string().max(1_000).nullable().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().max(1_000).nullable().optional(),
+  MUSE_API_KEY: z.string().max(1_000).nullable().optional(),
+  MUSE_TEXT_MODEL: z.string().trim().max(120).optional(),
+  MUSE_IMAGE_MODEL: z.string().trim().max(120).optional(),
   PAYMENTS_ENABLED: z.boolean().optional(),
   FIREBASE_SERVICE_ACCOUNT_JSON: serviceAccount,
   FIREBASE_ANDROID_APP_ID: z.string().max(255).optional(),
@@ -79,6 +82,7 @@ async function responseSettings() {
     ...safeValues,
     RAZORPAY_KEY_SECRET: secretStatus(values.RAZORPAY_KEY_SECRET),
     RAZORPAY_WEBHOOK_SECRET: secretStatus(values.RAZORPAY_WEBHOOK_SECRET),
+    MUSE_API_KEY: secretStatus(values.MUSE_API_KEY),
     FIREBASE_SERVICE_ACCOUNT_JSON: serviceAccountStatus(values.FIREBASE_SERVICE_ACCOUNT_JSON),
   };
 }

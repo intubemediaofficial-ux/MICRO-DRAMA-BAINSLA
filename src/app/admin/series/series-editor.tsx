@@ -90,6 +90,20 @@ type SeriesData = {
   episodes: Episode[];
   seo?: SeoFields | null;
 };
+type MuseSuggestion = {
+  title: string;
+  synopsis: string;
+  genres: string[];
+  tropeTags: string[];
+  seo: {
+    title: string;
+    description: string;
+    focusKeyword: string;
+    keywords: string[];
+  };
+  posterPrompt: string;
+  episodeTitles: { number: number; title: string }[];
+};
 
 function slugify(value: string) {
   return value
@@ -256,6 +270,14 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   const [isPublished, setIsPublished] = useState(initial?.isPublished ?? false);
   const [cast, setCast] = useState<Cast[]>(initial?.castMembers ?? []);
   const [episodes, setEpisodes] = useState<Episode[]>(initial?.episodes ?? []);
+  const [museLanguage, setMuseLanguage] = useState<"hi" | "en" | "hinglish">("hi");
+  const [museHint, setMuseHint] = useState("");
+  const [museSuggesting, setMuseSuggesting] = useState(false);
+  const [museSuggestion, setMuseSuggestion] = useState<MuseSuggestion | null>(null);
+  const [posterPrompt, setPosterPrompt] = useState("");
+  const [musePosterUrl, setMusePosterUrl] = useState("");
+  const [generatingMusePoster, setGeneratingMusePoster] = useState(false);
+  const [applyingMuseTitles, setApplyingMuseTitles] = useState(false);
   const [seasons, setSeasons] = useState<Season[]>(initial?.seasons ?? []);
   const [seasonDraft, setSeasonDraft] = useState<Season | null>(null);
   const [newSeasonNumber, setNewSeasonNumber] = useState(
@@ -299,6 +321,131 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   const canPublishSeries = Boolean(
     id && episodes.some((episode) => Boolean(episode.publishedAt) && hasPlayableVideo(episode)),
   );
+  const hasMuseVideo = Boolean(
+    id &&
+      episodes.some(
+        (episode) => Boolean(episode.hlsPath.trim()) && episode.processingStatus === "READY",
+      ),
+  );
+  const matchingMuseTitles =
+    museSuggestion?.episodeTitles.filter((suggestion) =>
+      episodes.some((episode) => episode.number === suggestion.number),
+    ) ?? [];
+
+  async function autoFillWithMuse() {
+    if (!id || !hasMuseVideo) return;
+    setMuseSuggesting(true);
+    setMuseSuggestion(null);
+    setMusePosterUrl("");
+    try {
+      const response = await fetch(`/api/admin/muse/series/${encodeURIComponent(id)}/suggest`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          language: museLanguage,
+          ...(museHint.trim() ? { hint: museHint.trim() } : {}),
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as
+        | { suggestion?: MuseSuggestion; error?: { message?: string } }
+        | null;
+      if (!response.ok) throw new Error(body?.error?.message ?? "Muse could not complete the request. Try again.");
+      if (!body?.suggestion) throw new Error("Muse returned an invalid suggestion.");
+      const suggestion = body.suggestion;
+      setTitle(suggestion.title);
+      if (!slugEdited) setSlug(slugify(suggestion.title));
+      setSynopsis(suggestion.synopsis);
+      setGenres(suggestion.genres);
+      setTropeTags(suggestion.tropeTags);
+      setSeo((current) => ({
+        ...current,
+        title: suggestion.seo.title || current.title,
+        description: suggestion.seo.description || current.description,
+        focusKeyword: suggestion.seo.focusKeyword || current.focusKeyword,
+        keywords: suggestion.seo.keywords.length ? suggestion.seo.keywords : current.keywords,
+      }));
+      setPosterPrompt(suggestion.posterPrompt);
+      setMuseSuggestion(suggestion);
+      toast("Muse filled the form — review and click Save.");
+    } catch (error) {
+      toast(
+        error instanceof TypeError
+          ? "Network error, please try again."
+          : error instanceof Error
+            ? error.message
+            : "Could not get Muse suggestions.",
+        "error",
+      );
+    } finally {
+      setMuseSuggesting(false);
+    }
+  }
+
+  async function applyMuseEpisodeTitles() {
+    if (!id || !museSuggestion) return;
+    const updates = museSuggestion.episodeTitles
+      .map((suggestion) => ({
+        suggestion,
+        episode: episodes.find((episode) => episode.number === suggestion.number),
+      }))
+      .filter(
+        (item): item is { suggestion: MuseSuggestion["episodeTitles"][number]; episode: Episode } =>
+          Boolean(item.episode),
+      );
+    if (!updates.length) return;
+    setApplyingMuseTitles(true);
+    try {
+      for (const { episode, suggestion } of updates) {
+        const response = await fetch(`/api/admin/episodes/${encodeURIComponent(episode.id)}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title: suggestion.title }),
+        });
+        if (!response.ok) throw new Error(await readError(response));
+        const updated = (await response.json()) as Episode;
+        setEpisodes((current) =>
+          current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+        );
+        setEpisodeDraft((current) =>
+          current?.id === updated.id ? { ...current, ...updated } : current,
+        );
+      }
+      toast(`Updated titles for ${updates.length} episodes.`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not apply episode titles.", "error");
+    } finally {
+      setApplyingMuseTitles(false);
+    }
+  }
+
+  async function generateMusePoster() {
+    if (!id || !hasMuseVideo || !posterPrompt.trim()) return;
+    setGeneratingMusePoster(true);
+    try {
+      const response = await fetch("/api/admin/muse/poster", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: posterPrompt.trim(), seriesId: id }),
+      });
+      const body = (await response.json().catch(() => null)) as
+        | { url?: string; error?: { message?: string } }
+        | null;
+      if (!response.ok) throw new Error(body?.error?.message ?? "Muse could not complete the request. Try again.");
+      if (!body?.url) throw new Error("Muse returned an invalid poster.");
+      setMusePosterUrl(body.url);
+    } catch (error) {
+      toast(
+        error instanceof TypeError
+          ? "Network error, please try again."
+          : error instanceof Error
+            ? error.message
+            : "Could not generate a Muse poster.",
+        "error",
+      );
+    } finally {
+      setGeneratingMusePoster(false);
+    }
+  }
 
   async function saveSeries() {
     setSaving(true);
@@ -899,6 +1046,135 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   }
   return (
     <div className="mt-6 space-y-6">
+      <section className="rounded-2xl border border-fuchsia-400/20 bg-gradient-to-br from-fuchsia-950/30 to-zinc-900 p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold">Muse AI auto-fill</h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              {id
+                ? hasMuseVideo
+                  ? "Review Muse’s suggestions before saving series details."
+                  : "Upload and process at least one episode video to use Muse."
+                : "Save the series and process an episode video before using Muse."}
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={() => void autoFillWithMuse()}
+            disabled={!hasMuseVideo || museSuggesting}
+          >
+            {museSuggesting ? "Muse is thinking…" : "Auto-fill with Muse"}
+          </Button>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <Field label="Suggestion language">
+            <select
+              value={museLanguage}
+              onChange={(event) => setMuseLanguage(event.target.value as typeof museLanguage)}
+              className={inputClass}
+            >
+              <option value="hi">Hindi</option>
+              <option value="en">English</option>
+              <option value="hinglish">Hinglish</option>
+            </select>
+          </Field>
+          <Field label="Optional hint" helper="Tell Muse about the tone, audience, or story angle.">
+            <textarea
+              value={museHint}
+              onChange={(event) => setMuseHint(event.target.value)}
+              maxLength={500}
+              rows={3}
+              className={inputClass}
+              placeholder="e.g. Keep it suspenseful and family-friendly"
+            />
+          </Field>
+        </div>
+
+        {museSuggestion ? (
+          <div className="mt-5 rounded-xl border border-white/10 bg-zinc-950/60 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="font-semibold">Suggested episode titles</h3>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void applyMuseEpisodeTitles()}
+                disabled={!hasMuseVideo || !matchingMuseTitles.length || applyingMuseTitles}
+              >
+                {applyingMuseTitles ? "Applying titles…" : "Apply episode titles"}
+              </Button>
+            </div>
+            {matchingMuseTitles.length ? (
+              <ul className="mt-3 space-y-2 text-sm text-zinc-300">
+                {matchingMuseTitles.map((item) => (
+                  <li key={item.number}>
+                    Episode {item.number}: {item.title}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-zinc-500">
+                Muse did not return titles for existing episodes.
+              </p>
+            )}
+          </div>
+        ) : null}
+
+        <div className="mt-5 space-y-4">
+          <Field
+            label="Poster prompt"
+            helper="Edit the image direction before generating a poster."
+          >
+            <textarea
+              value={posterPrompt}
+              onChange={(event) => setPosterPrompt(event.target.value)}
+              maxLength={1_500}
+              rows={3}
+              className={inputClass}
+              placeholder="Describe the mood, characters, and visual setting"
+            />
+          </Field>
+          {musePosterUrl ? (
+            <div className="flex flex-wrap items-end gap-4">
+              <img
+                src={musePosterUrl}
+                alt="Muse-generated poster preview"
+                className="h-56 w-36 rounded-xl border border-white/10 object-cover"
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setPosterUrl(musePosterUrl);
+                    toast("Muse poster selected — review and click Save.");
+                  }}
+                  disabled={!hasMuseVideo}
+                >
+                  Use as poster
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void generateMusePoster()}
+                  disabled={!hasMuseVideo || generatingMusePoster}
+                >
+                  {generatingMusePoster ? "Generating…" : "Try again"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void generateMusePoster()}
+              disabled={!hasMuseVideo || !posterPrompt.trim() || generatingMusePoster}
+            >
+              {generatingMusePoster ? "Generating…" : "Generate poster"}
+            </Button>
+          )}
+        </div>
+      </section>
+
       <Section
         title="Details"
         description="Clear metadata helps viewers discover and understand the series."

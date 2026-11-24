@@ -6,6 +6,9 @@ export const SETTING_REGISTRY = {
   RAZORPAY_KEY_ID: { kind: "string", secret: false },
   RAZORPAY_KEY_SECRET: { kind: "string", secret: true },
   RAZORPAY_WEBHOOK_SECRET: { kind: "string", secret: true },
+  MUSE_API_KEY: { kind: "string", secret: true },
+  MUSE_TEXT_MODEL: { kind: "string", secret: false, default: "muse-spark-1.3" },
+  MUSE_IMAGE_MODEL: { kind: "string", secret: false, default: "muse-image-1.0" },
   PAYMENTS_ENABLED: { kind: "boolean", secret: false, default: false },
   FIREBASE_SERVICE_ACCOUNT_JSON: { kind: "string", secret: true },
   FIREBASE_ANDROID_APP_ID: { kind: "string", secret: false },
@@ -22,6 +25,7 @@ export const SETTING_REGISTRY = {
 export const SECRET_SETTING_KEYS = [
   "RAZORPAY_KEY_SECRET",
   "RAZORPAY_WEBHOOK_SECRET",
+  "MUSE_API_KEY",
   "FIREBASE_SERVICE_ACCOUNT_JSON",
 ] as const;
 
