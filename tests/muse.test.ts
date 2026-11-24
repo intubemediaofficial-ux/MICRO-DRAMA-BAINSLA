@@ -37,6 +37,7 @@ import {
   suggestSeriesDetails,
 } from "@/server/muse";
 import { POST as suggestRoute } from "@/app/api/admin/muse/series/[id]/suggest/route";
+import { POST as posterRoute } from "@/app/api/admin/muse/poster/route";
 import { POST as museTestRoute } from "@/app/api/admin/settings/muse-test/route";
 
 function suggestion(overrides: Record<string, unknown> = {}) {
@@ -275,6 +276,38 @@ describe("Muse suggestions", () => {
     expect(requestBody.prompt).toContain("Series synopsis: The synopsis currently in the editor.");
     expect(requestBody.prompt).not.toContain("Existing title");
     expect(mocks.seriesFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("accepts and truncates a 300-character poster title", async () => {
+    const webp = Buffer.alloc(12);
+    webp.write("RIFF", 0, "ascii");
+    webp.write("WEBP", 8, "ascii");
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ b64_json: webp.toString("base64") }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const title = "t".repeat(300);
+
+    const response = await posterRoute(
+      new Request("http://localhost/api/admin/muse/poster", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prompt: "A dramatic poster",
+          seriesId: "series-1",
+          title,
+          synopsis: "Current unsaved synopsis",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const [, options] = vi.mocked(fetch).mock.calls[0] ?? [];
+    const requestBody = JSON.parse(String(options?.body));
+    expect(requestBody.prompt).toContain(`Series title: ${title.slice(0, 160)}`);
+    expect(requestBody.prompt).not.toContain(title);
   });
 
   it("rejects non-image poster bytes", async () => {

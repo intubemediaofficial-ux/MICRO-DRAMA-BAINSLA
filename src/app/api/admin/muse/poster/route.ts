@@ -8,8 +8,16 @@ import { museErrorResponse, museRateLimitResponse } from "@/server/muse-route";
 const inputSchema = z.object({
   prompt: z.string().trim().min(1).max(1_500),
   seriesId: z.string().trim().min(1).max(128).optional(),
-  title: z.string().trim().max(160).optional(),
-  synopsis: z.string().trim().max(4_000).optional(),
+  title: z
+    .string()
+    .max(20_000)
+    .transform((value) => value.trim().slice(0, 160).trim())
+    .optional(),
+  synopsis: z
+    .string()
+    .max(20_000)
+    .transform((value) => value.trim().slice(0, 4_000).trim())
+    .optional(),
 });
 
 export async function POST(request: Request) {
