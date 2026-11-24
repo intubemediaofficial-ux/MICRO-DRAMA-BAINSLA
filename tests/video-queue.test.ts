@@ -4,12 +4,14 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   episodeUpdateMany: vi.fn(),
   seriesUpdateMany: vi.fn(),
+  transaction: vi.fn(),
   process: vi.fn(),
   notify: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
   prisma: {
+    $transaction: mocks.transaction,
     episode: {
       findUnique: mocks.findUnique,
       updateMany: mocks.episodeUpdateMany,
@@ -63,6 +65,18 @@ describe("episode video queue processing", () => {
     mocks.findUnique.mockResolvedValue(episode());
     mocks.episodeUpdateMany.mockResolvedValue({ count: 1 });
     mocks.seriesUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.transaction.mockImplementation(
+      async (
+        callback: (tx: {
+          episode: { updateMany: typeof mocks.episodeUpdateMany };
+          series: { updateMany: typeof mocks.seriesUpdateMany };
+        }) => Promise<unknown>,
+      ) =>
+        callback({
+          episode: { updateMany: mocks.episodeUpdateMany },
+          series: { updateMany: mocks.seriesUpdateMany },
+        }),
+    );
     mocks.process.mockResolvedValue({
       status: "READY",
       hlsPath: "episodes/source-hls/master.m3u8",
@@ -180,13 +194,20 @@ describe("episode video queue processing", () => {
     await processEpisodeVideo("episode-1");
 
     expect(mocks.seriesUpdateMany).toHaveBeenNthCalledWith(1, {
-      where: { id: "series-1", posterUrl: "" },
-      data: { posterUrl: "/api/media/episodes/source.jpg" },
-    });
-    expect(mocks.seriesUpdateMany).toHaveBeenNthCalledWith(2, {
       where: { id: "series-1", publishOnFirstReady: true },
       data: { isPublished: true, publishOnFirstReady: false },
     });
+    expect(mocks.seriesUpdateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: "series-1", posterUrl: "" },
+      data: { posterUrl: "/api/media/episodes/source.jpg" },
+    });
+    expect(mocks.transaction).toHaveBeenCalledOnce();
+    expect(mocks.transaction.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.seriesUpdateMany.mock.invocationCallOrder[0],
+    );
+    expect(mocks.seriesUpdateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.seriesUpdateMany.mock.invocationCallOrder[1],
+    );
     expect(mocks.notify).toHaveBeenCalledWith("episode-1");
   });
 

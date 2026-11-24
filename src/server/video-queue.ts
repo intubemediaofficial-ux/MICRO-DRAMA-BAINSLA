@@ -91,28 +91,41 @@ async function processLoadedEpisode(existing: EpisodeForProcessing) {
       hasPlayableVideo({ ...processed, processingStatus: "READY" }),
   );
   const publishedAt = justPublished ? new Date() : latest.publishedAt;
-  const updated = await prisma.episode.updateMany({
-    where: {
-      id: existing.id,
-      processingStatus: "PROCESSING",
-      sourceKey: existing.sourceKey,
-    },
-    data: {
-      hlsPath: processed.hlsPath,
-      ...buildEpisodeUploadMetadata({
-        originalFilename:
-          existing.originalFilename ?? existing.sourceKey.split("/").pop() ?? "video.mp4",
-        durationSec: processed.durationSec,
-        sku: latest.sku,
-      }),
-      processingStatus: "READY",
-      processingError: null,
-      ...thumbnailPersistence(latest.thumbnailSource, processed.thumbnailUrl),
-      publishedAt,
-      publishOnReady: false,
-    },
+  const publication = await prisma.$transaction(async (tx) => {
+    const updated = await tx.episode.updateMany({
+      where: {
+        id: existing.id,
+        processingStatus: "PROCESSING",
+        sourceKey: existing.sourceKey,
+      },
+      data: {
+        hlsPath: processed.hlsPath,
+        ...buildEpisodeUploadMetadata({
+          originalFilename:
+            existing.originalFilename ?? existing.sourceKey.split("/").pop() ?? "video.mp4",
+          durationSec: processed.durationSec,
+          sku: latest.sku,
+        }),
+        processingStatus: "READY",
+        processingError: null,
+        ...thumbnailPersistence(latest.thumbnailSource, processed.thumbnailUrl),
+        publishedAt,
+        publishOnReady: false,
+      },
+    });
+    if (!updated.count) return { episodeUpdated: false, seriesPublished: false };
+    const publishedSeries = justPublished
+      ? await tx.series.updateMany({
+          where: { id: existing.series.id, publishOnFirstReady: true },
+          data: { isPublished: true, publishOnFirstReady: false },
+        })
+      : { count: 0 };
+    return {
+      episodeUpdated: true,
+      seriesPublished: publishedSeries.count > 0,
+    };
   });
-  if (!updated.count) return;
+  if (!publication.episodeUpdated) return;
 
   if (!existing.series.posterUrl) {
     await prisma.series.updateMany({
@@ -121,14 +134,7 @@ async function processLoadedEpisode(existing: EpisodeForProcessing) {
     });
   }
 
-  let seriesPublished = existing.series.isPublished;
-  if (justPublished && existing.series.publishOnFirstReady) {
-    const publishedSeries = await prisma.series.updateMany({
-      where: { id: existing.series.id, publishOnFirstReady: true },
-      data: { isPublished: true, publishOnFirstReady: false },
-    });
-    seriesPublished ||= publishedSeries.count > 0;
-  }
+  const seriesPublished = existing.series.isPublished || publication.seriesPublished;
   if (justPublished && seriesPublished)
     void notifyNewPublicEpisode(existing.id).catch(() => {});
 }
