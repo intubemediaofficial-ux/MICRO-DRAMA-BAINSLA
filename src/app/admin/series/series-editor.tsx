@@ -268,7 +268,16 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
   const [freeEpisodeCount, setFreeEpisodeCount] = useState(initial?.freeEpisodeCount ?? 5);
   const [defaultCoinPrice, setDefaultCoinPrice] = useState(initial?.defaultCoinPrice ?? 10);
   const [isPublished, setIsPublished] = useState(initial?.isPublished ?? false);
-  const [cast, setCast] = useState<Cast[]>(initial?.castMembers ?? []);
+  const [cast, setCast] = useState<Cast[]>(() =>
+    initial?.castMembers?.length
+      ? initial.castMembers
+      : (initial?.castNames ?? []).map((name, index) => ({
+          name,
+          role: null,
+          photo: null,
+          sortOrder: index,
+        })),
+  );
   const [episodes, setEpisodes] = useState<Episode[]>(initial?.episodes ?? []);
   const [museLanguage, setMuseLanguage] = useState<"hi" | "en" | "hinglish">("hi");
   const [museHint, setMuseHint] = useState("");
@@ -1404,6 +1413,15 @@ export default function SeriesEditor({ initial }: { initial: SeriesData | null }
           </div>
         )}
       </Section>
+      {!id && (
+        <div className="rounded-2xl border border-white/10 bg-zinc-900 p-5">
+          <h2 className="text-lg font-bold">Episodes &amp; videos</h2>
+          <p className="mt-2 text-sm text-zinc-400">
+            Create the series first. Episode video upload, bulk upload and publishing appear here
+            right after you click Create series.
+          </p>
+        </div>
+      )}
       {id && (
         <Section
           title="Seasons"
