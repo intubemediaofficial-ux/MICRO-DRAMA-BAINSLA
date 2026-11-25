@@ -12,16 +12,47 @@ import {
 } from "@/server/episode-validation";
 import { notifyNewPublicEpisode } from "@/server/episode-notifications";
 
+export async function GET(request: Request) {
+  try {
+    await adminSession();
+    const seriesId = new URL(request.url).searchParams.get("seriesId");
+    if (!seriesId)
+      return NextResponse.json({ error: { message: "seriesId is required" } }, { status: 400 });
+    const episodes = await prisma.episode.findMany({
+      where: { seriesId },
+      orderBy: { number: "asc" },
+      select: {
+        id: true,
+        number: true,
+        title: true,
+        processingStatus: true,
+        processingError: true,
+        publishedAt: true,
+        hlsPath: true,
+        thumbnailUrl: true,
+        durationSec: true,
+      },
+    });
+    return NextResponse.json(episodes);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Episode lookup failed";
+    return NextResponse.json(
+      { error: { message } },
+      { status: message === "FORBIDDEN" ? 403 : message === "UNAUTHENTICATED" ? 401 : 400 },
+    );
+  }
+}
+
 const input = z.object({
   seriesId: z.string(),
   seasonId: z.string().optional(),
   episodes: z
     .array(
       z.object({
-        number: z.number().int().positive(),
-        title: z.string().min(1),
-        coinPrice: z.number().int().positive(),
-        isFree: z.boolean(),
+        number: z.number().int().positive().optional(),
+        title: z.string().optional(),
+        coinPrice: z.number().int().positive().optional(),
+        isFree: z.boolean().optional(),
         durationSec: z.number().int().positive().default(90),
         hlsPath: z.string().default(""),
         thumbnailUrl: z.string().optional(),
@@ -41,7 +72,13 @@ export async function POST(request: Request) {
     const data = input.parse(await request.json());
     const series = await prisma.series.findUnique({
       where: { id: data.seriesId },
-      select: { id: true, posterUrl: true, isPublished: true },
+      select: {
+        id: true,
+        posterUrl: true,
+        isPublished: true,
+        defaultCoinPrice: true,
+        freeEpisodeCount: true,
+      },
     });
     if (!series) return NextResponse.json({ error: { message: "Series not found" } }, { status: 404 });
     const season = data.seasonId
@@ -57,13 +94,42 @@ export async function POST(request: Request) {
       where: { seriesId: data.seriesId },
       select: { number: true },
     })).map((episode) => episode.number);
-    const collision = findEpisodeNumberCollision(existingNumbers, data.episodes.map((episode) => episode.number));
+    const requestedNumbers = data.episodes
+      .map((episode) => episode.number)
+      .filter((number): number is number => number !== undefined);
+    const duplicateRequestedNumber = requestedNumbers.find(
+      (number, index) => requestedNumbers.indexOf(number) !== index,
+    );
+    if (duplicateRequestedNumber !== undefined)
+      return NextResponse.json(
+        { error: { message: episodeNumberConflictMessage(duplicateRequestedNumber) } },
+        { status: 409 },
+      );
+    const collision = findEpisodeNumberCollision(existingNumbers, requestedNumbers);
     if (collision !== null)
       return NextResponse.json(
         { error: { message: episodeNumberConflictMessage(collision) } },
         { status: 409 },
       );
-    const skus = data.episodes.map((episode) => episode.sku).filter((sku): sku is string => Boolean(sku));
+    const usedNumbers = new Set([...existingNumbers, ...requestedNumbers]);
+    let nextNumber = Math.max(0, ...existingNumbers) + 1;
+    const episodesToCreate = data.episodes.map((episode) => {
+      let number = episode.number;
+      if (number === undefined) {
+        while (usedNumbers.has(nextNumber)) nextNumber += 1;
+        number = nextNumber;
+        usedNumbers.add(number);
+        nextNumber += 1;
+      }
+      return {
+        ...episode,
+        number,
+        title: episode.title?.trim() || `Episode ${number}`,
+        coinPrice: episode.coinPrice ?? series.defaultCoinPrice,
+        isFree: episode.isFree ?? number <= series.freeEpisodeCount,
+      };
+    });
+    const skus = episodesToCreate.map((episode) => episode.sku).filter((sku): sku is string => Boolean(sku));
     if (new Set(skus).size !== skus.length)
       return NextResponse.json({ error: { message: "SKU must be unique within this upload" } }, { status: 409 });
     const duplicate = skus.length
@@ -74,7 +140,7 @@ export async function POST(request: Request) {
     let episodes;
     try {
       episodes = await prisma.$transaction(
-        data.episodes.map((episode) => {
+        episodesToCreate.map((episode) => {
           const seo = sanitizedSeo(episode.seo);
           const { seo: _seo, ...episodeData } = episode;
           return prisma.episode.create({

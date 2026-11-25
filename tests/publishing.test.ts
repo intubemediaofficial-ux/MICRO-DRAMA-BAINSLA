@@ -23,7 +23,10 @@ import { issueSession } from "../src/server/auth";
 import { getHomeFeed } from "../src/server/home-curation";
 import { getSeriesDetail } from "../src/server/series-detail";
 import { prisma } from "../src/server/db";
-import { POST as createEpisodes } from "../src/app/api/admin/episodes/route";
+import {
+  GET as listAdminEpisodes,
+  POST as createEpisodes,
+} from "../src/app/api/admin/episodes/route";
 import { PATCH as patchEpisode } from "../src/app/api/admin/episodes/[id]/route";
 import { PATCH as bulkPatchEpisodes } from "../src/app/api/admin/episodes/bulk/route";
 import {
@@ -117,6 +120,112 @@ describe("video-required publishing", () => {
     await prisma.user.deleteMany({ where: { id: adminId } });
   });
 
+  it("defaults missing episode fields from the series and series-wide maximum", async () => {
+    const defaultsSeries = await makeSeries("episode-defaults");
+    await prisma.series.update({
+      where: { id: defaultsSeries.series.id },
+      data: { freeEpisodeCount: 6 },
+    });
+    await makeEpisode(defaultsSeries.series.id, defaultsSeries.season.id, 2);
+    await makeEpisode(defaultsSeries.series.id, defaultsSeries.season.id, 4);
+
+    const response = await createEpisodes(
+      jsonRequest({
+        seriesId: defaultsSeries.series.id,
+        seasonId: defaultsSeries.season.id,
+        episodes: [{ number: 5, title: "Manual number" }, {}, {}],
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.episodes).toMatchObject([
+      { number: 5, title: "Manual number", coinPrice: 10, isFree: true, publishedAt: null },
+      { number: 6, title: "Episode 6", coinPrice: 10, isFree: true, publishedAt: null },
+      { number: 7, title: "Episode 7", coinPrice: 10, isFree: false, publishedAt: null },
+    ]);
+  });
+
+  it("returns episode processing fields for admin polling", async () => {
+    const pollingSeries = await makeSeries("episode-polling");
+    const episode = await makeEpisode(
+      pollingSeries.series.id,
+      pollingSeries.season.id,
+      1,
+      { processingStatus: "PROCESSING" },
+    );
+    const response = await listAdminEpisodes(
+      new Request(`http://localhost/api/admin/episodes?seriesId=${pollingSeries.series.id}`),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({
+      id: episode.id,
+      number: 1,
+      title: "Episode 1",
+      processingStatus: "PROCESSING",
+      processingError: null,
+      hlsPath: "",
+      thumbnailUrl: "/poster.jpg",
+      durationSec: 30,
+    });
+    expect(body[0].publishedAt).toBeNull();
+  });
+
+  it("requires an admin session for episode status polling", async () => {
+    const sessionToken = cookieState.token;
+    cookieState.token = "";
+    try {
+      const response = await listAdminEpisodes(
+        new Request("http://localhost/api/admin/episodes?seriesId=series-1"),
+      );
+      expect(response.status).toBe(401);
+    } finally {
+      cookieState.token = sessionToken;
+    }
+  });
+
+  it("creates title-only series with defaults, Hindi slug fallback, and unique suffixes", async () => {
+    const titleOnlyResponse = await createSeries(
+      jsonRequest({ title: `Title Only ${suffix}` }),
+    );
+    expect(titleOnlyResponse.status).toBe(201);
+    const titleOnly = await titleOnlyResponse.json();
+    seriesIds.push(titleOnly.id);
+    expect(titleOnly).toMatchObject({
+      synopsis: "",
+      posterUrl: "",
+      teaserUrl: "",
+      genres: [],
+      tropeTags: [],
+      castNames: [],
+      freeEpisodeCount: 5,
+      defaultCoinPrice: 10,
+      status: "ONGOING",
+      isPublished: false,
+      publishOnFirstReady: false,
+    });
+    expect(titleOnly.slug).toBe(`title-only-${suffix.toLowerCase()}`);
+
+    const hindiResponse = await createSeries(jsonRequest({ title: "कहानी", slug: "" }));
+    expect(hindiResponse.status).toBe(201);
+    const hindi = await hindiResponse.json();
+    seriesIds.push(hindi.id);
+    expect(hindi.slug).toMatch(/^series-[a-z0-9]{6}$/);
+
+    const slug = `unique-${suffix.toLowerCase()}`;
+    const firstResponse = await createSeries(jsonRequest({ title: "Unique title", slug }));
+    const secondResponse = await createSeries(jsonRequest({ title: "Unique title", slug }));
+    const [first, second] = await Promise.all([firstResponse.json(), secondResponse.json()]);
+    seriesIds.push(first.id, second.id);
+    expect(firstResponse.status).toBe(201);
+    expect(secondResponse.status).toBe(201);
+    expect(first.slug).toBe(slug);
+    expect(second.slug).toBe(`${slug}-2`);
+  });
+
   it("does not publish an episode created without a video", async () => {
     const response = await createEpisodes(
       jsonRequest({
@@ -165,6 +274,32 @@ describe("video-required publishing", () => {
     expect((await published.json()).publishedAt).not.toBeNull();
   });
 
+  it("clears pending auto-publish when a processing episode is explicitly unpublished", async () => {
+    const processing = await makeEpisode(editableSeries.series.id, editableSeries.season.id, 5, {
+      hlsPath: "episodes/publishing-in-progress.m3u8",
+      publishedAt: new Date(),
+      processingStatus: "PROCESSING",
+    });
+    await prisma.episode.update({
+      where: { id: processing.id },
+      data: { publishOnReady: true },
+    });
+
+    const response = await patchEpisode(
+      jsonRequest({ publishedAt: null }, "PATCH"),
+      { params: Promise.resolve({ id: processing.id }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      publishedAt: null,
+      publishOnReady: false,
+    });
+    expect(
+      await prisma.episode.findUniqueOrThrow({ where: { id: processing.id } }),
+    ).toMatchObject({ publishedAt: null, publishOnReady: false });
+  });
+
   it("publishes only playable episodes in a bulk publish", async () => {
     const missingVideo = await makeEpisode(editableSeries.series.id, editableSeries.season.id, 3);
     const playable = await makeEpisode(editableSeries.series.id, editableSeries.season.id, 4, {
@@ -204,6 +339,10 @@ describe("video-required publishing", () => {
     });
 
     const alreadyPublished = await makeSeries("already-published", true);
+    await prisma.series.update({
+      where: { id: alreadyPublished.series.id },
+      data: { status: "COMPLETED" },
+    });
     const metadataSave = await patchSeries(
       jsonRequest(
         { id: alreadyPublished.series.id, data: { title: "x", isPublished: true } },
@@ -211,6 +350,7 @@ describe("video-required publishing", () => {
       ),
     );
     expect(metadataSave.status).toBe(200);
+    expect((await metadataSave.json()).status).toBe("COMPLETED");
 
     const created = await createSeries(
       jsonRequest({

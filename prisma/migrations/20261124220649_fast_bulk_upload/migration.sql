@@ -1,0 +1,6 @@
+ALTER TABLE "Episode"
+ADD COLUMN "sourceKey" TEXT,
+ADD COLUMN "publishOnReady" BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE "Series"
+ADD COLUMN "publishOnFirstReady" BOOLEAN NOT NULL DEFAULT false;

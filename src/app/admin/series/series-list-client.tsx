@@ -38,9 +38,20 @@ export default function SeriesListClient({ initial }: { initial: Row[] }) {
             className={inputClass}
           />
         </label>
-        <Link href="/admin/series/new" className="rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-bold">
-          + New series
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href="/admin/upload"
+            className="rounded-xl border border-white/10 bg-zinc-800 px-4 py-2.5 text-sm font-bold text-zinc-100 transition hover:bg-zinc-700"
+          >
+            Quick upload
+          </Link>
+          <Link
+            href="/admin/series/new"
+            className="rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-bold"
+          >
+            + New series
+          </Link>
+        </div>
       </div>
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-900">
         <div className="hidden grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 border-b border-white/10 px-5 py-3 text-xs font-bold uppercase tracking-wide text-zinc-500 md:grid">

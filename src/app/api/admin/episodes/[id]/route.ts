@@ -76,6 +76,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           where: { id },
           data: {
             ...episodeData,
+            ...(data.publishedAt !== undefined ? { publishOnReady: false } : {}),
             ...(seo !== undefined ? { seo } : {}),
             ...(data.publishedAt === undefined &&
             existing.publishedAt !== null &&
