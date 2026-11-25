@@ -127,6 +127,7 @@ export default async function SeriesPage({ params }: { params: Promise<{ slug: s
             seriesId={series.id}
             initialInWatchlist={inWatchlist}
             signedIn={Boolean(session)}
+            returnTo={`/series/${series.slug}`}
           />
           <ShareButton
             title={series.title}
