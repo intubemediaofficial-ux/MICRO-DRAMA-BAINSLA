@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
@@ -12,10 +13,11 @@ import {
   encryptSecret,
   getSettings,
   invalidateSettingsCache,
+  publicSettings,
   setSettings,
 } from "@/server/settings";
 
-const settingKeys = ["RAZORPAY_KEY_ID", "FIREBASE_SERVICE_ACCOUNT_JSON"] as const;
+const settingKeys = ["RAZORPAY_KEY_ID", "FIREBASE_SERVICE_ACCOUNT_JSON", "MUSE_API_KEY"] as const;
 const originals = new Map<string, Awaited<ReturnType<typeof prisma.appSetting.findUnique>>>();
 
 async function restoreSetting(key: (typeof settingKeys)[number]) {
@@ -69,5 +71,17 @@ describe("application settings", () => {
     await setSettings({ FIREBASE_SERVICE_ACCOUNT_JSON: '{"project_id":"test"}' }, "settings-test");
     await setSettings({ FIREBASE_SERVICE_ACCOUNT_JSON: "  " }, "settings-test");
     expect((await getSettings()).FIREBASE_SERVICE_ACCOUNT_JSON).toBe('{"project_id":"test"}');
+  });
+
+  it("encrypts Muse API keys and excludes them from public settings", async () => {
+    const marker = `muse-secret-${randomUUID()}`;
+    await setSettings({ MUSE_API_KEY: marker }, "settings-test");
+
+    const stored = await prisma.appSetting.findUnique({ where: { key: "MUSE_API_KEY" } });
+    expect(stored?.isSecret).toBe(true);
+    expect(stored?.value).toMatch(/^v1:/);
+    expect(stored?.value).not.toContain(marker);
+    expect((await getSettings()).MUSE_API_KEY).toBe(marker);
+    expect(await publicSettings()).not.toHaveProperty("MUSE_API_KEY");
   });
 });

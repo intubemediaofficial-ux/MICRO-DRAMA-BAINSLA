@@ -49,7 +49,7 @@ export function thumbnailPersistence(
     : {};
 }
 
-async function run(command: string, args: string[], timeout = DEFAULT_TIMEOUT_MS) {
+export async function run(command: string, args: string[], timeout = DEFAULT_TIMEOUT_MS) {
   try {
     return await execFileAsync(command, args, {
       timeout,

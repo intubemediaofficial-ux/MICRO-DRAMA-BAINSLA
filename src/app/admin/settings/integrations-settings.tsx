@@ -7,6 +7,9 @@ type SettingsResponse = {
   RAZORPAY_KEY_ID?: string;
   RAZORPAY_KEY_SECRET: SecretStatus;
   RAZORPAY_WEBHOOK_SECRET: SecretStatus;
+  MUSE_API_KEY: SecretStatus;
+  MUSE_TEXT_MODEL?: string;
+  MUSE_IMAGE_MODEL?: string;
   PAYMENTS_ENABLED?: boolean;
   FIREBASE_SERVICE_ACCOUNT_JSON: SecretStatus;
   FIREBASE_ANDROID_APP_ID?: string;
@@ -22,6 +25,8 @@ type SettingsResponse = {
 
 type FormValues = {
   RAZORPAY_KEY_ID: string;
+  MUSE_TEXT_MODEL: string;
+  MUSE_IMAGE_MODEL: string;
   PAYMENTS_ENABLED: boolean;
   FIREBASE_ANDROID_APP_ID: string;
   FIREBASE_API_KEY: string;
@@ -37,10 +42,13 @@ type FormValues = {
 type SecretKey =
   | "RAZORPAY_KEY_SECRET"
   | "RAZORPAY_WEBHOOK_SECRET"
+  | "MUSE_API_KEY"
   | "FIREBASE_SERVICE_ACCOUNT_JSON";
 
 const initialValues: FormValues = {
   RAZORPAY_KEY_ID: "",
+  MUSE_TEXT_MODEL: "muse-spark-1.3",
+  MUSE_IMAGE_MODEL: "muse-image-1.0",
   PAYMENTS_ENABLED: false,
   FIREBASE_ANDROID_APP_ID: "",
   FIREBASE_API_KEY: "",
@@ -127,6 +135,7 @@ export default function IntegrationsSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingMuse, setTestingMuse] = useState(false);
   const [message, setMessage] = useState("");
 
   async function refresh() {
@@ -136,6 +145,8 @@ export default function IntegrationsSettings() {
     const settings = body.settings as SettingsResponse;
     setValues({
       RAZORPAY_KEY_ID: settings.RAZORPAY_KEY_ID ?? "",
+      MUSE_TEXT_MODEL: settings.MUSE_TEXT_MODEL ?? "muse-spark-1.3",
+      MUSE_IMAGE_MODEL: settings.MUSE_IMAGE_MODEL ?? "muse-image-1.0",
       PAYMENTS_ENABLED: settings.PAYMENTS_ENABLED ?? false,
       FIREBASE_ANDROID_APP_ID: settings.FIREBASE_ANDROID_APP_ID ?? "",
       FIREBASE_API_KEY: settings.FIREBASE_API_KEY ?? "",
@@ -150,6 +161,7 @@ export default function IntegrationsSettings() {
     setSecretStatus({
       RAZORPAY_KEY_SECRET: settings.RAZORPAY_KEY_SECRET,
       RAZORPAY_WEBHOOK_SECRET: settings.RAZORPAY_WEBHOOK_SECRET,
+      MUSE_API_KEY: settings.MUSE_API_KEY,
       FIREBASE_SERVICE_ACCOUNT_JSON: settings.FIREBASE_SERVICE_ACCOUNT_JSON,
     });
   }
@@ -224,6 +236,20 @@ export default function IntegrationsSettings() {
     }
   }
 
+  async function testMuse() {
+    setTestingMuse(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/settings/muse-test", { method: "POST" });
+      const body = await response.json();
+      setMessage(body.message ?? (response.ok ? "Muse API key is valid." : "Muse key test failed."));
+    } catch {
+      setMessage("Muse key test failed. Try again.");
+    } finally {
+      setTestingMuse(false);
+    }
+  }
+
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ||
     (typeof window === "undefined" ? "" : window.location.origin);
@@ -236,7 +262,9 @@ export default function IntegrationsSettings() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold">Integrations</h2>
-          <p className="mt-1 text-sm text-zinc-400">Manage payments, Firebase, ads, and referral rewards.</p>
+          <p className="mt-1 text-sm text-zinc-400">
+            Manage payments, Muse AI, Firebase, ads, and referral rewards.
+          </p>
         </div>
         <button
           className="rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
@@ -301,6 +329,44 @@ export default function IntegrationsSettings() {
                 disabled={testing}
               >
                 {testing ? "Testing…" : "Test keys"}
+              </button>
+            </div>
+          </section>
+
+          <section className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900 p-4 sm:p-5">
+            <h3 className="text-lg font-bold">Muse AI (Meta)</h3>
+            <p className="mt-1 text-sm text-zinc-400">
+              Generate series details and cinematic posters with Muse.
+            </p>
+            <div className="mt-5 space-y-4">
+              <SecretField
+                label="Muse API key"
+                status={secretStatus.MUSE_API_KEY}
+                value={secrets.MUSE_API_KEY ?? ""}
+                onChange={(value) => setSecret("MUSE_API_KEY", value)}
+                onClear={() => clearSecret("MUSE_API_KEY")}
+              />
+              <Field label="Text model">
+                <input
+                  className={inputClass}
+                  value={values.MUSE_TEXT_MODEL}
+                  onChange={(event) => setValue("MUSE_TEXT_MODEL", event.target.value)}
+                />
+              </Field>
+              <Field label="Image model">
+                <input
+                  className={inputClass}
+                  value={values.MUSE_IMAGE_MODEL}
+                  onChange={(event) => setValue("MUSE_IMAGE_MODEL", event.target.value)}
+                />
+              </Field>
+              <button
+                className="rounded-xl border border-white/10 bg-zinc-800 px-4 py-2.5 text-sm font-bold disabled:opacity-50"
+                type="button"
+                onClick={testMuse}
+                disabled={testingMuse}
+              >
+                {testingMuse ? "Testing…" : "Test key"}
               </button>
             </div>
           </section>
